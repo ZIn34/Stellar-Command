@@ -1,0 +1,20 @@
+{
+ "click": "click.wav",
+ "select": "select.wav",
+ "order": "order.wav",
+ "attackOrder": "attackOrder.wav",
+ "deny": "deny.wav",
+ "rifle": "rifle.wav",
+ "cannon": "cannon.wav",
+ "turret": "turret.wav",
+ "drill": "drill.wav",
+ "boom": "boom.wav",
+ "bigBoom": "bigBoom.wav",
+ "build": "build.wav",
+ "complete": "complete.wav",
+ "trained": "trained.wav",
+ "deposit": "deposit.wav",
+ "deploy": "deploy.wav",
+ "victory": "victory.wav",
+ "defeat": "defeat.wav"
+}
