@@ -2550,6 +2550,38 @@ const FLASH=new Image(); let flashOK=false, flashAR=1.42;
 FLASH.onload=function(){ flashOK=true; flashAR=FLASH.naturalWidth/FLASH.naturalHeight; };
 FLASH.onerror=function(){ flashOK=false; };
 FLASH.src='flash.png';
+/* projectile artwork, dropped in beside the game as bolt.png. Its own heading and
+   tip are measured from the pixels, so it points wherever the shot is going. */
+const BOLT=new Image();
+let boltOK=false, boltAng=0, boltTipX=0, boltTipY=0, boltLen=1, boltImg=[null,null];
+BOLT.onload=function(){
+  try{
+    const w=BOLT.naturalWidth, h=BOLT.naturalHeight;
+    const c=newCv(w,h), g=c.getContext('2d');
+    g.drawImage(BOLT,0,0);
+    const d=g.getImageData(0,0,w,h).data;
+    let best=-1, sx=0, sy=0, sa=0;
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+      const i=(y*w+x)*4, a=d[i+3];
+      if(a<10) continue;
+      const lum=(d[i]+d[i+1]+d[i+2])*a;
+      if(lum>best){ best=lum; boltTipX=x; boltTipY=y; }
+      sx+=x*a; sy+=y*a; sa+=a;
+    }
+    if(!sa) throw 0;
+    const cx=sx/sa, cy=sy/sa;
+    boltAng=Math.atan2(boltTipY-cy,boltTipX-cx);
+    boltLen=Math.max(8,Math.hypot(boltTipX-cx,boltTipY-cy)*2);
+    boltImg[0]=BOLT;
+    const r=newCv(w,h), rg=r.getContext('2d');          // Legion tint
+    try{ rg.filter='hue-rotate(145deg) saturate(1.35)'; }catch(e){}
+    rg.drawImage(BOLT,0,0);
+    boltImg[1]=r;
+    boltOK=true;
+  }catch(e){ boltOK=false; }
+};
+BOLT.onerror=function(){ boltOK=false; };
+BOLT.src='bolt.png';
 const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
   bulwark:{d:1.95,off:.68,s:1.5}, sunderer:{d:2.05,off:0,s:2.3},
   harrower:{d:1.45,off:0,s:2.0}, watchspire:{d:1.1,off:0,s:1.6} };
@@ -3080,7 +3112,18 @@ function render(){
   for(const s of shots){
     const f=s.t/s.dur;
     const x=s.x+(s.tx-s.x)*f, y=s.y+(s.ty-s.y)*f;
-    if(s.big){
+    if(boltOK&&!OPT.lowFx){
+      const img=boltImg[s.owner===1?1:0]||BOLT;
+      const ang=Math.atan2(s.ty-s.y,s.tx-s.x);
+      const L=s.big?96:54, sc=L/boltLen;
+      ctx.save();
+      ctx.translate(x,y); ctx.rotate(ang-boltAng);
+      ctx.globalCompositeOperation='lighter';
+      ctx.globalAlpha=.95;
+      ctx.drawImage(img,-boltTipX*sc,-boltTipY*sc,BOLT.naturalWidth*sc,BOLT.naturalHeight*sc);
+      ctx.restore();
+      ctx.globalAlpha=1;
+    } else if(s.big){
       ctx.fillStyle=s.c; ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
       ctx.strokeStyle='rgba(255,220,150,.6)'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(x-(s.tx-s.x)*.05,y-(s.ty-s.y)*.05); ctx.lineTo(x,y); ctx.stroke();
