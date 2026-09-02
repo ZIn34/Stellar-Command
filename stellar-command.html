@@ -4011,6 +4011,8 @@ const TUT={on:false, i:0, t:0, done:false, acts:{}, baseM:0};
    world state alone marks those steps done before the player touches anything.
    Count the orders the player actually gives instead. */
 function tutAct(k){ if(TUT.on) TUT.acts[k]=(TUT.acts[k]||0)+1; }
+/* The same lesson, in the controls the player actually has in front of them. */
+function dv(mouse,touch){ return IS_TOUCH?touch:mouse; }
 function tutHome(){ return mineB(b=>b.type==='keystone')[0]||mineB()[0]; }
 function tutOpenSpot(x,y,r){        // a clear tile near a point, for spawning
   const o=nearestOpen(clamp((x/TILE)|0,1,MAP_W-2),clamp((y/TILE)|0,1,MAP_H-2),false);
@@ -4047,29 +4049,45 @@ const mineU=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='unit'&&(!f||f(e)))
 const mineB=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='building'&&(!f||f(e)));
 const TUT_STEPS=[
   {b:'Select your Delvers.',
-   h:'Drag a box around them with the left mouse button, or press F2 to grab everything.',
+   h:dv('Drag a box around them with the left mouse button, or press F2 to grab everything.',
+        'Press and hold on open ground for a moment, then drag to box them in. One finger drags the camera, two fingers pinch to zoom.'),
    ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0).length>=2},
   {b:'Put a Delver on aurite yourself.',
-   h:'Right-click one of the blue crystal clusters. Aurite pays for everything you build.',
+   h:dv('Right-click one of the blue crystal clusters. Aurite pays for everything you build.',
+        'Tap one of the blue crystal clusters. Aurite pays for everything you build.'),
    ok:()=>(TUT.acts.gather||0)>=1},
   {b:'Bank another 120 aurite.',
    h:'Delvers haul each load back to the Keystone on their own. Watch the counter climb.',
    ok:()=>P[0].m>=TUT.baseM+120},
+  {b:'Train three more Delvers.',
+   h:dv('Click your Keystone and pick Delver. More miners means more income - keep them coming all game.',
+        'Tap your Keystone, then tap Delver three times. More miners means more income - keep them coming all game.'),
+   enter:()=>{ TUT.baseD=mineU(u=>u.type==='delver').length; },
+   ok:()=>mineU(u=>u.type==='delver').length>=(TUT.baseD||0)+3},
+  {b:'Put the new Delvers on aurite.',
+   h:dv('Select the idle ones and right-click a crystal cluster. Idle workers earn nothing.',
+        'Select the idle ones and tap a crystal cluster. Idle workers earn nothing.'),
+   ok:()=>mineU(u=>u.type==='delver'&&u.cmd.t==='gather').length>=(TUT.baseD||0)+3},
   {b:'Raise a Habitat.',
-   h:'Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
+   h:dv('Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
+        'Tap Build in the bottom panel, pick Habitat, then tap a clear patch of ground. It lifts your population cap.'),
    ok:()=>mineB(b=>b.type==='habitat'&&b.done).length>=1},
   {b:'Raise a Barracks.',
-   h:'Same again with R. This is what trains your soldiers, so put it somewhere safe.',
+   h:dv('Same again with R. This is what trains your soldiers, so put it somewhere safe.',
+        'Tap Build again and pick Barracks. This is what trains your soldiers, so put it somewhere safe.'),
    ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
   {b:'Train a Warden.',
-   h:'Click the finished Barracks and pick Warden from the panel at the bottom.',
+   h:dv('Click the finished Barracks and pick Warden from the panel at the bottom.',
+        'Tap the finished Barracks, then tap Warden in the panel at the bottom.'),
    ok:()=>mineU(u=>u.type==='warden').length>=1||
        mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
   {b:'Attack-move your Warden out.',
-   h:'Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
+   h:dv('Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
+        'Select it, tap Attack in the panel, then tap across the map. Attack-move walks there and engages anything on the way.'),
    ok:()=>(TUT.acts.amove||0)>=1},
   {b:'Build a squad: five Wardens.',
-   h:'Queue them from the Barracks. Hold the button to stack the queue.',
+   h:dv('Queue them from the Barracks. Hold the button to stack the queue.',
+        'Tap the Barracks, then tap Warden five times to stack the queue.'),
    ok:()=>mineU(u=>u.type==='warden').length>=5},
   {b:'Hold the line. Four raiders inbound.',
    h:'They are heading for your Keystone. Meet them with your squad - concentrate fire and let your Watchspire help if you built one.',
@@ -4082,11 +4100,13 @@ const TUT_STEPS=[
    enter:()=>{ TUT.baseW=mineU(u=>u.type==='warden').length; },
    ok:()=>mineU(u=>u.type==='warden').length>=(TUT.baseW||0)+4},
   {b:'Destroy the Legion outpost.',
-   h:'Their forward post is lightly held - a Habitat and a Barracks. Select your army, press A and click their base.',
+   h:dv('Their forward post is lightly held - a Habitat and a Barracks. Select your army, press A and click their base.',
+        'Their forward post is lightly held - a Habitat and a Barracks. Select your army, tap Attack, then tap their base.'),
    enter:()=>{ tutSpawnOutpost(); say('Legion outpost located. Level it.'); },
    ok:()=>tutFoeBlds().length===0},
   {b:'Outpost cleared. You are ready.',
-   h:'Bulwarks and Sunderers come from the Forgeworks. Delvers can repair anything of yours - right-click a damaged building. Good hunting, Commander.',
+   h:dv('Bulwarks and Sunderers come from the Forgeworks. Delvers can repair anything of yours - right-click a damaged building. Good hunting, Commander.',
+        'Bulwarks and Sunderers come from the Forgeworks. Delvers can repair anything of yours - select one and tap a damaged building. Good hunting, Commander.'),
    ok:()=>false, last:true}
 ];
 function tutEl(id){ return document.getElementById(id); }
@@ -4133,7 +4153,7 @@ function startTutorial(){
   modeKey='duel';
   setupSides('duel',false);
   BOTS=[false,false,false,false];      // nobody attacks you while you learn
-  TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={}; TUT.baseW=0;
+  TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={}; TUT.baseW=0; TUT.baseD=0;
   TUT_STEPS.forEach(st=>{ st._entered=false; });
   menuOn=false;
   document.getElementById('menu').style.display='none';
