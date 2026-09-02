@@ -493,6 +493,7 @@ function clamp(v,a,b){return v<a?a:v>b?b:v}
 const ti=(tx,ty)=>ty*MAP_W+tx;
 
 /* ===================== MAP GENERATION ===================== */
+const ROCK_CLUSTERS=0;          // obstacles per map, before scaling
 function genMap(){
   const R=()=>srand(), IR=(a,b)=>Math.floor(a+R()*(b-a+1));
   for(let i=0;i<terr.length;i++) terr[i]=R()<.14?1:(R()<.08?2:0);
@@ -500,7 +501,8 @@ function genMap(){
     for(const b of BASES.concat(EXPOS)) if(Math.abs(tx-b.tx)<9&&Math.abs(ty-b.ty)<9) return false;
     return true;
   };
-  for(let k=0;k<Math.round(46*MAPSCALE);k++){
+  // Rock clusters. 0 clears the map entirely; 46 was the original density.
+  for(let k=0;k<Math.round(ROCK_CLUSTERS*MAPSCALE);k++){
     let cx=IR(3,MAP_W-4), cy=IR(3,MAP_H-4);
     if(!safe(cx,cy)) continue;
     const n=IR(3,11);
