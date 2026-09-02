@@ -1832,7 +1832,8 @@ function netSnapshot(){
       const ang=o.target&&!o.target.dead?Math.atan2(o.target.y-o.y,o.target.x-o.x):0;
       e.push([o.id,ti2,o.owner^1,Math.round(o.x),Math.round(o.y),Math.round(o.hp),o.maxHp,
               Math.round(ang*100),o.done?1:0,Math.round(o.prog*100),o.queue?o.queue.length:0,
-              Math.round((o.ptime||0)*10),o.lastBuildT===undefined?999:Math.round((gameTime-o.lastBuildT)*10)]);
+              Math.round((o.ptime||0)*10),o.lastBuildT===undefined?999:Math.round((gameTime-o.lastBuildT)*10),
+              (o.queue&&o.queue.length)?NET_U.indexOf(o.queue[0]):-1]);
     } else {
       e.push([o.id,ti2,0,Math.round(o.x),Math.round(o.y),Math.round(o.amount),o.max,0,o.taken?1:0]);
     }
@@ -1862,7 +1863,9 @@ function netApplySnapshot(d){
     } else if(info.kind==='building'){
       o.x=a[3]; o.y=a[4]; o.hp=a[5]; o.maxHp=a[6];
       o.done=a[8]===1; o.prog=a[9]/100; o.ptime=a[11]/10;
-      o.queue=new Array(a[10]).fill(BDEF[o.type].trains?BDEF[o.type].trains[0]:'warden');
+      const qt=(a[13]!==undefined&&a[13]>=0)?NET_U[a[13]]
+               :(BDEF[o.type].trains?BDEF[o.type].trains[0]:'warden');
+      o.queue=new Array(a[10]).fill(qt);
       o.lastBuildT=a[12]>=999?undefined:gameTime-a[12]/10;
       if(a[7]) o.target={x:o.x+Math.cos(a[7]/100)*100,y:o.y+Math.sin(a[7]/100)*100,dead:false};
       else o.target=null;
@@ -3148,7 +3151,7 @@ function drawBuilding(b){
     ctx.setLineDash([7,5]); ctx.lineWidth=1.5;
     rr(ctx,b.x-hw,b.y-hh,b.w,b.h,5); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle='rgba(4,10,17,.9)'; ctx.fillRect(b.x-hw,b.y+hh+4,b.w,5);
-    ctx.fillStyle=busy?'#4bd6ff':'#ffb43a'; ctx.fillRect(b.x-hw,b.y+hh+4,b.w*b.prog,5);
+    ctx.fillStyle=busy?'#4bd6ff':'#ffb43a'; ctx.fillRect(b.x-hw,b.y+hh+4,b.w*clamp(b.prog,0,1),5);
     if(!busy&&b.owner===0){
       ctx.save(); ctx.globalAlpha=.55+.45*Math.sin(gameTime*4);
       ctx.fillStyle='#ffb43a'; ctx.font='bold 11px monospace'; ctx.textAlign='center';
@@ -3169,7 +3172,7 @@ function drawBuilding(b){
   ctx.restore();
   if(b.done&&OPT.hpBars!=='never'&&(OPT.hpBars==='always'||b.hp<b.maxHp)) hpBar(b.x,b.y-hh-9,b.w*.8,b.hp/b.maxHp);
   if(b.done&&b.queue&&b.queue.length){
-    const f=b.ptime/(UDEF[b.queue[0]].bt/TRAIN_RATE), w=b.w*.8;
+    const f=clamp(b.ptime/(UDEF[b.queue[0]].bt/TRAIN_RATE),0,1), w=b.w*.8;
     ctx.fillStyle='rgba(4,10,17,.9)'; ctx.fillRect(b.x-w/2,b.y+hh+4,w,4);
     ctx.fillStyle='#4bd6ff'; ctx.fillRect(b.x-w/2,b.y+hh+4,w*f,4);
   }
@@ -3440,7 +3443,9 @@ function simTick(dt){
     servicePaths();
     navT-=dt; if(navT<=0){ navT=.5; rebuildNav(); }
     if(NET.role==='host'){ snapT-=dt; if(snapT<=0){ snapT=snapRate(); netSnapshot(); } netCheckEnd(); }
-    else aiUpdate(dt);
+    // The host drives the bots too: in an online 2v2 each side has a bot ally,
+    // and aiUpdate only walks slots flagged in BOTS, so a duel is a no-op here.
+    aiUpdate(dt);
     fogT-=dt; if(fogT<=0){ fogT=.14; updateFog(); paintFog(); }
     if(ents.length>400||gameTime%5<dt) ents=ents.filter(e=>!e.dead||e.kind==='res');
     ents=ents.filter(e=>!e.dead);
