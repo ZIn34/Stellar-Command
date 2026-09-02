@@ -355,7 +355,7 @@ body.touch .mouse-only{display:none}
   <div id="tutHint"></div>
   <button id="tutSkip">SKIP</button>
 </div>
-<div id="over"><h1 id="overT"></h1><button id="againBtn">NEW CAMPAIGN</button></div>
+<div id="over"><h1 id="overT"></h1><button id="againBtn">HOME</button></div>
 <script>
 'use strict';
 /* ===================== CORE SETUP ===================== */
@@ -406,8 +406,8 @@ window.addEventListener('resize',resize);
 const PC='#4bd6ff', EC='#ff6b52';              // player / enemy colour
 const TEAM=[{c:PC,dk:'#12617f'},{c:EC,dk:'#7d2b1c'},
             {c:'#57e3a8',dk:'#127f55'},{c:'#ffab3d',dk:'#8a5210'}];
-const TEAMOF=[0,1,0,1];                        // slots 0,2 vs slots 1,3
-let NPLAY=2;                                   // 2 for a duel, 4 for 2v2
+let TEAMOF=[0,1,0,1];        // slot -> team. Paired for a duel or 2v2, all
+let NPLAY=2;                 // distinct for a free-for-all. 2 or 4 slots.
 const sameTeam=(a,b)=>a>=0&&b>=0&&TEAMOF[a]===TEAMOF[b];
 const isFoe=(a,b)=>a>=0&&b>=0&&TEAMOF[a]!==TEAMOF[b];
 const isAlly=o=>o>=0&&o<NPLAY&&TEAMOF[o]===TEAMOF[0];   // shares vision with me
@@ -424,7 +424,7 @@ const UDEF={
 const BDEF={
   keystone:  {n:'Keystone',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
   habitat:   {n:'Habitat',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
-  musterhall:{n:'Muster Hall',hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark'],hk:'M'},
+  musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark'],hk:'R'},
   siphon:    {n:'Siphon',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
   forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower'],req:'musterhall',hk:'F'},
   watchspire:{n:'Watchspire', hp:380, w:48,h:48,m:100,g:0, bt:16,sight:9, dmg:11,rng:152,cd:.75,req:'musterhall',hk:'W'}
@@ -2031,17 +2031,20 @@ function startOnline(seed,grand,mode){
     centerOn(BASES[1].tx*TILE,BASES[1].ty*TILE);
   }
   say((NET.role==='host'?'You are the Azure Concord':'You command the Ember Legion')+
-      (NPLAY>2?' — 2v2, your ally holds the flank':'')+
+      (NPLAY>2?(TEAMOF[0]===TEAMOF[2]?' — 2v2, your ally holds the flank'
+                                       :' — free-for-all, trust no one'):'')+
       (GRAND?' — Grand War':'')+' — good hunting.');
 }
 function netCheckEnd(){
   if(NET.role!=='host'||NET.ended) return;
-  const hostAlive=teamAlive(TEAMOF[0]);
-  const guestAlive=teamAlive(TEAMOF[1]);
-  if(hostAlive&&guestAlive) return;
+  const ts=aliveTeams();
+  const hostAlive=ts.indexOf(TEAMOF[0])>=0, guestAlive=ts.indexOf(TEAMOF[1])>=0;
+  // Settled once one side remains, or once either human is knocked out - in a
+  // free-for-all the survivor takes it even if bots are still scrapping.
+  if(ts.length>1&&hostAlive&&guestAlive) return;
   NET.ended=true;
-  netRelay({k:'over',w:!guestAlive?false:true});
-  endGame(guestAlive?'DEFEAT':'VICTORY',guestAlive?'#ff6b52':'#7dffb0');
+  netRelay({k:'over',w:guestAlive});
+  endGame(hostAlive?'VICTORY':'DEFEAT',hostAlive?'#7dffb0':'#ff6b52');
 }
 
 /* ===================== KEYBOARD ===================== */
@@ -2248,7 +2251,7 @@ function buildCard(){
     const el=document.createElement('div');
     el.className='btn'+(o.empty?' empty':'')+(o.dis?' dis':'');
     if(!o.empty){
-      el.innerHTML='<span class="hk">'+(o.hk||'')+'</span>'+
+      el.innerHTML=(IS_TOUCH?'':'<span class="hk">'+(o.hk||'')+'</span>')+
         (o.cost?'<span class="cost">'+o.cost.m+(o.cost.g?'<i> +'+o.cost.g+'</i>':'')+'</span>':'')+
         (o.img?'<img class="bic" src="'+o.img+'" alt="">':'<span class="ic">'+o.ic+'</span>')+
         '<span class="nm">'+(o.name||'')+'</span>';
@@ -3544,10 +3547,16 @@ function teamAlive(t){
   return ents.some(e=>!e.dead&&e.owner>=0&&e.owner<NPLAY&&TEAMOF[e.owner]===t&&
     (e.kind==='building'||e.kind==='unit'));
 }
+function aliveTeams(){
+  const out=[];
+  for(let o=0;o<NPLAY;o++){ const t=TEAMOF[o];
+    if(out.indexOf(t)<0&&teamAlive(t)) out.push(t); }
+  return out;
+}
 function checkEnd(){
-  const mine=teamAlive(TEAMOF[0]), theirs=teamAlive(1-TEAMOF[0]);
-  if(!theirs) endGame('VICTORY','#7dffb0');
-  else if(!mine) endGame('DEFEAT','#ff6b52');
+  const ts=aliveTeams();                 // any number of sides, not just two
+  if(ts.indexOf(TEAMOF[0])<0) endGame('DEFEAT','#ff6b52');
+  else if(ts.length===1) endGame('VICTORY','#7dffb0');
 }
 function endGame(t,c){
   over=true;
@@ -3631,13 +3640,15 @@ const DIFFS={
 let DIFF=DIFFS.veteran, ELITE={hp:1.35,dmg:1.30}, diffKey='veteran', scaleKey='standard';
 const MODES={
   duel:{n:'1 v 1', d:'you vs one commander', players:2},
-  team:{n:'2 v 2', d:'you + an ally vs two', players:4}
+  team:{n:'2 v 2', d:'you + an ally vs two', players:4},
+  ffa: {n:'FREE FOR ALL', d:'four commanders, no allies', players:4}
 };
 let modeKey='duel';
 /* Lays out the slot table for a match. In a skirmish every slot but yours is a
    bot; online, slot 1 is the other human and the allies (2 and 3) are bots. */
 function setupSides(mode,online){
   NPLAY=MODES[mode]?MODES[mode].players:2;
+  TEAMOF=(mode==='ffa')?[0,1,2,3]:[0,1,0,1];
   BOTS=[false,false,false,false];
   for(let o=1;o<NPLAY;o++) BOTS[o]=true;
   if(online) BOTS[1]=false;
@@ -4000,6 +4011,38 @@ const TUT={on:false, i:0, t:0, done:false, acts:{}, baseM:0};
    world state alone marks those steps done before the player touches anything.
    Count the orders the player actually gives instead. */
 function tutAct(k){ if(TUT.on) TUT.acts[k]=(TUT.acts[k]||0)+1; }
+function tutHome(){ return mineB(b=>b.type==='keystone')[0]||mineB()[0]; }
+function tutOpenSpot(x,y,r){        // a clear tile near a point, for spawning
+  const o=nearestOpen(clamp((x/TILE)|0,1,MAP_W-2),clamp((y/TILE)|0,1,MAP_H-2),false);
+  return o?{x:o[0]*TILE+TILE/2,y:o[1]*TILE+TILE/2}:{x,y};
+}
+function tutFoeUnits(){ return ents.filter(e=>!e.dead&&e.owner===1&&e.kind==='unit'); }
+function tutFoeBlds(){ return ents.filter(e=>!e.dead&&e.owner===1&&e.kind==='building'); }
+function tutSpawnRaiders(n){
+  const home=tutHome(); if(!home) return;
+  const ex=BASES[1]?BASES[1].tx*TILE:WW-home.x, ey=BASES[1]?BASES[1].ty*TILE:WH-home.y;
+  const dx=ex-home.x, dy=ey-home.y, d=Math.hypot(dx,dy)||1;
+  for(let i=0;i<n;i++){
+    const off=(i-(n-1)/2)*46;
+    const px=home.x+dx/d*620-dy/d*off, py=home.y+dy/d*620+dx/d*off;
+    const sp=tutOpenSpot(px,py);
+    const u=mkUnit('warden',1,sp.x,sp.y);
+    u.cmd={t:'amove',x:home.x,y:home.y};
+  }
+}
+function tutSpawnOutpost(){
+  const home=tutHome();
+  const bx=BASES[1]?BASES[1].tx*TILE:WW-home.x, by=BASES[1]?BASES[1].ty*TILE:WH-home.y;
+  const made=[];
+  for(const t of ['habitat','musterhall']){
+    let done=false;
+    for(let r=0;r<420&&!done;r+=28) for(let a=0;a<6.283;a+=0.35){
+      const x=snap(bx+Math.cos(a)*r), y=snap(by+Math.sin(a)*r);
+      if(canPlace(t,x,y,1)){ made.push(mkBuilding(t,1,x,y,true)); done=true; break; }
+    }
+  }
+  return made;
+}
 const mineU=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='unit'&&(!f||f(e)));
 const mineB=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='building'&&(!f||f(e)));
 const TUT_STEPS=[
@@ -4015,28 +4058,46 @@ const TUT_STEPS=[
   {b:'Raise a Habitat.',
    h:'Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
    ok:()=>mineB(b=>b.type==='habitat'&&b.done).length>=1},
-  {b:'Raise a Muster Hall.',
-   h:'Same again with M. This is what trains your soldiers, so put it somewhere safe.',
+  {b:'Raise a Barracks.',
+   h:'Same again with R. This is what trains your soldiers, so put it somewhere safe.',
    ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
   {b:'Train a Warden.',
-   h:'Click the finished Muster Hall and pick Warden from the panel at the bottom.',
+   h:'Click the finished Barracks and pick Warden from the panel at the bottom.',
    ok:()=>mineU(u=>u.type==='warden').length>=1||
        mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
   {b:'Attack-move your Warden out.',
    h:'Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
    ok:()=>(TUT.acts.amove||0)>=1},
-  {b:'You are ready.',
+  {b:'Build a squad: five Wardens.',
+   h:'Queue them from the Barracks. Hold the button to stack the queue.',
+   ok:()=>mineU(u=>u.type==='warden').length>=5},
+  {b:'Hold the line. Four raiders inbound.',
+   h:'They are heading for your Keystone. Meet them with your squad - concentrate fire and let your Watchspire help if you built one.',
+   enter:()=>{ tutSpawnRaiders(4); say('Four Legion Ravagers inbound. Hold your ground.'); SFX.play('attackOrder'); },
+   ok:()=>tutFoeUnits().length===0},
+  {b:'Rebuild: four more Wardens.',
+   h:()=>(P[0].sup>=P[0].cap)
+     ? 'You are at your population cap - raise another Habitat before you can train more.'
+     : 'You will want the numbers before you push out. Replace your losses.',
+   enter:()=>{ TUT.baseW=mineU(u=>u.type==='warden').length; },
+   ok:()=>mineU(u=>u.type==='warden').length>=(TUT.baseW||0)+4},
+  {b:'Destroy the Legion outpost.',
+   h:'Their forward post is lightly held - a Habitat and a Barracks. Select your army, press A and click their base.',
+   enter:()=>{ tutSpawnOutpost(); say('Legion outpost located. Level it.'); },
+   ok:()=>tutFoeBlds().length===0},
+  {b:'Outpost cleared. You are ready.',
    h:'Bulwarks and Sunderers come from the Forgeworks. Delvers can repair anything of yours - right-click a damaged building. Good hunting, Commander.',
    ok:()=>false, last:true}
 ];
 function tutEl(id){ return document.getElementById(id); }
 function tutShow(){
   const st=TUT_STEPS[TUT.i]; if(!st) return;
+  if(st.enter&&!st._entered){ st._entered=true; try{ st.enter(); }catch(e){} }
   tutEl('tut').style.display='block';
   tutEl('tut').classList.toggle('done',!!st.last);
   tutEl('tutStep').textContent=st.last?'':(TUT.i+1)+' / '+(TUT_STEPS.length-1);
   tutEl('tutBody').textContent=st.b;
-  tutEl('tutHint').textContent=st.h;
+  tutEl('tutHint').textContent=(typeof st.h==='function')?st.h():st.h;
   tutEl('tutSkip').textContent=st.last?'FINISH':'SKIP';
 }
 function tutAdvance(){
@@ -4054,6 +4115,10 @@ function tutStep(dt){
   const st=TUT_STEPS[TUT.i]; if(!st) return;
   TUT.t+=dt;
   if(st.last) return;
+  if(typeof st.h==='function'){
+    const txt=st.h();
+    if(tutEl('tutHint').textContent!==txt) tutEl('tutHint').textContent=txt;
+  }
   let done=false;
   try{ done=!!st.ok(); }catch(e){ done=false; }
   if(done) tutAdvance();
@@ -4068,10 +4133,13 @@ function startTutorial(){
   modeKey='duel';
   setupSides('duel',false);
   BOTS=[false,false,false,false];      // nobody attacks you while you learn
-  TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={};
+  TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={}; TUT.baseW=0;
+  TUT_STEPS.forEach(st=>{ st._entered=false; });
   menuOn=false;
   document.getElementById('menu').style.display='none';
   init();
+  for(const e of ents) if(e.owner===1) e.dead=true;   // no Legion until the finale
+  ents=ents.filter(e=>!e.dead);
   TUT.baseM=P[0].m;
   tutShow();
   say('Training run - no one is coming for you. Take your time.');
