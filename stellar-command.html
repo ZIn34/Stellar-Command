@@ -219,6 +219,11 @@ body.touch .mouse-only{display:none}
   background:#08121c;color:#4bd6ff;border:1px solid #2d5a80;border-radius:6px;padding:6px}
 #lobGo{font-family:inherit;font-size:12px;letter-spacing:2px;padding:0 16px;cursor:pointer;color:#04121c;
   background:linear-gradient(180deg,#7fe4ff,#2aa8d8);border:0;border-radius:6px}
+#lobSrv{display:none;gap:8px;justify-content:center;margin:10px 0}
+#lobSrvIn{width:230px;font-family:inherit;font-size:12px;letter-spacing:1px;text-align:center;
+  background:#08121c;color:#4bd6ff;border:1px solid #2d5a80;border-radius:6px;padding:7px}
+#lobSrvGo{font-family:inherit;font-size:12px;letter-spacing:2px;padding:0 14px;cursor:pointer;color:#04121c;
+  background:linear-gradient(180deg,#7fe4ff,#2aa8d8);border:0;border-radius:6px}
 #lobSpin{display:none;margin:12px 0 4px}
 #lobSpin i{display:inline-block;width:7px;height:7px;margin:0 3px;border-radius:50%;background:#4bd6ff;
   animation:lobp 1s infinite ease-in-out}
@@ -326,6 +331,7 @@ body.touch .mouse-only{display:none}
     <div id="lobCode">----</div>
     <p id="lobMsg"></p>
     <div id="lobEntry"><input id="lobInput" inputmode="numeric" maxlength="4" placeholder="0000"><button id="lobGo">JOIN</button></div>
+    <div id="lobSrv"><input id="lobSrvIn" placeholder="your-server.onrender.com" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="lobSrvGo">SAVE</button></div>
     <div id="lobSpin"><i></i><i></i><i></i></div>
     <button id="lobCancel">CANCEL</button>
   </div>
@@ -1708,19 +1714,54 @@ function netOnline(){ return NET.role==='host'||NET.role==='guest'; }
 let SEED=1;
 function srand(){ SEED=(SEED*1664525+1013904223)>>>0; return SEED/4294967296; }
 
+/* Online play needs server.js running somewhere. When the game is served BY
+   that server the page host is also the relay, which is the localhost case.
+   On a static host such as GitHub Pages there is no relay behind the page, so
+   the player points the game at their own deployment once and it sticks. */
+const STATIC_HOST=/(^|\.)github\.io$|(^|\.)githubusercontent\.com$|(^|\.)pages\.dev$/i.test(location.hostname);
+function normHost(v){
+  return String(v||'').trim()
+    .replace(/^wss?:\/\//i,'').replace(/^https?:\/\//i,'')
+    .replace(/\/.*$/,'').replace(/\s+/g,'');
+}
+function getRelay(){
+  try{ return localStorage.getItem('sc_relay')||''; }catch(e){ return ''; }
+}
+function setRelay(v){
+  const h=normHost(v);
+  try{ h?localStorage.setItem('sc_relay',h):localStorage.removeItem('sc_relay'); }catch(e){}
+  return h;
+}
+(function(){                                   // ?server=host.example.com pins it
+  try{
+    const q=new URLSearchParams(location.search).get('server');
+    if(q!==null) setRelay(q);
+  }catch(e){}
+})();
+function relayHost(){
+  const h=getRelay();
+  if(h) return h;
+  return STATIC_HOST?'':location.host;
+}
 function netURL(){
   if(location.protocol==='file:') return null;
-  return (location.protocol==='https:'?'wss://':'ws://')+location.host;
+  const h=relayHost();
+  if(!h) return null;
+  // an https page can only open wss, so a plain ws relay would be blocked
+  return (location.protocol==='https:'?'wss://':'ws://')+h;
 }
 function netConnect(then){
   const url=netURL();
-  if(!url){ lobbyError('Online play needs the game served by server.js — open http://localhost:8080'); return; }
+  if(!url){ lobbyNeedServer(); return; }
   if(NET.ws&&NET.ws.readyState===1){ then&&then(); return; }
   try{ NET.ws=new WebSocket(url); }catch(e){ lobbyError('Could not reach the server'); return; }
   NET.ws.onopen=()=>{ then&&then(); };
   NET.ws.onmessage=ev=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } netRecv(m); };
   NET.ws.onclose=()=>{ if(netOnline()&&!NET.ended) netDropped(); };
-  NET.ws.onerror=()=>{ lobbyError('Could not reach the server'); };
+  NET.ws.onerror=()=>{
+    lobbyError('Could not reach '+relayHost()+'.');
+    lobbyShowServer();
+  };
 }
 function netSend(o){ if(NET.ws&&NET.ws.readyState===1) NET.ws.send(JSON.stringify(o)); }
 function netRelay(d){ netSend({t:'relay',d}); }
@@ -3717,6 +3758,20 @@ function lobbyError(msg){
   lobbySetState('error');
   document.getElementById('lobMsg').textContent=msg;
 }
+function lobbyShowServer(){
+  const row=document.getElementById('lobSrv');
+  row.style.display='flex';
+  const inp=document.getElementById('lobSrvIn');
+  inp.value=getRelay();
+  setTimeout(()=>inp.focus(),30);
+}
+function lobbyNeedServer(){
+  lobbySetState('error');
+  document.getElementById('lobTitle').textContent='SERVER NEEDED';
+  document.getElementById('lobMsg').textContent=
+    'Online play runs through a relay server (server.js). Enter the address of yours — it is remembered.';
+  lobbyShowServer();
+}
 function lobbySetState(st){
   NET.state=st;
   lobbyOpen();
@@ -3726,6 +3781,7 @@ function lobbySetState(st){
   const entry=document.getElementById('lobEntry');
   const spin=document.getElementById('lobSpin');
   codeBox.style.display='none'; entry.style.display='none'; spin.style.display='none';
+  const srv=document.getElementById('lobSrv'); if(srv) srv.style.display='none';
   if(st==='searching'){
     title.textContent='QUICK PLAY';
     msg.textContent='Looking for an opponent — this stays open until someone joins.';
@@ -3772,6 +3828,20 @@ function lobbyInit(){
     lobbySetState('joining');
     netConnect(()=>{});
   };
+  const srvGo=()=>{
+    const v=document.getElementById('lobSrvIn').value;
+    const h=setRelay(v);
+    if(!h){ document.getElementById('lobMsg').textContent='Enter the address of your server.'; SFX.play('deny'); return; }
+    SFX.play('click');
+    document.getElementById('lobSrv').style.display='none';
+    document.getElementById('lobTitle').textContent='SERVER SET';
+    document.getElementById('lobMsg').textContent=h+' saved — pick Quick Play, Host or Join.';
+  };
+  document.getElementById('lobSrvGo').onclick=srvGo;
+  document.getElementById('lobSrvIn').addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); srvGo(); }
+    e.stopPropagation();
+  });
   document.getElementById('lobGo').onclick=()=>{
     const v=(document.getElementById('lobInput').value||'').replace(/[^0-9]/g,'').slice(0,4);
     if(v.length!==4){ document.getElementById('lobMsg').textContent='Codes are four digits.'; SFX.play('deny'); return; }
