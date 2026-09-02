@@ -2380,6 +2380,19 @@ function aiUpdate(dt){
     if(cand){ cand.cmd={t:'gather',node:sp,dep:null}; break; }
   }
 
+  /* ---- patch up the base: worst-hurt structure first ---- */
+  {
+    const hurt=bs.filter(b=>b.done&&b.hp<b.maxHp*.72)
+      .sort((a,b)=>(a.hp/a.maxHp)-(b.hp/b.maxHp))[0];
+    const busy=us.filter(u=>u.cmd.t==='repair'&&u.cmd.target&&!u.cmd.target.dead);
+    for(const u of busy) if(u.cmd.target.hp>=u.cmd.target.maxHp) u.cmd={t:'idle'};
+    if(hurt&&busy.length<(hurt.type==='keystone'?3:2)&&P[1].m>70){
+      const cand=workers.find(w=>!w.isScout&&!w.pulled&&
+        w.cmd.t!=='build'&&w.cmd.t!=='repair'&&dist(w,hurt)<1100);
+      if(cand){ cand.cmd={t:'repair',target:hurt}; cand.target=null; }
+    }
+  }
+
   /* ---- economy ---- */
   if(P[1].cap-P[1].sup<=(P[1].cap>40?8:4)&&P[1].cap<190&&count('habitat')-bs.filter(b=>b.type==='habitat'&&b.done).length<2)
     put('habitat',home);
