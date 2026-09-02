@@ -219,6 +219,18 @@ body.touch .mouse-only{display:none}
   background:#08121c;color:#4bd6ff;border:1px solid #2d5a80;border-radius:6px;padding:6px}
 #lobGo{font-family:inherit;font-size:12px;letter-spacing:2px;padding:0 16px;cursor:pointer;color:#04121c;
   background:linear-gradient(180deg,#7fe4ff,#2aa8d8);border:0;border-radius:6px}
+#tut{display:none;position:absolute;left:14px;top:74px;width:266px;z-index:6;
+  background:rgba(6,13,20,.93);border:1px solid #2d5a80;border-radius:9px;padding:11px 13px;
+  box-shadow:0 6px 26px rgba(0,0,0,.5)}
+#tutHead{font-size:10.5px;letter-spacing:3px;color:#4bd6ff;margin-bottom:6px}
+#tutHead span{color:#7c9cb4;letter-spacing:1px}
+#tutBody{font-size:12px;line-height:1.55;color:#dbe9f5}
+#tutHint{font-size:10.5px;line-height:1.5;color:#7c9cb4;margin-top:6px}
+#tutSkip{margin-top:9px;font-family:inherit;font-size:10px;letter-spacing:2px;padding:4px 12px;
+  cursor:pointer;color:#9fc4dd;background:#0d1d2a;border:1px solid #2d5a80;border-radius:5px}
+#tutSkip:hover{border-color:#4bd6ff;color:#dff1ff}
+#tut.done{border-color:#7dffb0}
+#tut.done #tutHead{color:#7dffb0}
 #lobSrv{display:none;gap:8px;justify-content:center;margin:10px 0}
 #lobSrvIn{width:230px;font-family:inherit;font-size:12px;letter-spacing:1px;text-align:center;
   background:#08121c;color:#4bd6ff;border:1px solid #2d5a80;border-radius:6px;padding:7px}
@@ -300,6 +312,7 @@ body.touch .mouse-only{display:none}
       <button id="btnHost">HOST</button>
       <button id="btnJoin">JOIN</button>
       <button id="btnSettings">AUDIO</button>
+      <button id="btnTutorial">TUTORIAL</button>
     </div>
     <p class="fine">AZURE CONCORD vs. THE EMBER LEGION — Legion troops are tougher one-on-one. Wrecks pay a salvage bounty, so trade aggressively.</p>
   </div>
@@ -335,6 +348,12 @@ body.touch .mouse-only{display:none}
     <div id="lobSpin"><i></i><i></i><i></i></div>
     <button id="lobCancel">CANCEL</button>
   </div>
+</div>
+<div id="tut">
+  <div id="tutHead">TRAINING <span id="tutStep"></span></div>
+  <div id="tutBody"></div>
+  <div id="tutHint"></div>
+  <button id="tutSkip">SKIP</button>
 </div>
 <div id="over"><h1 id="overT"></h1><button id="againBtn">NEW CAMPAIGN</button></div>
 <script>
@@ -1472,7 +1491,7 @@ function rightClick(wx,wy){
   if(t&&(t.kind==='res'&&t.amount>0||t.kind==='building'&&t.type==='siphon'&&t.owner===0&&t.done)){
     let any=false;
     for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'gather',node:t,dep:null}; u.target=null; any=true; }
-    if(any){ SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:t.r+8,k:'ping',c:'#7fd0ff'}); return; }
+    if(any){ tutAct('gather'); SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:t.r+8,k:'ping',c:'#7fd0ff'}); return; }
   }
   if(t&&t.kind==='building'&&t.owner===0&&!t.done){
     let any=false;
@@ -1537,6 +1556,7 @@ function orderAttackMove(wx,wy){
   if(NET.role==='guest'){ netCmd('amove',{ids:selIds(),x:wx,y:wy}); SFX.play('attackOrder');
     fx.push({x:wx,y:wy,t:0,dur:.5,r:18,k:'ping',c:'#ff6b52'}); return; }
   formation(us,wx,wy,(x,y)=>({t:'amove',x,y}));
+  tutAct('amove');
   SFX.play('attackOrder');
   fx.push({x:wx,y:wy,t:0,dur:.5,r:18,k:'ping',c:'#ff6b52'});
 }
@@ -1994,6 +2014,7 @@ function netHostApply(c){
 }
 /* ---------- match lifecycle ---------- */
 function startOnline(seed,grand,mode){
+  tutEnd();
   SEED=seed>>>0;
   setMapScale(!!grand);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
@@ -3483,7 +3504,8 @@ function simTick(dt){
     if(ents.length>400||gameTime%5<dt) ents=ents.filter(e=>!e.dead||e.kind==='res');
     ents=ents.filter(e=>!e.dead);
     sel=sel.filter(e=>!e.dead);
-    if(!netOnline()) checkEnd();
+    tutStep(dt);
+    if(!netOnline()&&!TUT.on) checkEnd();
   }
 }
 function step(now){
@@ -3866,6 +3888,14 @@ function lobbyCancel(){
   lobbyClose();
 }
 function lobbyInit(){
+  document.getElementById('btnTutorial').onclick=()=>{
+    SFX.unlock(); SFX.play('click'); musicSync();
+    startTutorial();
+  };
+  document.getElementById('tutSkip').onclick=()=>{
+    SFX.play('click');
+    if(TUT_STEPS[TUT.i]&&TUT_STEPS[TUT.i].last) tutEnd(); else tutAdvance();
+  };
   document.getElementById('btnQuick').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
     lobbySetState('searching');
@@ -3962,7 +3992,92 @@ function settingsInit(){
   optApply();
 }
 
+/* ===================== TRAINING =====================
+   A short guided run on a quiet map. Each step watches real game state rather
+   than scripting the player, so any legitimate way of doing the thing counts. */
+const TUT={on:false, i:0, t:0, done:false, acts:{}, baseM:0};
+/* Starting Delvers mine on their own and you open with 150 aurite, so reading
+   world state alone marks those steps done before the player touches anything.
+   Count the orders the player actually gives instead. */
+function tutAct(k){ if(TUT.on) TUT.acts[k]=(TUT.acts[k]||0)+1; }
+const mineU=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='unit'&&(!f||f(e)));
+const mineB=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='building'&&(!f||f(e)));
+const TUT_STEPS=[
+  {b:'Select your Delvers.',
+   h:'Drag a box around them with the left mouse button, or press F2 to grab everything.',
+   ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0).length>=2},
+  {b:'Put a Delver on aurite yourself.',
+   h:'Right-click one of the blue crystal clusters. Aurite pays for everything you build.',
+   ok:()=>(TUT.acts.gather||0)>=1},
+  {b:'Bank another 120 aurite.',
+   h:'Delvers haul each load back to the Keystone on their own. Watch the counter climb.',
+   ok:()=>P[0].m>=TUT.baseM+120},
+  {b:'Raise a Habitat.',
+   h:'Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
+   ok:()=>mineB(b=>b.type==='habitat'&&b.done).length>=1},
+  {b:'Raise a Muster Hall.',
+   h:'Same again with M. This is what trains your soldiers, so put it somewhere safe.',
+   ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
+  {b:'Train a Warden.',
+   h:'Click the finished Muster Hall and pick Warden from the panel at the bottom.',
+   ok:()=>mineU(u=>u.type==='warden').length>=1||
+       mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
+  {b:'Attack-move your Warden out.',
+   h:'Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
+   ok:()=>(TUT.acts.amove||0)>=1},
+  {b:'You are ready.',
+   h:'Bulwarks and Sunderers come from the Forgeworks. Delvers can repair anything of yours - right-click a damaged building. Good hunting, Commander.',
+   ok:()=>false, last:true}
+];
+function tutEl(id){ return document.getElementById(id); }
+function tutShow(){
+  const st=TUT_STEPS[TUT.i]; if(!st) return;
+  tutEl('tut').style.display='block';
+  tutEl('tut').classList.toggle('done',!!st.last);
+  tutEl('tutStep').textContent=st.last?'':(TUT.i+1)+' / '+(TUT_STEPS.length-1);
+  tutEl('tutBody').textContent=st.b;
+  tutEl('tutHint').textContent=st.h;
+  tutEl('tutSkip').textContent=st.last?'FINISH':'SKIP';
+}
+function tutAdvance(){
+  TUT.i++;
+  if(TUT.i>=TUT_STEPS.length){ tutEnd(); return; }
+  SFX.play('complete');
+  tutShow();
+}
+function tutEnd(){
+  TUT.on=false;
+  tutEl('tut').style.display='none';
+}
+function tutStep(dt){
+  if(!TUT.on) return;
+  const st=TUT_STEPS[TUT.i]; if(!st) return;
+  TUT.t+=dt;
+  if(st.last) return;
+  let done=false;
+  try{ done=!!st.ok(); }catch(e){ done=false; }
+  if(done) tutAdvance();
+}
+function startTutorial(){
+  NET.role=null;
+  SEED=(Math.random()*4294967295)>>>0;
+  scaleKey='standard';
+  setMapScale(false);
+  diffKey='recruit'; DIFF=DIFFS.recruit||DIFFS.veteran;
+  ELITE={hp:1,dmg:1};
+  modeKey='duel';
+  setupSides('duel',false);
+  BOTS=[false,false,false,false];      // nobody attacks you while you learn
+  TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={};
+  menuOn=false;
+  document.getElementById('menu').style.display='none';
+  init();
+  TUT.baseM=P[0].m;
+  tutShow();
+  say('Training run - no one is coming for you. Take your time.');
+}
 function startGame(key){
+  tutEnd();
   NET.role=null;
   SEED=(Math.random()*4294967295)>>>0;
   setMapScale(scaleKey==='grand');
