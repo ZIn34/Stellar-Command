@@ -783,9 +783,15 @@ function fire(a,t){
   const d=DEF(a), rng=d.rng, dmg=dmgOf(a);
   a.atkCd=d.cd;
   a.muzzle=.1;
+  const mz=MUZZLE[a.type]||MUZZLE.warden;
+  const ar=a.kind==='building'?18:DEF(a).r;
+  const ang=a.face;
+  fx.push({k:'flash',t:0,dur:.16,a:ang,sc:ar*mz.s,
+    x:a.x+Math.cos(ang)*ar*mz.d-Math.sin(ang)*ar*mz.off,
+    y:a.y+Math.sin(ang)*ar*mz.d+Math.cos(ang)*ar*mz.off});
   const snd=a.kind==='building'?2:((a.type==='sunderer'||a.type==='harrower')?1:(a.type==='delver'?3:0));
   SFX.play(['rifle','cannon','turret','drill'][snd],a.x,a.y);
-  if(NET.role==='host'&&rng>40) netEvent([1,Math.round(a.x),Math.round(a.y),Math.round(t.x),Math.round(t.y),a.owner,d.splash?1:0,snd]);
+  if(NET.role==='host'&&rng>40) netEvent([1,Math.round(a.x),Math.round(a.y),Math.round(t.x),Math.round(t.y),a.owner,d.splash?1:0,snd,Math.round(ang*100),Math.round(ar*mz.s)]);
   a.face=Math.atan2(t.y-a.y,t.x-a.x);
   if(rng>40){
     shots.push({x:a.x,y:a.y,tx:t.x,ty:t.y,t:0,dur:Math.max(.06,Math.hypot(t.x-a.x,t.y-a.y)/900),
@@ -1769,6 +1775,10 @@ function netPlayEvent(v){
     shots.push({x:v[1],y:v[2],tx:v[3],ty:v[4],t:0,
       dur:Math.max(.06,Math.hypot(v[3]-v[1],v[4]-v[2])/900),
       c:TEAM[own].c,big:!!v[6],target:null,dmg:0,splash:0,owner:own});
+    if(v[8]!==undefined){
+      const ang=v[8]/100, sc=v[9]||14;
+      fx.push({k:'flash',t:0,dur:.16,a:ang,sc,x:v[1]+Math.cos(ang)*sc*1.4,y:v[2]+Math.sin(ang)*sc*1.4});
+    }
     SFX.play(['rifle','cannon','turret','drill'][v[7]||0],v[1],v[2]);
   } else if(v[0]===2){
     fx.push({x:v[1],y:v[2],t:0,dur:v[3]?.7:.35,r:v[3]?60:22,k:'boom'});
@@ -2535,6 +2545,14 @@ function plate(g,x,y,w,h,r,a,b){
 }
 function glow(g,fn,color,blur){ g.save(); g.shadowColor=color; g.shadowBlur=blur; fn(); g.restore(); }
 const HULL_HI='#61788f', HULL='#42566c', HULL_LO='#2a3847', DARK='#0d141c';
+/* muzzle flash artwork, dropped in beside the game as flash.png */
+const FLASH=new Image(); let flashOK=false, flashAR=1.42;
+FLASH.onload=function(){ flashOK=true; flashAR=FLASH.naturalWidth/FLASH.naturalHeight; };
+FLASH.onerror=function(){ flashOK=false; };
+FLASH.src='flash.png';
+const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
+  bulwark:{d:1.95,off:.68,s:1.5}, sunderer:{d:2.05,off:0,s:2.3},
+  harrower:{d:1.45,off:0,s:2.0}, watchspire:{d:1.1,off:0,s:1.6} };
 
 /* ---------- units (drawn facing +x) ---------- */
 function makeUnitSpr(type,owner){
@@ -2989,12 +3007,6 @@ function drawUnit(u){
   ctx.translate(u.x,u.y); ctx.rotate(u.face);
   ctx.drawImage(spr,-sw/2,-sh/2,sw,sh);
   ctx.restore();
-  if(u.muzzle>0&&!OPT.lowFx){
-    ctx.save(); ctx.translate(u.x,u.y); ctx.rotate(u.face);
-    ctx.globalAlpha=u.muzzle*9; ctx.fillStyle='#ffe9a8';
-    poly(ctx,[[d.r*1.5,0],[d.r*1.9,-4.5],[d.r*2.7,0],[d.r*1.9,4.5]]); ctx.fill();
-    ctx.restore(); ctx.globalAlpha=1;
-  }
   if(u.flash>0){
     ctx.save(); ctx.globalAlpha=Math.min(.8,u.flash*4); ctx.fillStyle='#fff';
     ctx.beginPath(); ctx.arc(u.x,u.y,d.r+1.5,0,7); ctx.fill(); ctx.restore();
@@ -3090,6 +3102,21 @@ function render(){
     } else if(f.k==='hit'){
       ctx.globalAlpha=1-p; ctx.fillStyle=f.c||'#fff';
       ctx.beginPath(); ctx.arc(f.x,f.y,f.r*(1-p*.4),0,7); ctx.fill(); ctx.globalAlpha=1;
+    } else if(f.k==='flash'){
+      const a2=1-p;
+      ctx.save();
+      ctx.translate(f.x,f.y); ctx.rotate(f.a);
+      ctx.globalCompositeOperation='lighter';
+      if(flashOK){
+        const w=f.sc*3.1*(0.85+p*0.35), h=w/flashAR;
+        ctx.globalAlpha=a2;
+        ctx.drawImage(FLASH,-w*.12,-h/2,w,h);
+      } else {
+        ctx.globalAlpha=a2*.9; ctx.fillStyle='#bff0ff';
+        poly(ctx,[[0,0],[f.sc*1.2,-f.sc*.5],[f.sc*2.2,0],[f.sc*1.2,f.sc*.5]]); ctx.fill();
+      }
+      ctx.restore();
+      ctx.globalAlpha=1;
     } else if(f.k==='ping'){
       ctx.globalAlpha=1-p; ctx.strokeStyle=f.c; ctx.lineWidth=2;
       ctx.beginPath(); ctx.arc(f.x,f.y,f.r*(.4+p),0,7); ctx.stroke(); ctx.globalAlpha=1;
