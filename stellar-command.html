@@ -450,7 +450,8 @@ let ents=[], nextId=1, shots=[], fx=[], gameTime=0, over=false, paused=false, ga
 const P=[{m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0},
          {m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0}];   // slot 0 is always the local player
 let blocked, terr, explored, visible;
-const cam={x:0,y:0,z:1};
+const START_Z=1.5;                 // closer default framing
+const cam={x:0,y:0,z:START_Z};
 let BASES=[], EXPOS=[];
 function setMapScale(grand){
   GRAND=!!grand;
@@ -3689,6 +3690,8 @@ function init(){
   rebuildNav();
   for(let i=0;i<NPLAY;i++) recalcSupply(i);
   updateFog(); paintFog();
+  // every match opens at the same framing rather than inheriting the last pinch
+  cam.z=clamp(START_Z,zoomLimits().min,zoomLimits().max);
   centerOn(BASES[0].tx*TILE,BASES[0].ty*TILE);
   refreshUI();
   say('Commander — raise your outpost and break the Ember Legion.');
