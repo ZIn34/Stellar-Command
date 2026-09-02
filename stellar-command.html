@@ -786,7 +786,7 @@ function fire(a,t){
   const mz=MUZZLE[a.type]||MUZZLE.warden;
   const ar=a.kind==='building'?18:DEF(a).r;
   const ang=a.face;
-  fx.push({k:'flash',t:0,dur:.16,a:ang,sc:ar*mz.s,
+  fx.push({k:'flash',t:0,dur:.16,a:ang,sc:ar*mz.s,own:a.owner,
     x:a.x+Math.cos(ang)*ar*mz.d-Math.sin(ang)*ar*mz.off,
     y:a.y+Math.sin(ang)*ar*mz.d+Math.cos(ang)*ar*mz.off});
   const snd=a.kind==='building'?2:((a.type==='sunderer'||a.type==='harrower')?1:(a.type==='delver'?3:0));
@@ -1777,7 +1777,7 @@ function netPlayEvent(v){
       c:TEAM[own].c,big:!!v[6],target:null,dmg:0,splash:0,owner:own});
     if(v[8]!==undefined){
       const ang=v[8]/100, sc=v[9]||14;
-      fx.push({k:'flash',t:0,dur:.16,a:ang,sc,x:v[1]+Math.cos(ang)*sc*1.4,y:v[2]+Math.sin(ang)*sc*1.4});
+      fx.push({k:'flash',t:0,dur:.16,a:ang,sc,own:v[5]^1,x:v[1]+Math.cos(ang)*sc*1.4,y:v[2]+Math.sin(ang)*sc*1.4});
     }
     SFX.play(['rifle','cannon','turret','drill'][v[7]||0],v[1],v[2]);
   } else if(v[0]===2){
@@ -2546,8 +2546,18 @@ function plate(g,x,y,w,h,r,a,b){
 function glow(g,fn,color,blur){ g.save(); g.shadowColor=color; g.shadowBlur=blur; fn(); g.restore(); }
 const HULL_HI='#61788f', HULL='#42566c', HULL_LO='#2a3847', DARK='#0d141c';
 /* muzzle flash artwork, dropped in beside the game as flash.png */
-const FLASH=new Image(); let flashOK=false, flashAR=1.42;
-FLASH.onload=function(){ flashOK=true; flashAR=FLASH.naturalWidth/FLASH.naturalHeight; };
+const FLASH=new Image(); let flashOK=false, flashAR=1.42, flashImg=[null,null];
+FLASH.onload=function(){
+  flashOK=true; flashAR=FLASH.naturalWidth/FLASH.naturalHeight;
+  flashImg[0]=FLASH;
+  try{
+    const w=FLASH.naturalWidth, h=FLASH.naturalHeight;
+    const r=newCv(w,h), rg=r.getContext('2d');
+    rg.filter='hue-rotate(145deg) saturate(1.4)';       // Legion red
+    rg.drawImage(FLASH,0,0);
+    flashImg[1]=r;
+  }catch(e){ flashImg[1]=FLASH; }
+};
 FLASH.onerror=function(){ flashOK=false; };
 FLASH.src='flash.png';
 /* projectile artwork, dropped in beside the game as bolt.png. Its own heading and
@@ -3153,9 +3163,9 @@ function render(){
       if(flashOK){
         const w=f.sc*3.1*(0.85+p*0.35), h=w/flashAR;
         ctx.globalAlpha=a2;
-        ctx.drawImage(FLASH,-w*.12,-h/2,w,h);
+        ctx.drawImage(flashImg[f.own===1?1:0]||FLASH,-w*.12,-h/2,w,h);
       } else {
-        ctx.globalAlpha=a2*.9; ctx.fillStyle='#bff0ff';
+        ctx.globalAlpha=a2*.9; ctx.fillStyle=f.own===1?'#ffc0a8':'#bff0ff';
         poly(ctx,[[0,0],[f.sc*1.2,-f.sc*.5],[f.sc*2.2,0],[f.sc*1.2,f.sc*.5]]); ctx.fill();
       }
       ctx.restore();
