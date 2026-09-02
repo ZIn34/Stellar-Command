@@ -1315,7 +1315,8 @@ function canPlace(type,x,y,owner){
     if(e.kind==='building'){
       if(Math.abs(e.x-x)<(e.w+d.w)/2+6&&Math.abs(e.y-y)<(e.h+d.h)/2+6) return false;
     } else if(e.kind==='res'){
-      if(Math.abs(e.x-x)<(e.w+d.w)/2+4&&Math.abs(e.y-y)<(e.h+d.h)/2+4) return false;
+      const pad=(NET.role==='guest'?6:4);   // snapshot coords are rounded
+      if(Math.abs(e.x-x)<(e.w+d.w)/2+pad&&Math.abs(e.y-y)<(e.h+d.h)/2+pad) return false;
     }
   }
   return true;
@@ -1795,6 +1796,7 @@ function netRecv(m){
 function netData(d){
   if(!d) return;
   if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose(); startOnline(d.seed,!!d.grand,d.mode||'duel'); return; }
+  if(d.k==='no'&&NET.role==='guest'){ say(d.s||'Order refused'); SFX.play('deny'); return; }
   if(d.k==='S'&&NET.role==='guest'){ netApplySnapshot(d); return; }
   if(d.k==='C'&&NET.role==='host'){ netHostApply(d); return; }
   if(d.k==='over'&&NET.role==='guest'){ NET.ended=true; endGame(d.w?'VICTORY':'DEFEAT',d.w?'#7dffb0':'#ff6b52'); return; }
@@ -1833,7 +1835,8 @@ function netSnapshot(){
       e.push([o.id,ti2,o.owner^1,Math.round(o.x),Math.round(o.y),Math.round(o.hp),o.maxHp,
               Math.round(ang*100),o.done?1:0,Math.round(o.prog*100),o.queue?o.queue.length:0,
               Math.round((o.ptime||0)*10),o.lastBuildT===undefined?999:Math.round((gameTime-o.lastBuildT)*10),
-              (o.queue&&o.queue.length)?NET_U.indexOf(o.queue[0]):-1]);
+              (o.queue&&o.queue.length)?NET_U.indexOf(o.queue[0]):-1,
+              o.rally?Math.round(o.rally.x):-1, o.rally?Math.round(o.rally.y):-1]);
     } else {
       e.push([o.id,ti2,0,Math.round(o.x),Math.round(o.y),Math.round(o.amount),o.max,0,o.taken?1:0]);
     }
@@ -1866,6 +1869,7 @@ function netApplySnapshot(d){
       const qt=(a[13]!==undefined&&a[13]>=0)?NET_U[a[13]]
                :(BDEF[o.type].trains?BDEF[o.type].trains[0]:'warden');
       o.queue=new Array(a[10]).fill(qt);
+      if(a[14]!==undefined&&a[14]>=0) o.rally={x:a[14],y:a[15]};
       o.lastBuildT=a[12]>=999?undefined:gameTime-a[12]/10;
       if(a[7]) o.target={x:o.x+Math.cos(a[7]/100)*100,y:o.y+Math.sin(a[7]/100)*100,dead:false};
       else o.target=null;
@@ -1960,7 +1964,8 @@ function netHostApply(c){
     case 'train': { const b=bld(c.id); if(b&&b.done&&UDEF[c.type]) tryTrain(b,c.type); break; }
     case 'build': {
       if(!BDEF[c.type]) break;
-      startBuild(c.type,c.x,c.y,1,us.filter(u=>UDEF[u.type].worker));
+      const okB=startBuild(c.type,c.x,c.y,1,us.filter(u=>UDEF[u.type].worker));
+      if(!okB) netRelay({k:'no',s:canAfford(1,BDEF[c.type])?'Cannot build there':'Not enough resources'});
       break;
     }
     case 'cancelq': { const b=bld(c.id); if(b) cancelQueue(b,c.i|0); break; }
