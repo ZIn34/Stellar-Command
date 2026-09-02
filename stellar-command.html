@@ -1276,7 +1276,13 @@ function canAfford(o,cost){ return P[o].m>=cost.m&&P[o].g>=cost.g }
 function pay(o,cost){ P[o].m-=cost.m; P[o].g-=cost.g }
 
 function tryTrain(b,type){
-  if(NET.role==='guest'&&b.owner===0){ netCmd('train',{id:b.id,type}); return true; }
+  if(NET.role==='guest'&&b.owner===0){
+    const d=UDEF[type];
+    if(b.queue.length>=5){ say('Queue full'); SFX.play('deny'); return false; }
+    if(!canAfford(0,d)){ say(P[0].m<d.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); return false; }
+    if(P[0].sup+d.sup>P[0].cap){ say('Build more habitats'); SFX.play('deny'); return false; }
+    netCmd('train',{id:b.id,type}); return true;
+  }
   const d=UDEF[type], o=b.owner;
   if(b.queue.length>=5){ if(!o){ say('Queue full'); SFX.play('deny'); } return false; }
   if(!canAfford(o,d)){ if(!o){ say(P[o].m<d.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); } return false; }
@@ -1323,6 +1329,9 @@ function pickBuilder(list,x,y){        // nearest free hand, so repeat placement
 }
 function startBuild(type,x,y,owner,workers){
   if(NET.role==='guest'&&owner===0){
+    const d=BDEF[type];
+    if(!canAfford(0,d)){ say(P[0].m<d.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); return false; }
+    if(!canPlace(type,x,y,0)){ say('Cannot build there'); SFX.play('deny'); return false; }
     netCmd('build',{type,x,y,ids:(workers||[]).filter(Boolean).map(w=>w.id)});
     return true;
   }
@@ -1803,6 +1812,13 @@ function netQuit(){
 
 /* ---------- host publishes the world (owners flipped for the guest) ---------- */
 function netEvent(a){ if(NET.role==='host'&&NET.evOut.length<80) NET.evOut.push(a); }
+/* Snapshots carry every entity, so a big Grand War army would flood the link
+   at a fixed high rate. Keep small games smooth and let the interval stretch
+   as the world fills up, holding bandwidth roughly steady. */
+function snapRate(){
+  const n=ents.length;
+  return n<160?.07:(n<340?.1:(n<600?.14:.2));
+}
 function netSnapshot(){
   const e=[];
   for(const o of ents){
@@ -1863,9 +1879,9 @@ function netApplySnapshot(d){
     if(home){ centerOn(home.x,home.y); NET.centered=true; }
   }
   for(const v of d.ev||[]) netPlayEvent(v);
-  NET.prevT=NET.nextT||performance.now()-125;
+  NET.prevT=NET.nextT||performance.now()-70;
   NET.nextT=performance.now();
-  if(NET.nextT-NET.prevT>1500) NET.prevT=NET.nextT-125;
+  if(NET.nextT-NET.prevT>1500) NET.prevT=NET.nextT-70;
 }
 function netPlayEvent(v){
   if(v[0]===1){
@@ -1885,8 +1901,8 @@ function netPlayEvent(v){
   }
 }
 function netInterp(){
-  const span=Math.max(60,NET.nextT-NET.prevT);
-  const a=clamp(1+(performance.now()-NET.nextT)/span,0,1.4);
+  const span=clamp(NET.nextT-NET.prevT,60,400);
+  const a=clamp((performance.now()-NET.nextT)/span,0,1);
   for(const o of ents){
     if(o.kind!=='unit'||o.nx===undefined) continue;
     o.x=o.px+(o.nx-o.px)*a;
@@ -3423,7 +3439,7 @@ function simTick(dt){
     dt*=SPEED;
     servicePaths();
     navT-=dt; if(navT<=0){ navT=.5; rebuildNav(); }
-    if(NET.role==='host'){ snapT-=dt; if(snapT<=0){ snapT=.125; netSnapshot(); } netCheckEnd(); }
+    if(NET.role==='host'){ snapT-=dt; if(snapT<=0){ snapT=snapRate(); netSnapshot(); } netCheckEnd(); }
     else aiUpdate(dt);
     fogT-=dt; if(fogT<=0){ fogT=.14; updateFog(); paintFog(); }
     if(ents.length>400||gameTime%5<dt) ents=ents.filter(e=>!e.dead||e.kind==='res');
