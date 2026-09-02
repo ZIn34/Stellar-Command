@@ -31,6 +31,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;overscroll-b
 #mmWrap{width:min(clamp(96px,19vw,156px),calc(var(--panel) - 16px));aspect-ratio:1;flex:0 0 auto;border:2px solid #24486b;border-radius:4px;
   background:#04080e;overflow:hidden;position:relative}
 #mm{width:100%;height:100%;display:block;cursor:pointer;touch-action:none}
+#groups{display:none;flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:3px;width:46px}
+#groups .grp{position:relative;height:26px;border:1px solid #24486b;border-radius:4px;background:#08121c;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#groups .grp:hover{border-color:#4bd6ff}
+#groups .grp.on{border-color:#4bd6ff;box-shadow:inset 0 0 12px rgba(75,214,255,.22)}
+#groups .grp img{width:19px;height:19px;image-rendering:auto}
+#groups .grp b{position:absolute;top:0;left:2px;font-weight:400;font-size:8.5px;color:#ffcf5a;line-height:1.1}
+#groups .grp i{position:absolute;bottom:0;right:2px;font-style:normal;font-size:9px;color:#cfe3f2}
 #clock{position:absolute;left:0;right:0;bottom:0;text-align:center;pointer-events:none;
   font-size:clamp(9px,1.5vh,11.5px);letter-spacing:2px;color:#9fc4dd;
   background:linear-gradient(180deg,rgba(4,8,14,0),rgba(4,8,14,.82) 45%);padding:5px 0 3px}
@@ -290,6 +298,7 @@ body.touch .mouse-only{display:none}
 </div>
 <div id="panel">
   <div id="mmWrap"><canvas id="mm" width="200" height="200"></canvas><div id="clock">0:00</div></div>
+  <div id="groups"></div>
   <div id="info"><div id="infoTitle">NO SELECTION</div><div id="body"></div></div>
   <div id="card"></div>
 </div>
@@ -2421,7 +2430,7 @@ function buildInfo(){
   }
 }
 function refreshUI(){
-  buildInfo(); buildCard();
+  buildInfo(); buildCard(); buildGroups();
   document.getElementById('min').textContent=Math.floor(P[0].m);
   document.getElementById('gas').textContent=Math.floor(P[0].g);
   const sp=document.getElementById('supply');
@@ -3115,6 +3124,40 @@ function iconOf(kind,type,owner){
   return ICO[k]=c.toDataURL();
 }
 function iconTag(kind,type,owner,cls){ return '<img class="'+(cls||'ico')+'" src="'+iconOf(kind,type,owner)+'" alt="">'; }
+/* Control-group strip beside the minimap: the number, what is in it and how
+   many, and clicking one selects it - the same as pressing the key. */
+let grpSig='';
+function buildGroups(){
+  const wrap=document.getElementById('groups'); if(!wrap) return;
+  const keys=[];
+  for(let n=1;n<=9;n++){
+    const g=(groups[n]||groups[String(n)]||[]).filter(e=>e&&!e.dead);
+    if(g.length) keys.push([String(n),g]);
+  }
+  if(!keys.length){ wrap.style.display='none'; grpSig=''; wrap.innerHTML=''; return; }
+  const sig=keys.map(([k,g])=>k+':'+g.length+':'+(g[0]&&g[0].type)).join('|')+
+            '#'+(sel[0]?sel[0].id:'');
+  if(sig===grpSig){ return; }
+  grpSig=sig;
+  wrap.style.display='flex';
+  wrap.innerHTML=keys.map(([k,g])=>{
+    const lead=g.find(e=>e.kind==='unit')||g[0];
+    const inSel=g.length===sel.length&&g.every(e=>sel.indexOf(e)>=0);
+    return '<div class="grp'+(inSel?' on':'')+'" data-g="'+k+'">'+
+      iconTag(lead.kind==='unit'?'unit':'bld',lead.type,0)+
+      '<b>'+k+'</b><i>'+g.length+'</i></div>';
+  }).join('');
+  wrap.querySelectorAll('.grp').forEach(el=>{
+    el.onclick=()=>{
+      const g=(groups[el.dataset.g]||[]).filter(e=>!e.dead);
+      if(!g.length) return;
+      setSel(g); SFX.play('click');
+      if(lastGroup===el.dataset.g&&performance.now()-lastGroupT<420) centerOn(g[0].x,g[0].y);
+      lastGroup=el.dataset.g; lastGroupT=performance.now();
+      refreshUI();
+    };
+  });
+}
 
 /* ===================== TERRAIN PRERENDER ===================== */
 let terrainCv=null;
@@ -3746,14 +3789,14 @@ function init(){
 /* ===================== TITLE SCREEN ===================== */
 const DIFFS={
   recruit:{n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
-           dec:1.9, grace:270, thr:8, step:4, eco:1, hp:1, dmg:1,
-           wk:.55, halls:2, qd:1, expoAt:330, expo:1, techAt:280, spires:1, hallCost:380, expoCost:640},
+           dec:2.3, grace:330, thr:10, step:4, eco:1, hp:1, dmg:1,
+           wk:.40, halls:2, qd:1, expoAt:420, expo:0, techAt:330, spires:1, hallCost:460, expoCost:820},
   veteran:{n:'VETERAN', tag:'even',  blurb:'Solid macro. First push near the three-minute mark.',
-           dec:1.1, grace:150, thr:6, step:3, eco:1, hp:1, dmg:1,
-           wk:.85, halls:4, qd:2, expoAt:200, expo:2, techAt:150, spires:3, hallCost:300, expoCost:470},
+           dec:1.4, grace:195, thr:8, step:3, eco:1, hp:1, dmg:1,
+           wk:.62, halls:3, qd:1, expoAt:270, expo:1, techAt:205, spires:2, hallCost:390, expoCost:610},
   warlord:{n:'WARLORD', tag:'brutal',blurb:'Full saturation, fast expansion, relentless production.',
-           dec:.7, grace:110, thr:5, step:2, eco:1, hp:1, dmg:1,
-           wk:1,   halls:6, qd:3, expoAt:130, expo:4, techAt:110, spires:4, hallCost:200, expoCost:300}
+           dec:.9, grace:150, thr:6, step:2, eco:1, hp:1, dmg:1,
+           wk:.85, halls:4, qd:2, expoAt:190, expo:2, techAt:145, spires:3, hallCost:290, expoCost:430}
 };
 let DIFF=DIFFS.veteran, ELITE={hp:1.35,dmg:1.30}, diffKey='veteran', scaleKey='standard';
 const MODES={
