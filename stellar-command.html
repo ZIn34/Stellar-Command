@@ -769,6 +769,24 @@ function nearest(list,x,y,f){
     const d=(e.x-x)**2+(e.y-y)**2; if(d<bd){bd=d;best=e;} }
   return best;
 }
+/* Harvester counts, the way an RTS shows them: how many Delvers are working
+   back to each Keystone, and how many of a Siphon's three slots are manned.
+   Recomputed once per frame and shared by every building that draws one. */
+let WCOUNT=new Map(), WCOUNT_AT=-1;
+function workerCounts(){
+  if(WCOUNT_AT===gameTime) return WCOUNT;
+  WCOUNT_AT=gameTime; WCOUNT=new Map();
+  for(const u of ents){
+    if(u.dead||u.kind!=='unit'||!UDEF[u.type].worker||u.cmd.t!=='gather') continue;
+    const n=u.cmd.node;
+    if(n&&!n.dead&&n.kind==='building'&&n.type==='siphon'){
+      WCOUNT.set(n.id,(WCOUNT.get(n.id)||0)+1); continue;
+    }
+    const dep=(u.cmd.dep&&!u.cmd.dep.dead)?u.cmd.dep:nearestDepot(u.owner,u.x,u.y);
+    if(dep) WCOUNT.set(dep.id,(WCOUNT.get(dep.id)||0)+1);
+  }
+  return WCOUNT;
+}
 function nearestDepot(o,x,y){
   return nearest(ents,x,y,e=>e.kind==='building'&&e.owner===o&&e.done&&
     BDEF[e.type].dropoff);
@@ -2358,7 +2376,7 @@ function buildInfo(){
       if(e.kind==='unit'){
         s+='<span class="k">DMG</span> '+Math.round(dmgOf(e))+' &nbsp; <span class="k">RNG</span> '+(Math.round(d.rng/TILE*10)/10)+
           ' &nbsp; <span class="k">SPD</span> '+d.sp+'<br>';
-        if(isBot(e.owner)) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
+        if(isBot(e.owner)&&ELITE.hp>1) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
           Math.round((ELITE.dmg-1)*100)+'% damage</span><br>';
         if(d.worker) s+='<span class="k">Cargo</span> '+(e.carry?e.carry+' '+(e.carryType==='m'?'aurite':'ichor'):'empty')+'<br>';
         const names={idle:'Idle',move:'Moving',amove:'Attack-move',attack:'Attacking',gather:'Extracting',build:'Constructing',repair:'Repairing',hold:'Holding position'};
@@ -2556,7 +2574,8 @@ function aiWorkerTarget(ME){
   for(const b of bases)
     patches+=ents.filter(e=>!e.dead&&e.kind==='res'&&e.type==='aurite'&&e.amount>0&&dist(e,b)<420).length;
   const siphons=bldOf(ME).filter(b=>b.type==='siphon'&&b.done).length;
-  return Math.min(GRAND?40:24,Math.round(patches*1.6)+siphons*3+2);
+  const cap=Math.min(GRAND?40:24,Math.round(patches*1.6)+siphons*3+2);
+  return Math.max(6,Math.round(cap*(DIFF.wk||1)));
 }
 function aiAssignWorker(ME,w){
   const siphon=bldOf(ME).find(b=>b.type==='siphon'&&b.done&&
@@ -2645,7 +2664,7 @@ function aiRun(AI,ME,dt){
   /* ---- economy ---- */
   if(P[ME].cap-P[ME].sup<=(P[ME].cap>40?8:4)&&P[ME].cap<190&&count('habitat')-bs.filter(b=>b.type==='habitat'&&b.done).length<2)
     put('habitat',home);
-  if(workers.length<aiWorkerTarget()&&(!has('musterhall')||P[ME].m>=115))
+  if(workers.length<aiWorkerTarget(ME)&&(!has('musterhall')||P[ME].m>=115))
     for(const cc of bs.filter(b=>b.type==='keystone'&&b.done)) if(cc.queue.length<2){ tryTrain(cc,'delver'); break; }
 
   /* ---- tech and production capacity ---- */
@@ -2656,12 +2675,12 @@ function aiRun(AI,ME,dt){
     const g=nearest(ents,home.x,home.y,e=>e.kind==='res'&&e.type==='vent'&&!e.taken);
     if(g&&dist(g,home)<520&&canBuild()) startBuild('siphon',g.x,g.y,ME,[freeWorker()]);
   }
-  if(has('musterhall')&&halls<(GRAND?9:4)&&P[ME].m>=(halls<2?190:300)&&!building('musterhall')) put('musterhall',home,enemyDir);
-  if(has('musterhall')&&!has('forgeworks')&&!building('forgeworks')&&P[ME].m>=190&&P[ME].g>=75&&AI.t>150)
+  if(has('musterhall')&&halls<(GRAND?9:(DIFF.halls||4))&&P[ME].m>=(halls<2?190:(DIFF.hallCost||300))&&!building('musterhall')) put('musterhall',home,enemyDir);
+  if(has('musterhall')&&!has('forgeworks')&&!building('forgeworks')&&P[ME].m>=190&&P[ME].g>=75&&AI.t>(DIFF.techAt||150))
     put('forgeworks',home);
-  if(has('musterhall')&&count('watchspire')<3&&P[ME].m>=320&&!building('watchspire'))
+  if(has('musterhall')&&count('watchspire')<(DIFF.spires||3)&&P[ME].m>=320&&!building('watchspire'))
     put('watchspire',home,enemyDir);
-  if(AI.t>(GRAND?120:200)&&AI.expo<(GRAND?6:2)&&P[ME].m>=480&&!building('keystone')&&canBuild()){
+  if(AI.t>(GRAND?120:(DIFF.expoAt||200))&&AI.expo<(GRAND?6:(DIFF.expo||2))&&P[ME].m>=(DIFF.expoCost||480)&&!building('keystone')&&canBuild()){
     const spots=EXPOS.map(e=>({x:e.tx*TILE,y:e.ty*TILE}))
       .filter(e=>!ents.some(b=>!b.dead&&b.kind==='building'&&dist(b,e)<300))
       .sort((a,b)=>dist(a,home)-dist(b,home));
@@ -2677,7 +2696,7 @@ function aiRun(AI,ME,dt){
   /* ---- army production ---- */
   for(const b of bs){
     if(!b.done||!BDEF[b.type].trains||b.type==='keystone') continue;
-    if(b.queue.length>=2) continue;
+    if(b.queue.length>=(DIFF.qd||2)) continue;
     if(b.type==='forgeworks'){
       const sn=us.filter(u=>u.type==='sunderer').length, hr=us.filter(u=>u.type==='harrower').length;
       tryTrain(b,hr<sn?'harrower':'sunderer'); continue;
@@ -3304,6 +3323,21 @@ function drawBuilding(b){
   }
   ctx.restore();
   if(b.done&&OPT.hpBars!=='never'&&(OPT.hpBars==='always'||b.hp<b.maxHp)) hpBar(b.x,b.y-hh-9,b.w*.8,b.hp/b.maxHp);
+  if(b.done&&isAlly(b.owner)&&(b.type==='keystone'||b.type==='siphon')){
+    const c=workerCounts().get(b.id)||0;
+    const txt=b.type==='siphon'?(c+'/3'):String(c);
+    const y=b.y-hh-21;
+    ctx.font='600 12px Consolas,monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    const w=ctx.measureText(txt).width+12;
+    ctx.fillStyle='rgba(4,10,17,.82)';
+    rr(ctx,b.x-w/2,y-8,w,16,4); ctx.fill();
+    ctx.strokeStyle='rgba(75,214,255,.35)'; ctx.lineWidth=1;
+    rr(ctx,b.x-w/2,y-8,w,16,4); ctx.stroke();
+    ctx.fillStyle=(b.type==='siphon'&&c>=3)?'#8fb0c8':(c?'#cfe3f2':'#ff9b7f');
+    ctx.fillText(txt,b.x,y);
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  }
   if(b.done&&b.queue&&b.queue.length){
     const f=clamp(b.ptime/(UDEF[b.queue[0]].bt/TRAIN_RATE),0,1), w=b.w*.8;
     ctx.fillStyle='rgba(4,10,17,.9)'; ctx.fillRect(b.x-w/2,b.y+hh+4,w,4);
@@ -3711,12 +3745,15 @@ function init(){
 }
 /* ===================== TITLE SCREEN ===================== */
 const DIFFS={
-  recruit:{n:'RECRUIT', tag:'light', blurb:'Slow Legion expansion, late raids. Room to learn.',
-           dec:1.9, grace:270, thr:8, step:4, eco:.85, hp:1.15, dmg:1.15},
-  veteran:{n:'VETERAN', tag:'even',  blurb:'An even war. First push near the three-minute mark.',
-           dec:1.1, grace:150, thr:6, step:3, eco:1,   hp:1.35, dmg:1.30},
-  warlord:{n:'WARLORD', tag:'brutal',blurb:'Early raids, fast expansion, hardened troops.',
-           dec:.75,grace:95,  thr:5, step:2, eco:1.3, hp:1.60, dmg:1.55}
+  recruit:{n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+           dec:1.9, grace:270, thr:8, step:4, eco:1, hp:1, dmg:1,
+           wk:.55, halls:2, qd:1, expoAt:330, expo:1, techAt:280, spires:1, hallCost:380, expoCost:640},
+  veteran:{n:'VETERAN', tag:'even',  blurb:'Solid macro. First push near the three-minute mark.',
+           dec:1.1, grace:150, thr:6, step:3, eco:1, hp:1, dmg:1,
+           wk:.85, halls:4, qd:2, expoAt:200, expo:2, techAt:150, spires:3, hallCost:300, expoCost:470},
+  warlord:{n:'WARLORD', tag:'brutal',blurb:'Full saturation, fast expansion, relentless production.',
+           dec:.7, grace:110, thr:5, step:2, eco:1, hp:1, dmg:1,
+           wk:1,   halls:6, qd:3, expoAt:130, expo:4, techAt:110, spires:4, hallCost:200, expoCost:300}
 };
 let DIFF=DIFFS.veteran, ELITE={hp:1.35,dmg:1.30}, diffKey='veteran', scaleKey='standard';
 const MODES={
