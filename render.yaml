@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: stellar-command
+    runtime: node
+    plan: free
+    buildCommand: echo "no build step - zero dependencies"
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
