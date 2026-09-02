@@ -1149,6 +1149,11 @@ function updateUnit(u,dt){
     case 'build': buildStep(u,dt); break;
     case 'repair': repairStep(u,dt); break;
   }
+  // A unit that is shooting should look at what it is shooting. fire() aims the
+  // sprite at the target, but steer() then turns it along its path, so a unit
+  // firing on the move ended up with tracers leaving from its flank.
+  if(u.target&&!u.target.dead&&inRange(u,u.target))
+    u.face=Math.atan2(u.target.y-u.y,u.target.x-u.x);
 }
 
 function findMineralNear(u,from){
@@ -2687,6 +2692,20 @@ function plate(g,x,y,w,h,r,a,b){
 }
 function glow(g,fn,color,blur){ g.save(); g.shadowColor=color; g.shadowBlur=blur; fn(); g.restore(); }
 const HULL_HI='#61788f', HULL='#42566c', HULL_LO='#2a3847', DARK='#0d141c';
+/* One grey-blue hull read fine as blue-vs-red, but with four factions the
+   green and orange sides still looked like the blue player, since only thin
+   trim carried the team colour. Tint the plating itself toward each team. */
+function mixHex(a,b,k){
+  const pa=parseInt(a.slice(1),16), pb=parseInt(b.slice(1),16);
+  const ar=pa>>16&255, ag=pa>>8&255, ab=pa&255;
+  const br=pb>>16&255, bg=pb>>8&255, bb=pb&255;
+  const r=Math.round(ar+(br-ar)*k), g=Math.round(ag+(bg-ag)*k), bl=Math.round(ab+(bb-ab)*k);
+  return '#'+((1<<24)|(r<<16)|(g<<8)|bl).toString(16).slice(1);
+}
+function hullSet(owner){
+  const c=(TEAM[owner]||TEAM[0]).c;
+  return {hi:mixHex(HULL_HI,c,.38), mid:mixHex(HULL,c,.34), lo:mixHex(HULL_LO,c,.24)};
+}
 /* muzzle flash artwork, dropped in beside the game as flash.png */
 const FLASH=new Image(); let flashOK=false, flashAR=1.42, flashImg=[null,null];
 FLASH.onload=function(){
@@ -2741,6 +2760,7 @@ const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
 /* ---------- units (drawn facing +x) ---------- */
 function makeUnitSpr(type,owner){
   const d=UDEF[type], t=TEAM[owner], R=d.r;
+  const _H=hullSet(owner), HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;
   const S=Math.ceil(R*4.2), c=newCv(S*SS,S*SS), g=c.getContext('2d');
   g.scale(SS,SS); g.translate(S/2,S/2); g.lineJoin='round';
   const hullGrad=()=>{ const gr=g.createLinearGradient(0,-R,0,R);
@@ -2863,6 +2883,7 @@ function unitSpr(type,owner){ const k='u'+type+owner; return SPR[k]||(SPR[k]=mak
 /* ---------- buildings ---------- */
 function makeBldSpr(type,owner){
   const d=BDEF[type], t=TEAM[owner], PAD=12;
+  const _H=hullSet(owner), HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;
   const W=d.w, H=d.h, hw=W/2, hh=H/2;
   const c=newCv((W+PAD*2)*SS,(H+PAD*2)*SS), g=c.getContext('2d');
   g.scale(SS,SS); g.translate(hw+PAD,hh+PAD); g.lineJoin='round';
@@ -2935,6 +2956,13 @@ function makeBldSpr(type,owner){
     g.fillStyle=gr; g.fill(); g.strokeStyle=t.c; g.lineWidth=2; g.stroke();
     g.fillStyle='#0f1a25'; g.beginPath(); g.arc(0,0,hw*.62,0,7); g.fill();
   }
+  // Building art is drawn from fixed grey-blue literals, so a faction wash over
+  // the finished pixels is what actually separates the four sides on screen.
+  g.setTransform(SS,0,0,SS,0,0);
+  g.globalCompositeOperation='source-atop';
+  g.globalAlpha=.22; g.fillStyle=t.c;
+  g.fillRect(0,0,(W+PAD*2),(H+PAD*2));
+  g.globalAlpha=1; g.globalCompositeOperation='source-over';
   c.pad=PAD;
   return c;
 }
