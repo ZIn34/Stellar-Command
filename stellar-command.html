@@ -785,14 +785,14 @@ function fire(a,t){
   a.muzzle=.1;
   const mz=MUZZLE[a.type]||MUZZLE.warden;
   const ar=a.kind==='building'?18:DEF(a).r;
-  const ang=a.face;
-  fx.push({k:'flash',t:0,dur:.16,a:ang,sc:ar*mz.s,own:a.owner,
+  const ang=Math.atan2(t.y-a.y,t.x-a.x);
+  a.face=ang;
+  fx.push({k:'flash',t:0,dur:.18,a:ang,sc:ar*mz.s,own:a.owner,
     x:a.x+Math.cos(ang)*ar*mz.d-Math.sin(ang)*ar*mz.off,
     y:a.y+Math.sin(ang)*ar*mz.d+Math.cos(ang)*ar*mz.off});
   const snd=a.kind==='building'?2:((a.type==='sunderer'||a.type==='harrower')?1:(a.type==='delver'?3:0));
   SFX.play(['rifle','cannon','turret','drill'][snd],a.x,a.y);
   if(NET.role==='host'&&rng>40) netEvent([1,Math.round(a.x),Math.round(a.y),Math.round(t.x),Math.round(t.y),a.owner,d.splash?1:0,snd,Math.round(ang*100),Math.round(ar*mz.s)]);
-  a.face=Math.atan2(t.y-a.y,t.x-a.x);
   if(rng>40){
     shots.push({x:a.x,y:a.y,tx:t.x,ty:t.y,t:0,dur:Math.max(.06,Math.hypot(t.x-a.x,t.y-a.y)/900),
       c:TEAM[a.owner].c,big:!!d.splash,target:t,dmg,splash:d.splash||0,owner:a.owner});
@@ -3161,8 +3161,13 @@ function render(){
       ctx.translate(f.x,f.y); ctx.rotate(f.a);
       ctx.globalCompositeOperation='lighter';
       if(flashOK){
-        const w=f.sc*3.1*(0.85+p*0.35), h=w/flashAR;
-        ctx.globalAlpha=a2;
+        const w=f.sc*3.1*(0.72+p*0.5), h=w/flashAR;
+        // reveal it from the muzzle outwards over the first third of its life
+        const grow=p<.34?(p/.34):1;
+        ctx.beginPath();
+        ctx.rect(-w*.14,-h,w*(.18+.82*grow),h*2);
+        ctx.clip();
+        ctx.globalAlpha=p<.1?(p/.1):a2;
         ctx.drawImage(flashImg[f.own===1?1:0]||FLASH,-w*.12,-h/2,w,h);
       } else {
         ctx.globalAlpha=a2*.9; ctx.fillStyle=f.own===1?'#ffc0a8':'#bff0ff';
