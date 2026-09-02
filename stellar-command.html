@@ -31,6 +31,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;overscroll-b
 #mmWrap{width:min(clamp(96px,19vw,156px),calc(var(--panel) - 16px));aspect-ratio:1;flex:0 0 auto;border:2px solid #24486b;border-radius:4px;
   background:#04080e;overflow:hidden;position:relative}
 #mm{width:100%;height:100%;display:block;cursor:pointer;touch-action:none}
+#clock{position:absolute;left:0;right:0;bottom:0;text-align:center;pointer-events:none;
+  font-size:clamp(9px,1.5vh,11.5px);letter-spacing:2px;color:#9fc4dd;
+  background:linear-gradient(180deg,rgba(4,8,14,0),rgba(4,8,14,.82) 45%);padding:5px 0 3px}
 #info{flex:1;min-width:0;border:2px solid #24486b;border-radius:4px;background:#080f18;padding:8px;overflow:hidden;position:relative}
 #infoTitle{font-size:13px;color:#7fd0ff;letter-spacing:1px;margin-bottom:6px}
 #portraits{display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;max-height:110px;overflow:hidden}
@@ -286,7 +289,7 @@ body.touch .mouse-only{display:none}
   Minimap: LMB pans the camera, RMB sends the selection there &nbsp;·&nbsp; Esc: cancel
 </div>
 <div id="panel">
-  <div id="mmWrap"><canvas id="mm" width="200" height="200"></canvas></div>
+  <div id="mmWrap"><canvas id="mm" width="200" height="200"></canvas><div id="clock">0:00</div></div>
   <div id="info"><div id="infoTitle">NO SELECTION</div><div id="body"></div></div>
   <div id="card"></div>
 </div>
@@ -441,7 +444,7 @@ const BDEF={
   musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark'],hk:'R'},
   siphon:    {n:'Siphon',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
   forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower'],req:'musterhall',hk:'F'},
-  watchspire:{n:'Watchspire', hp:380, w:48,h:48,m:100,g:0, bt:16,sight:9, dmg:11,rng:152,cd:.75,req:'musterhall',hk:'W'}
+  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:100,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,req:'musterhall',hk:'W'}
 };
 const DEF=(e)=> e.kind==='unit'?UDEF[e.type]:BDEF[e.type];
 
@@ -2404,6 +2407,9 @@ function refreshUI(){
   const sp=document.getElementById('supply');
   sp.textContent=P[0].sup+'/'+P[0].cap;
   sp.classList.toggle('low',P[0].sup>=P[0].cap);
+  const cl=document.getElementById('clock');
+  if(cl){ const t=Math.max(0,Math.floor(gameTime));
+    cl.textContent=Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); }
 }
 
 /* ===================== FOG OF WAR ===================== */
@@ -3449,8 +3455,9 @@ function render(){
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(fogCv,0,0,MAP_W,MAP_H,0,0,WW,WH);
 
-  // placement ghost
-  if(placing){
+  // placement ghost - only while the cursor is actually over the battlefield,
+  // so reaching for the minimap does not leave it stranded mid-map
+  if(placing&&mouse.over){
     const d=BDEF[placing];
     const gx=snap(mouse.wx), gy=snap(mouse.wy);
     const ok=canPlace(placing,gx,gy,0)&&canAfford(0,d);
