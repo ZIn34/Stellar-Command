@@ -1052,7 +1052,7 @@ function updateUnit(u,dt){
   const c=u.cmd;
 
   // auto acquire
-  if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'){
+  if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
     if(c.t==='idle'||c.t==='amove'||c.t==='hold') u.target=findTarget(u,d.sight*TILE*.8);
     else if(c.t==='move') u.target=findTarget(u,d.rng);
     if(u.target&&c.t==='idle') u.retreat={x:u.x,y:u.y};
@@ -1083,23 +1083,29 @@ function updateUnit(u,dt){
     case 'move': case 'amove': {
       if(u.yield>0){                           // brief sidestep, then back on task
         u.yield-=dt;
-        if(steer(u,u.yx,u.yy,dt,8)||u.yield<=0){ u.yield=0; u.stuck=0; u.pd=undefined; }
+        if(steer(u,u.yx,u.yy,dt,8)||u.yield<=0){ u.yield=0; u.stuck=0; u.cx0=u.x; u.cy0=u.y; u.chk=0; }
         break;
       }
       if(navigate(u,c.x,c.y,dt,c.near||6)){ u.cmd={t:'idle'}; u.stuck=0; u.path=null; break; }
-      const dd=Math.hypot(c.x-u.x,c.y-u.y);          // give up if walled off from the goal
-      if(u.pd!==undefined&&dd>u.pd-.4) u.stuck=(u.stuck||0)+dt; else u.stuck=0;
-      u.pd=dd;
+      // Progress is measured as actual displacement, not distance to the goal:
+      // a unit walking around an obstacle moves away from its target on purpose.
+      u.chk=(u.chk||0)+dt;
+      if(u.chk>=.5){
+        const moved=Math.hypot(u.x-(u.cx0===undefined?u.x:u.cx0),u.y-(u.cy0===undefined?u.y:u.cy0));
+        u.cx0=u.x; u.cy0=u.y; u.chk=0;
+        u.stuck=moved<7?(u.stuck||0)+.5:0;
+      }
       if(u.stuck>1.2&&!u.pendPath&&u.repathT<=0){ u.goal=null; u.path=null; u.repathT=.5; requestPath(u,c.x,c.y); }
       if(u.stuck>3&&!u.yield){                 // step aside so the queue can drain
         u.yield=.6+Math.random()*.5;
         const a=Math.atan2(c.y-u.y,c.x-u.x)+(Math.random()<.5?1.4:-1.4);
         u.yx=u.x+Math.cos(a)*46; u.yy=u.y+Math.sin(a)*46;
       }
-      if(u.stuck>26){ u.cmd={t:'idle'}; u.stuck=0; u.pd=undefined; u.path=null; }
+      if(u.stuck>26){ u.cmd={t:'idle'}; u.stuck=0; u.path=null; }
       break; }
     case 'gather': gatherStep(u,dt); break;
     case 'build': buildStep(u,dt); break;
+    case 'repair': repairStep(u,dt); break;
   }
 }
 
@@ -1138,6 +1144,39 @@ function gatherStep(u,dt){
       u.cmd.dep=nearestDepot(u.owner,u.x,u.y);
     }
   } else { u.hTimer=0; navigate(u,node.x,node.y,dt,reach-2); }
+}
+function canRepair(t,own){
+  return t&&!t.dead&&t.owner===own&&t.hp<t.maxHp&&(t.kind==='unit'||(t.kind==='building'&&t.done));
+}
+function repairStep(u,dt){
+  const t=u.cmd.target;
+  if(!canRepair(t,u.owner)){ u.cmd={t:'idle'}; return; }
+  const reach=(t.kind==='building'?Math.max(t.w,t.h)*.5:t.r)+u.r+8;
+  if(Math.hypot(t.x-u.x,t.y-u.y)>reach){ navigate(u,t.x,t.y,dt,reach-2); return; }
+  u.face=Math.atan2(t.y-u.y,t.x-u.x);
+  const d=DEF(t), pool=P[u.owner];
+  const perSec=t.maxHp/Math.max(8,d.bt||20);      // a full rebuild takes about as long as building it
+  const cm=(d.m||0)*.35/t.maxHp, cg=(d.g||0)*.35/t.maxHp;
+  let heal=perSec*dt;
+  if(cm>0) heal=Math.min(heal,pool.m/cm);
+  if(cg>0) heal=Math.min(heal,pool.g/cg);
+  if(heal<=1e-6){
+    if(u.owner===0){ say('Not enough resources to repair'); SFX.play('deny'); }
+    u.cmd={t:'idle'}; return;
+  }
+  heal=Math.min(heal,t.maxHp-t.hp);
+  t.hp+=heal; pool.m-=heal*cm; pool.g-=heal*cg;
+  u.repFx=(u.repFx||0)-dt;
+  if(u.repFx<=0){
+    u.repFx=.16;
+    const sp=t.kind==='building'?Math.max(t.w,t.h)*.35:t.r;
+    fx.push({x:t.x+rnd(-sp,sp),y:t.y+rnd(-sp,sp),t:0,dur:.28,r:5,k:'hit',c:'#ffd27f'});
+  }
+  if(t.hp>=t.maxHp){
+    t.hp=t.maxHp;
+    if(u.owner===0) SFX.play('complete',t.x,t.y);
+    u.cmd={t:'idle'};
+  }
 }
 function buildStep(u,dt){
   const b=u.cmd.site;
@@ -1233,6 +1272,13 @@ function canPlace(type,x,y,owner){
   }
   return true;
 }
+function pickBuilder(list,x,y){        // nearest free hand, so repeat placements spread the work
+  const pool=(list||[]).filter(w=>w&&!w.dead&&UDEF[w.type]&&UDEF[w.type].worker);
+  if(!pool.length) return null;
+  const free=pool.filter(w=>w.cmd.t!=='build');
+  const use=free.length?free:pool;
+  return use.reduce((a2,b2)=>Math.hypot(a2.x-x,a2.y-y)<=Math.hypot(b2.x-x,b2.y-y)?a2:b2);
+}
 function startBuild(type,x,y,owner,workers){
   if(NET.role==='guest'&&owner===0){
     netCmd('build',{type,x,y,ids:(workers||[]).filter(Boolean).map(w=>w.id)});
@@ -1304,9 +1350,9 @@ cv.addEventListener('mousedown',e=>{
   if(e.button!==0) return;
   if(placing){
     const ws=sel.filter(s=>s.kind==='unit'&&UDEF[s.type].worker);
-    const b=startBuild(placing,snap(w.x),snap(w.y),0,ws);
-    if(b){ for(let i=1;i<ws.length&&i<3;i++) ws[i].cmd={t:'build',site:b};
-      SFX.play('build',b.x,b.y);
+    const one=pickBuilder(ws,snap(w.x),snap(w.y));
+    const b=startBuild(placing,snap(w.x),snap(w.y),0,one?[one]:[]);
+    if(b){ SFX.play('build',b.x||w.x,b.y||w.y);
       if(!e.shiftKey) placing=null; }
     else { say('Cannot build there'); SFX.play('deny'); }
     refreshUI(); return;
@@ -1376,6 +1422,11 @@ function rightClick(wx,wy){
     for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'build',site:t}; any=true; }
     if(any){ SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:24,k:'ping',c:'#7dffb0'}); return; }
   }
+  if(canRepair(t,0)){
+    let any=false;
+    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'repair',target:t}; u.target=null; any=true; }
+    if(any){ SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:24,k:'ping',c:'#ffd27f'}); return; }
+  }
   orderMove(wx,wy);
 }
 function formation(us,wx,wy,cmdMaker){
@@ -1385,7 +1436,7 @@ function formation(us,wx,wy,cmdMaker){
   us.slice().sort((a,b)=>Math.hypot(a.x-wx,a.y-wy)-Math.hypot(b.x-wx,b.y-wy)).forEach((u,i)=>{
     const r=(i/cols)|0, c=i%cols;
     u.cmd=cmdMaker(wx+(c-(cols-1)/2)*sp, wy+(r-(Math.ceil(n/cols)-1)/2)*sp);
-    u.target=null; u.retreat=null; u.yield=0; u.stuck=0; u.pd=undefined;
+    u.target=null; u.retreat=null; u.yield=0; u.stuck=0; u.chk=0; u.cx0=undefined; u.cy0=undefined;
   });
 }
 function orderMove(wx,wy){
@@ -1526,8 +1577,9 @@ function tapAt(sx,sy){
   const w=screenToWorld(sx,sy);
   if(placing){
     const ws=sel.filter(s2=>s2.kind==='unit'&&UDEF[s2.type].worker);
-    const b=startBuild(placing,snap(w.x),snap(w.y),0,ws);
-    if(b){ SFX.play('build',b.x,b.y); placing=null; }
+    const one=pickBuilder(ws,snap(w.x),snap(w.y));
+    const b=startBuild(placing,snap(w.x),snap(w.y),0,one?[one]:[]);
+    if(b){ SFX.play('build',b.x||w.x,b.y||w.y); placing=null; }
     else { say('Cannot build there'); SFX.play('deny'); }
     refreshUI(); return;
   }
@@ -1757,6 +1809,11 @@ function contextOrder(mine,wx,wy){
     for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'build',site:t}; any=true; }
     if(any) return;
   }
+  if(canRepair(t,own)){
+    let any=false;
+    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'repair',target:t}; u.target=null; any=true; }
+    if(any) return;
+  }
   formation(us,wx,wy,(x,y)=>({t:'move',x,y}));
 }
 function netHostApply(c){
@@ -1827,12 +1884,7 @@ function netCheckEnd(){
 let lastGroup=null, lastGroupT=0;
 window.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
-  const held=keys[k];
   keys[k]=true;
-  if(e.repeat||held){                       // holding a key must not re-fire commands
-    if(k==='escape'||/^f\d/.test(k)) return;
-    if(!['arrowleft','arrowright','arrowup','arrowdown','shift','control','alt'].includes(k)) return;
-  }
   if(k==='escape'&&getComputedStyle(document.getElementById('settings')).display!=='none'){
     settingsClose(); e.preventDefault(); return;
   }
@@ -2069,7 +2121,7 @@ function buildInfo(){
         if(e.owner===1) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
           Math.round((ELITE.dmg-1)*100)+'% damage</span><br>';
         if(d.worker) s+='<span class="k">Cargo</span> '+(e.carry?e.carry+' '+(e.carryType==='m'?'aurite':'ichor'):'empty')+'<br>';
-        const names={idle:'Idle',move:'Moving',amove:'Attack-move',attack:'Attacking',gather:'Extracting',build:'Constructing',hold:'Holding position'};
+        const names={idle:'Idle',move:'Moving',amove:'Attack-move',attack:'Attacking',gather:'Extracting',build:'Constructing',repair:'Repairing',hold:'Holding position'};
         s+='<span class="k">Order</span> '+(names[e.cmd.t]||e.cmd.t);
       } else {
         if(!e.done){
