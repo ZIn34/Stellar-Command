@@ -273,7 +273,8 @@ body.touch .mouse-only{display:none}
     <h1>STELLAR <b>COMMAND</b></h1>
     <p class="tag">Frontier war for the aurite seams of Kepler-9c</p>
     <div class="rows">
-      <div class="col"><h2>THEATRE</h2><div id="diffs"></div>
+      <div class="col"><h2>SIDES</h2><div id="modes"></div>
+        <h2 style="margin-top:9px">THEATRE</h2><div id="diffs"></div>
         <h2 style="margin-top:9px">SCALE</h2><div id="scales"></div></div>
       <div class="col"><h2>FIELD MANUAL</h2><div id="manual"></div>
         <div class="keys touch-only">
@@ -477,7 +478,7 @@ function tileBlocked(x,y){
 /* ===================== ENTITY FACTORY ===================== */
 function mkUnit(type,owner,x,y){
   const d=UDEF[type];
-  const mh=Math.round(d.hp*(owner===1?ELITE.hp:1));
+  const mh=Math.round(d.hp*(isBot(owner)?ELITE.hp:1));
   const u={id:nextId++,kind:'unit',type,owner,x,y,vx:0,vy:0,hp:mh,maxHp:mh,r:d.r,muzzle:0,
     cmd:{t:'idle'},target:null,atkCd:Math.random()*.5,face:owner?Math.PI*.75:-Math.PI*.25,
     carry:0,carryType:'m',hTimer:0,home:null,dead:false,flash:0};
@@ -1154,7 +1155,7 @@ function gatherStep(u,dt){
     if(!dep||dep.dead){ dep=u.cmd.dep=nearestDepot(u.owner,u.x,u.y); }
     if(!dep){ u.cmd={t:'idle'}; return; }
     if(Math.hypot(dep.x-u.x,dep.y-u.y) < Math.max(dep.w,dep.h)*.55+u.r+6){
-      P[u.owner][u.carryType]+=u.carry*ECO*(u.owner===1?DIFF.eco:1); u.carry=0;
+      P[u.owner][u.carryType]+=u.carry*ECO*(isBot(u.owner)?DIFF.eco:1); u.carry=0;
       if(u.owner===0) SFX.play('deposit',dep.x,dep.y);
       if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+8',c:u.carryType==='m'?'#7fd0ff':'#35d18a'});
       let back=node;
@@ -1444,7 +1445,7 @@ function rightClick(wx,wy){
   }
   const us=mine.filter(s=>s.kind==='unit');
   if(!us.length) return;
-  if(t&&t.owner===1){ for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; }
+  if(t&&isFoe(t.owner,0)){ for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; }
     SFX.play('attackOrder');
     fx.push({x:t.x,y:t.y,t:0,dur:.5,r:hitRadius(t)+8,k:'ping',c:'#ff6b52'}); return; }
   if(t&&(t.kind==='res'&&t.amount>0||t.kind==='building'&&t.type==='siphon'&&t.owner===0&&t.done)){
@@ -1464,14 +1465,40 @@ function rightClick(wx,wy){
   }
   orderMove(wx,wy);
 }
+/* A grid slot can land inside rock, which hands a unit a goal it can never
+   stand on - it just grinds against the rock face. Snap every slot to ground
+   the unit actually fits on, and never give two units the same tile. */
+function slotFor(u,x,y,taken){
+  const wide=UDEF[u.type].r>=WIDE_R;
+  const tx=clamp((x/TILE)|0,0,MAP_W-1), ty=clamp((y/TILE)|0,0,MAP_H-1);
+  if(!navBlocked(tx,ty,wide)&&!taken.has(ti(tx,ty))){ taken.add(ti(tx,ty)); return {x,y}; }
+  for(let r=1;r<=10;r++){
+    for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++){
+      if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;
+      const nx=tx+dx, ny=ty+dy;
+      if(nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
+      const i=ti(nx,ny);
+      if(taken.has(i)||navBlocked(nx,ny,wide)) continue;
+      taken.add(i); return {x:nx*TILE+TILE/2, y:ny*TILE+TILE/2};
+    }
+  }
+  const o=nearestOpen(tx,ty,wide);
+  return o?{x:o[0]*TILE+TILE/2,y:o[1]*TILE+TILE/2}:{x,y};
+}
+function clearNav(u){
+  u.target=null; u.retreat=null; u.yield=0; u.stuck=0; u.jam=0; u.chk=0;
+  u.cx0=undefined; u.cy0=undefined; u.path=null; u.goal=null; u.snapK=null;
+}
 function formation(us,wx,wy,cmdMaker){
-  const n=us.length;
-  if(n===1){ us[0].cmd=cmdMaker(wx,wy); us[0].target=null; return; }
+  const n=us.length, taken=new Set();
+  if(n===1){ const p=slotFor(us[0],wx,wy,taken);
+    us[0].cmd=cmdMaker(p.x,p.y); clearNav(us[0]); return; }
   const cols=Math.ceil(Math.sqrt(n)), sp=n>30?30:26;
   us.slice().sort((a,b)=>Math.hypot(a.x-wx,a.y-wy)-Math.hypot(b.x-wx,b.y-wy)).forEach((u,i)=>{
     const r=(i/cols)|0, c=i%cols;
-    u.cmd=cmdMaker(wx+(c-(cols-1)/2)*sp, wy+(r-(Math.ceil(n/cols)-1)/2)*sp);
-    u.target=null; u.retreat=null; u.yield=0; u.stuck=0; u.jam=0; u.chk=0; u.cx0=undefined; u.cy0=undefined;
+    const p=slotFor(u, wx+(c-(cols-1)/2)*sp, wy+(r-(Math.ceil(n/cols)-1)/2)*sp, taken);
+    u.cmd=cmdMaker(p.x,p.y);
+    clearNav(u);
   });
 }
 function orderMove(wx,wy){
@@ -1707,8 +1734,9 @@ function netRecv(m){
     if(m.role==='host'){
       NET.seed=(Math.random()*4294967295)>>>0;
       const g=(typeof scaleKey!=='undefined'&&scaleKey==='grand');
-      netRelay({k:'init',seed:NET.seed,grand:g});
-      lobbyClose(); startOnline(NET.seed,g);
+      const md=(typeof modeKey!=='undefined')?modeKey:'duel';
+      netRelay({k:'init',seed:NET.seed,grand:g,mode:md});
+      lobbyClose(); startOnline(NET.seed,g,md);
     } else lobbySetState('linking');
     return;
   }
@@ -1716,7 +1744,7 @@ function netRecv(m){
 }
 function netData(d){
   if(!d) return;
-  if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose(); startOnline(d.seed,!!d.grand); return; }
+  if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose(); startOnline(d.seed,!!d.grand,d.mode||'duel'); return; }
   if(d.k==='S'&&NET.role==='guest'){ netApplySnapshot(d); return; }
   if(d.k==='C'&&NET.role==='host'){ netHostApply(d); return; }
   if(d.k==='over'&&NET.role==='guest'){ NET.ended=true; endGame(d.w?'VICTORY':'DEFEAT',d.w?'#7dffb0':'#ff6b52'); return; }
@@ -1749,7 +1777,7 @@ function netSnapshot(){
               Math.round(ang*100),o.done?1:0,Math.round(o.prog*100),o.queue?o.queue.length:0,
               Math.round((o.ptime||0)*10),o.lastBuildT===undefined?999:Math.round((gameTime-o.lastBuildT)*10)]);
     } else {
-      e.push([o.id,ti2,2,Math.round(o.x),Math.round(o.y),Math.round(o.amount),o.max,0,o.taken?1:0]);
+      e.push([o.id,ti2,0,Math.round(o.x),Math.round(o.y),Math.round(o.amount),o.max,0,o.taken?1:0]);
     }
   }
   const g=P[1];
@@ -1769,7 +1797,7 @@ function netApplySnapshot(d){
       o.id=id; NET.byId.set(id,o);
       o.px=a[3]; o.py=a[4];
     }
-    o.owner=a[2]===2?-1:a[2];
+    o.owner=info.kind==='res'?-1:a[2];
     if(info.kind==='unit'){
       o.px=o.x; o.py=o.y; o.nx=a[3]; o.ny=a[4];
       o.hp=a[5]; o.maxHp=a[6]; o.face=a[7]/100;
@@ -1895,10 +1923,14 @@ function netHostApply(c){
   }
 }
 /* ---------- match lifecycle ---------- */
-function startOnline(seed,grand){
+function startOnline(seed,grand,mode){
   SEED=seed>>>0;
   setMapScale(!!grand);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
+  setupSides(mode||'duel',true);
+  // Only the host simulates, so the guest must not run commanders of its own;
+  // it sees the allied bots through snapshots like everything else.
+  if(NET.role==='guest') BOTS=[false,false,false,false];
   menuOn=false;
   document.getElementById('menu').style.display='none';
   init();
@@ -1908,12 +1940,13 @@ function startOnline(seed,grand){
     centerOn(BASES[1].tx*TILE,BASES[1].ty*TILE);
   }
   say((NET.role==='host'?'You are the Azure Concord':'You command the Ember Legion')+
+      (NPLAY>2?' — 2v2, your ally holds the flank':'')+
       (GRAND?' — Grand War':'')+' — good hunting.');
 }
 function netCheckEnd(){
   if(NET.role!=='host'||NET.ended) return;
-  const hostAlive=ents.some(e=>!e.dead&&e.owner===0&&(e.kind==='building'||e.kind==='unit'));
-  const guestAlive=ents.some(e=>!e.dead&&e.owner===1&&(e.kind==='building'||e.kind==='unit'));
+  const hostAlive=teamAlive(TEAMOF[0]);
+  const guestAlive=teamAlive(TEAMOF[1]);
   if(hostAlive&&guestAlive) return;
   NET.ended=true;
   netRelay({k:'over',w:!guestAlive?false:true});
@@ -2143,8 +2176,8 @@ function buildInfo(){
     const e=sel[0], d=DEF(e)||{};
     const dispName=e.kind==='res'?(e.type==='vent'?'ICHOR VENT':'AURITE SEAM')
       :(e.kind==='unit'?unitName(e.type,e.owner):d.n).toUpperCase();
-    infoT.textContent=(e.owner===1?'LEGION · ':'')+dispName;
-    const col=e.owner===1?EC:(e.owner===0?PC:(e.type==='vent'?'#35d18a':'#7fd0ff'));
+    infoT.textContent=(isFoe(e.owner,0)?'LEGION · ':(e.owner>0&&isAlly(e.owner)?'ALLY · ':''))+dispName;
+    const col=TEAM[e.owner]?TEAM[e.owner].c:(e.type==='vent'?'#35d18a':'#7fd0ff');
     let s='<div id="single"><div class="big" style="color:'+col+'">'+
       (e.kind==='res'?(e.type==='vent'?'◈':'◆'):iconTag(e.kind==='unit'?'unit':'bld',e.type,e.owner))+
       '</div><div id="stats">';
@@ -2158,7 +2191,7 @@ function buildInfo(){
       if(e.kind==='unit'){
         s+='<span class="k">DMG</span> '+Math.round(dmgOf(e))+' &nbsp; <span class="k">RNG</span> '+(Math.round(d.rng/TILE*10)/10)+
           ' &nbsp; <span class="k">SPD</span> '+d.sp+'<br>';
-        if(e.owner===1) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
+        if(isBot(e.owner)) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
           Math.round((ELITE.dmg-1)*100)+'% damage</span><br>';
         if(d.worker) s+='<span class="k">Cargo</span> '+(e.carry?e.carry+' '+(e.carryType==='m'?'aurite':'ichor'):'empty')+'<br>';
         const names={idle:'Idle',move:'Moving',amove:'Attack-move',attack:'Attacking',gather:'Extracting',build:'Constructing',repair:'Repairing',hold:'Holding position'};
@@ -3140,7 +3173,7 @@ function render(){
   // selection rings
   for(const e of sel){
     if(e.dead) continue;
-    ctx.strokeStyle=e.owner===1?EC:(e.owner===0?'#7dffb0':'#7fd0ff');
+    ctx.strokeStyle=isFoe(e.owner,0)?EC:(isAlly(e.owner)?'#7dffb0':'#7fd0ff');
     ctx.lineWidth=2;
     if(e.kind==='building'){ ctx.strokeRect(e.x-e.w/2-3,e.y-e.h/2-3,e.w+6,e.h+6); }
     else { ctx.beginPath(); ctx.ellipse(e.x,e.y+ (e.r*.5),e.r+5,(e.r+5)*.55,0,0,7); ctx.stroke(); }
@@ -3479,13 +3512,26 @@ const DIFFS={
            dec:.75,grace:95,  thr:5, step:2, eco:1.3, hp:1.60, dmg:1.55}
 };
 let DIFF=DIFFS.veteran, ELITE={hp:1.35,dmg:1.30}, diffKey='veteran', scaleKey='standard';
+const MODES={
+  duel:{n:'1 v 1', d:'you vs one commander', players:2},
+  team:{n:'2 v 2', d:'you + an ally vs two', players:4}
+};
+let modeKey='duel';
+/* Lays out the slot table for a match. In a skirmish every slot but yours is a
+   bot; online, slot 1 is the other human and the allies (2 and 3) are bots. */
+function setupSides(mode,online){
+  NPLAY=MODES[mode]?MODES[mode].players:2;
+  BOTS=[false,false,false,false];
+  for(let o=1;o<NPLAY;o++) BOTS[o]=true;
+  if(online) BOTS[1]=false;
+}
 const SCALES={
   standard:{n:'STANDARD',d:'112 x 112 · normal pace'},
   grand:{n:'GRAND WAR',d:'10x map · 7x income & build · huge armies'}
 };
 const ENAME={delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',harrower:'Devourer'};
 function unitName(type,owner){ return owner===1?(ENAME[type]||UDEF[type].n):UDEF[type].n; }
-function dmgOf(e){ const d=DEF(e); return d.dmg*(e.owner===1&&e.kind==='unit'?ELITE.dmg:1); }
+function dmgOf(e){ const d=DEF(e); return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1); }
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
 let menuOn=true, mstars=[], mshards=[], mt=0;
@@ -3507,6 +3553,16 @@ function menuInit(){
     el.onclick=()=>{ SFX.unlock(); SFX.play('click'); diffKey=k;
       dw.querySelectorAll('.dcard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
     dw.appendChild(el);
+  });
+  const mw=document.getElementById('modes');
+  mw.innerHTML='';
+  Object.keys(MODES).forEach(k=>{
+    const d=MODES[k], el=document.createElement('div');
+    el.className='scard'+(k===modeKey?' on':'');
+    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
+    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); modeKey=k;
+      mw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
+    mw.appendChild(el);
   });
   const sw=document.getElementById('scales');
   sw.innerHTML='';
@@ -3788,6 +3844,7 @@ function startGame(key){
   setMapScale(scaleKey==='grand');
   diffKey=key; DIFF=DIFFS[key]||DIFFS.veteran;
   ELITE={hp:DIFF.hp,dmg:DIFF.dmg};
+  setupSides(modeKey,false);
   menuOn=false;
   document.getElementById('menu').style.display='none';
   init();
