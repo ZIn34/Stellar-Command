@@ -579,7 +579,7 @@ const SFX=(function(){
       noise(t,{f:3200,filter:'bandpass',q:6,dur:.03,g:.05*v,dest:d}); }},
     attackOrder:{gap:60,fn:(t,v,d)=>{ tone(t,{f:360,f2:195,type:'sawtooth',dur:.13,g:.11*v,dest:d});
       noise(t,{f:1800,filter:'bandpass',q:3,dur:.05,g:.06*v,dest:d}); }},
-    deny:{gap:150,fn:(t,v,d)=>{ tone(t,{f:210,f2:120,type:'sawtooth',dur:.2,g:.13*v,dest:d});
+    deny:{gap:900,fn:(t,v,d)=>{ tone(t,{f:210,f2:120,type:'sawtooth',dur:.2,g:.13*v,dest:d});
       tone(t+.01,{f:158,type:'square',dur:.18,g:.07*v,dest:d}); }},
     rifle:{gap:45,fn:(t,v,d)=>{ noise(t,{f:2600,f2:700,filter:'highpass',dur:.07,g:.22*v,dest:d});
       tone(t,{f:430,f2:170,type:'square',dur:.05,g:.09*v,dest:d}); }},
@@ -812,7 +812,9 @@ function stepShots(dt){
 
 /* ===================== NAVIGATION GRID + A* ===================== */
 let nav=new Uint8Array(1);                     // 1 = impassable for pathing
+let navW=new Uint8Array(1);                    // same, eroded for wide chassis
 let navDirty=true;
+const WIDE_R=14;                               // Sunderers and Harrowers
 function markNavDirty(){ navDirty=true; }
 function rebuildNav(){
   nav.set(blocked);
@@ -823,38 +825,47 @@ function rebuildNav(){
     for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++)
       if(x>=0&&y>=0&&x<MAP_W&&y<MAP_H) nav[ti(x,y)]=1;
   }
+  // erode by one tile: a wide unit needs its neighbours clear as well
+  for(let x=0;x<MAP_W;x++) for(let y=0;y<MAP_H;y++){
+    let bad=nav[ti(x,y)]===1;
+    if(!bad) for(let dx=-1;dx<=1&&!bad;dx++) for(let dy=-1;dy<=1;dy++){
+      const nx=x+dx, ny=y+dy;
+      if(nx<0||ny<0||nx>=MAP_W||ny>=MAP_H||nav[ti(nx,ny)]===1){ bad=true; break; }
+    }
+    navW[ti(x,y)]=bad?1:0;
+  }
   navDirty=false;
 }
-function navBlocked(tx,ty){
+function navBlocked(tx,ty,wide){
   if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) return true;
-  return nav[ti(tx,ty)]===1;
+  return (wide?navW:nav)[ti(tx,ty)]===1;
 }
-function losClear(x0,y0,x1,y1){
+function losClear(x0,y0,x1,y1,wide){
   const dx=x1-x0, dy=y1-y0, d=Math.hypot(dx,dy);
   const steps=Math.min(72,Math.ceil(d/(TILE*.45)));
   for(let i=1;i<=steps;i++){
     const t=i/steps;
-    if(navBlocked(((x0+dx*t)/TILE)|0,((y0+dy*t)/TILE)|0)) return false;
+    if(navBlocked(((x0+dx*t)/TILE)|0,((y0+dy*t)/TILE)|0,wide)) return false;
   }
   return true;
 }
-function nearestOpen(tx,ty){
-  if(!navBlocked(tx,ty)) return [tx,ty];
+function nearestOpen(tx,ty,wide){
+  if(!navBlocked(tx,ty,wide)) return [tx,ty];
   for(let r=1;r<=14;r++){
     for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++){
       if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;
       const x=tx+dx, y=ty+dy;
-      if(!navBlocked(x,y)) return [x,y];
+      if(!navBlocked(x,y,wide)) return [x,y];
     }
   }
-  return null;
+  return wide?nearestOpen(tx,ty,false):null;      // fall back rather than strand it
 }
 
 let _g,_f,_from,_seen,_closed,_heap;
 let _gen=0, _hn=0;
 function allocNav(){
   const n=MAP_W*MAP_H;
-  nav=new Uint8Array(n);
+  nav=new Uint8Array(n); navW=new Uint8Array(n);
   _g=new Float32Array(n); _f=new Float32Array(n);
   _from=new Int32Array(n); _seen=new Int32Array(n); _closed=new Int32Array(n);
   _heap=new Int32Array(n*6); _gen=0; _hn=0;
@@ -875,11 +886,11 @@ function hpop(){
   return top;
 }
 const DIRS=[[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
-function findPath(wx0,wy0,wx1,wy1){
+function findPath(wx0,wy0,wx1,wy1,wide){
   if(navDirty) rebuildNav();
   const sx=clamp((wx0/TILE)|0,0,MAP_W-1), sy=clamp((wy0/TILE)|0,0,MAP_H-1);
   let g1=clamp((wx1/TILE)|0,0,MAP_W-1), g2=clamp((wy1/TILE)|0,0,MAP_H-1);
-  const open=nearestOpen(g1,g2);
+  const open=nearestOpen(g1,g2,wide);
   if(!open) return null;
   g1=open[0]; g2=open[1];
   if(sx===g1&&sy===g2) return null;
@@ -900,8 +911,8 @@ function findPath(wx0,wy0,wx1,wy1){
     if(ch<bestH){ bestH=ch; best=cur; }
     for(const d of DIRS){
       const nx=cx+d[0], ny=cy+d[1];
-      if(navBlocked(nx,ny)) continue;
-      if(d[2]>1&&(navBlocked(cx+d[0],cy)||navBlocked(cx,cy+d[1]))) continue;  // no corner cutting
+      if(navBlocked(nx,ny,wide)) continue;
+      if(d[2]>1&&(navBlocked(cx+d[0],cy,wide)||navBlocked(cx,cy+d[1],wide))) continue;  // no corner cutting
       const ni=ti(nx,ny);
       if(_closed[ni]===_gen) continue;
       const ng=_g[cur]+d[2];
@@ -922,7 +933,7 @@ function findPath(wx0,wy0,wx1,wy1){
   const out=[]; let cx2=wx0, cy2=wy0, i2=0;
   while(i2<pts.length){
     let j=pts.length-1;
-    while(j>i2&&!losClear(cx2,cy2,pts[j].x,pts[j].y)) j--;
+    while(j>i2&&!losClear(cx2,cy2,pts[j].x,pts[j].y,wide)) j--;
     out.push(pts[j]); cx2=pts[j].x; cy2=pts[j].y; i2=j+1;
   }
   return out;
@@ -931,7 +942,7 @@ function findPath(wx0,wy0,wx1,wy1){
 /* ---- path requests are budgeted so a big move order never stalls a frame ---- */
 let pathQ=[];
 function requestPath(u,tx,ty){
-  u.pendPath={x:tx,y:ty};
+  u.pendPath={x:tx,y:ty,wide:UDEF[u.type].r>=WIDE_R};
   if(pathQ.indexOf(u)<0) pathQ.push(u);
 }
 function servicePaths(){
@@ -939,14 +950,15 @@ function servicePaths(){
   while(pathQ.length&&n<10){
     const u=pathQ.shift();
     if(u.dead||!u.pendPath) continue;
-    u.path=findPath(u.x,u.y,u.pendPath.x,u.pendPath.y);
+    u.path=findPath(u.x,u.y,u.pendPath.x,u.pendPath.y,u.pendPath.wide);
     u.pi=0; u.pendPath=null; n++;
   }
 }
 /* ---- steer along a path, going direct whenever the way is clear ---- */
 function navigate(u,tx,ty,dt,stopAt){
   u.repathT=(u.repathT||0)-dt;
-  const direct=losClear(u.x,u.y,tx,ty);
+  const wide=UDEF[u.type].r>=WIDE_R;
+  const direct=losClear(u.x,u.y,tx,ty,wide);
   if(direct){ u.path=null; u.goal=null; return steer(u,tx,ty,dt,stopAt); }
   const moved=!u.goal||Math.hypot(u.goal.x-tx,u.goal.y-ty)>TILE*1.5;
   if((moved||!u.path)&&u.repathT<=0&&!u.pendPath){
@@ -1815,7 +1827,12 @@ function netCheckEnd(){
 let lastGroup=null, lastGroupT=0;
 window.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
+  const held=keys[k];
   keys[k]=true;
+  if(e.repeat||held){                       // holding a key must not re-fire commands
+    if(k==='escape'||/^f\d/.test(k)) return;
+    if(!['arrowleft','arrowright','arrowup','arrowdown','shift','control','alt'].includes(k)) return;
+  }
   if(k==='escape'&&getComputedStyle(document.getElementById('settings')).display!=='none'){
     settingsClose(); e.preventDefault(); return;
   }
@@ -3103,13 +3120,12 @@ function updateCam(dt){
 
 /* ===================== GAME LOOP ===================== */
 let last=performance.now(), uiT=0, navT=0, snapT=0;
-function step(now){
-  if(!gameOn) return;
-  requestAnimationFrame(step);
-  let dt=(now-last)/1000; last=now;
-  if(dt>.1) dt=.1;
-  if(paused) dt=0;
-  if(!over&&!paused&&NET.role==='guest'){
+/* The simulation is split out of the render loop so it can also be driven by a
+   worker heartbeat: browsers throttle requestAnimationFrame in hidden tabs, and
+   a host that stops simulating freezes the match for both players. */
+function simTick(dt){
+  if(over||paused) return;
+  if(NET.role==='guest'){
     gameTime+=dt;
     updateCam(dt);
     netInterp();
@@ -3121,19 +3137,20 @@ function step(now){
     stepShots(dt);
     fogT-=dt; if(fogT<=0){ fogT=.14; updateFog(); paintFog(); }
     sel=sel.filter(e=>!e.dead);
-  } else if(!over&&!paused){
+  } else {
     gameTime+=dt*SPEED;
     updateCam(dt);
-    const sub=Math.max(1,Math.round(SPEED));
-    for(let k=0;k<sub;k++){
+    const sd=Math.min(dt,1/30);                       // bound each physics step
+    const n=Math.min(40,Math.max(1,Math.round(dt*SPEED/sd)));
+    for(let k=0;k<n;k++){
       rebuildGrid();
       for(const e of ents){
         if(e.dead) continue;
-        if(e.kind==='unit') updateUnit(e,dt);
-        else if(e.kind==='building') updateBuilding(e,dt);
+        if(e.kind==='unit') updateUnit(e,sd);
+        else if(e.kind==='building') updateBuilding(e,sd);
       }
       separate();
-      stepShots(dt);
+      stepShots(sd);
     }
     dt*=SPEED;
     servicePaths();
@@ -3146,10 +3163,39 @@ function step(now){
     sel=sel.filter(e=>!e.dead);
     if(!netOnline()) checkEnd();
   }
+}
+function step(now){
+  if(!gameOn) return;
+  requestAnimationFrame(step);
+  lastFrameAt=now;
+  let dt=(now-last)/1000; last=now;
+  if(dt>.1) dt=.1;
+  if(paused) dt=0;
+  simTick(dt);
   render();
   mmT-=dt; if(mmT<=0){ mmT=.09; renderMM(); }
   uiT-=dt; if(uiT<=0){ uiT=.14; refreshUI(); }
 }
+/* ---- keeps the world running when the tab is in the background ---- */
+let simWorker=null, lastFrameAt=0;
+function startSimWorker(){
+  if(simWorker||typeof Worker==='undefined') return;
+  try{
+    const src="let t=null;onmessage=function(e){if(e.data==='go'){if(!t)t=setInterval(function(){postMessage(1)},33);}"+
+              "else if(e.data==='stop'){clearInterval(t);t=null;}};";
+    simWorker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    simWorker.onmessage=function(){
+      if(!gameOn||paused||over) return;
+      const now=performance.now();
+      if(now-lastFrameAt<150) return;               // the render loop is healthy
+      let dt=(now-last)/1000; last=now;
+      if(dt>.5) dt=.5;
+      simTick(dt);
+    };
+    simWorker.postMessage('go');
+  }catch(e){ simWorker=null; }
+}
+function stopSimWorker(){ if(simWorker){ try{ simWorker.postMessage('stop'); simWorker.terminate(); }catch(e){} simWorker=null; } }
 function checkEnd(){
   const eb=ents.some(e=>!e.dead&&e.owner===1&&(e.kind==='building'||e.kind==='unit'));
   const pb=ents.some(e=>!e.dead&&e.owner===0&&(e.kind==='building'||e.kind==='unit'));
@@ -3174,6 +3220,7 @@ function togglePause(on){
 }
 function leaveMatch(){
   netQuit();
+  stopSimWorker();
   gameOn=false; paused=false; over=false;
   document.getElementById('pause').style.display='none';
   document.getElementById('over').style.display='none';
@@ -3222,7 +3269,8 @@ function init(){
   refreshUI();
   say('Commander — raise your outpost and break the Ember Legion.');
   setTimeout(function(){ hintFaded=true; const h=document.getElementById('hint'); if(h) h.style.opacity='0'; },32000);
-  gameOn=true; last=performance.now();
+  gameOn=true; last=performance.now(); lastFrameAt=performance.now();
+  startSimWorker();
   requestAnimationFrame(step);
 }
 /* ===================== TITLE SCREEN ===================== */
