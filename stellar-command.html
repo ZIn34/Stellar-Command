@@ -236,6 +236,18 @@ body.touch .mouse-only{display:none}
   background:#08121c;color:#4bd6ff;border:1px solid #2d5a80;border-radius:6px;padding:7px}
 #lobSrvGo{font-family:inherit;font-size:12px;letter-spacing:2px;padding:0 14px;cursor:pointer;color:#04121c;
   background:linear-gradient(180deg,#7fe4ff,#2aa8d8);border:0;border-radius:6px}
+#lobSeats{display:none;margin:10px 0 2px}
+#lobSeats .seat{display:flex;justify-content:space-between;align-items:center;
+  font-size:11px;letter-spacing:1px;padding:5px 9px;margin:4px 0;border-radius:6px;
+  border:1px solid #21405e;background:#08121c;color:#9fc4dd}
+#lobSeats .seat.me{border-color:#4bd6ff;color:#dff1ff}
+#lobSeats .seat.open{color:#4d6b83;border-style:dashed}
+#lobSeats .seat b{font-weight:400;letter-spacing:2px}
+#lobSeats .seat i{font-style:normal;font-size:9.5px;color:#7c9cb4}
+#lobStart{display:none;margin:8px auto 0;font-family:inherit;font-size:12px;letter-spacing:3px;
+  padding:8px 22px;cursor:pointer;color:#04121c;border:0;border-radius:6px;
+  background:linear-gradient(180deg,#8dffc0,#2fbf7a)}
+#lobStart:hover{filter:brightness(1.1)}
 #lobSpin{display:none;margin:12px 0 4px}
 #lobSpin i{display:inline-block;width:7px;height:7px;margin:0 3px;border-radius:50%;background:#4bd6ff;
   animation:lobp 1s infinite ease-in-out}
@@ -345,6 +357,8 @@ body.touch .mouse-only{display:none}
     <p id="lobMsg"></p>
     <div id="lobEntry"><input id="lobInput" inputmode="numeric" maxlength="4" placeholder="0000"><button id="lobGo">JOIN</button></div>
     <div id="lobSrv"><input id="lobSrvIn" placeholder="your-server.onrender.com" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="lobSrvGo">SAVE</button></div>
+    <div id="lobSeats"></div>
+    <button id="lobStart">START NOW</button>
     <div id="lobSpin"><i></i><i></i><i></i></div>
     <button id="lobCancel">CANCEL</button>
   </div>
@@ -681,13 +695,24 @@ const SFX=(function(){
     if(last[k]&&n-last[k]<gap) return false;
     last[k]=n; return true;
   }
-  function spatial(x,y){                    // only what's near the view is audible
-    const cx=cam.x+viewW()/2, cy=cam.y+viewH()/2;
-    const hw=viewW()/2+260, hh=viewH()/2+260;
+  function spatial(x,y){
+    // Audible only where something is actually drawn: on screen, and out of the
+    // fog. A fight in unexplored ground used to carry to you through the dark.
+    const hw=viewW()/2, hh=viewH()/2;
+    const sized=hw>0&&hh>0;                 // before the first resize there is no view yet
+    const cx=cam.x+hw, cy=cam.y+hh;
     const dx=x-cx, dy=y-cy;
-    if(Math.abs(dx)>hw||Math.abs(dy)>hh) return null;
+    if(sized&&(Math.abs(dx)>hw||Math.abs(dy)>hh)) return null;
+    try{
+      if(typeof visible!=='undefined'&&visible&&visible.length){
+        const tx=(x/TILE)|0, ty=(y/TILE)|0;
+        if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) return null;
+        if(!visible[ti(tx,ty)]) return null;
+      }
+    }catch(e){}
+    if(!sized) return {g:1,pan:0};
     const d=Math.min(1,Math.hypot(dx/hw,dy/hh));
-    return {g:1-d*.75, pan:clamp(dx/(viewW()/2||1),-1,1)*.75};
+    return {g:1-d*.6, pan:clamp(dx/hw,-1,1)*.75};
   }
   return {
     play(name,x,y){
@@ -1374,7 +1399,8 @@ function startBuild(type,x,y,owner,workers){
 }
 
 /* ===================== INPUT ===================== */
-let sel=[], drag=null, mouse={x:-1,y:-1,wx:0,wy:0,down:false,over:false}, pending=null, placing=null, cardMode='main';
+let sel=[], drag=null, mouse={x:-1,y:-1,wx:0,wy:0,down:false,over:false,
+  ex:undefined,ey:undefined,inWin:false}, pending=null, placing=null, cardMode='main';
 let lastTouchAt=0;
 const afterTouch=()=>performance.now()-lastTouchAt<800;
 const groups={};
@@ -1406,6 +1432,15 @@ function setSel(list){
 
 cv.addEventListener('contextmenu',e=>e.preventDefault());
 cv.addEventListener('mouseleave',()=>{ mouse.over=false; });
+/* Edge scrolling follows the window, not the canvas: the command panel and
+   minimap sit over the bottom of the screen, and in an RTS the view should
+   still pan when the cursor reaches an edge across them. */
+window.addEventListener('mousemove',e=>{
+  if(afterTouch()) return;
+  mouse.ex=e.clientX; mouse.ey=e.clientY; mouse.inWin=true;
+},true);
+document.addEventListener('mouseleave',()=>{ mouse.inWin=false; });
+window.addEventListener('blur',()=>{ mouse.inWin=false; });
 cv.addEventListener('mousemove',e=>{
   if(afterTouch()) return;
   const r=cv.getBoundingClientRect();
@@ -1730,8 +1765,17 @@ cv.addEventListener('wheel',e=>{
    selection logic works unchanged on both sides.                            */
 const NET={
   ws:null, role:null, code:null, state:'off',
-  prevT:0, nextT:0, byId:new Map(), evOut:[], seed:1, ended:false
+  prevT:0, nextT:0, byId:new Map(), evOut:[], seed:1, ended:false,
+  slot:0, humans:1, roomN:1, isHost:true
 };
+/* With more than one guest the old owner^1 flip no longer works, so each client
+   swaps its own slot with 0 instead: everyone still sees themselves as player 0
+   and every existing UI, fog and selection path keeps working unchanged. */
+function netView(o){
+  const g=NET.slot|0;
+  if(!g||o<0||o===undefined) return o;
+  return o===0?g:(o===g?0:o);
+}
 const NET_U=['delver','warden','bulwark','sunderer','harrower'];
 const NET_B=['keystone','habitat','musterhall','siphon','forgeworks','watchspire'];
 const NET_R=['aurite','vent'];
@@ -1799,31 +1843,32 @@ function netConnect(then){
   };
 }
 function netSend(o){ if(NET.ws&&NET.ws.readyState===1) NET.ws.send(JSON.stringify(o)); }
-function netRelay(d){ netSend({t:'relay',d}); }
+function netRelay(d,to){ netSend(to===undefined?{t:'relay',d}:{t:'relay',d,to}); }
 function netRecv(m){
   if(m.t==='hosted'){ NET.code=m.code; lobbySetState(m.quick?'searching':'hosting'); return; }
   if(m.t==='searching'){ lobbySetState('searching'); return; }
   if(m.t==='error'){ lobbyError(m.msg||'Error'); return; }
   if(m.t==='peerleft'){ netDropped(); return; }
-  if(m.t==='start'){
-    NET.role=m.role; NET.code=m.code; NET.ended=false; NET.byId=new Map();
-    if(m.role==='host'){
-      NET.seed=(Math.random()*4294967295)>>>0;
-      const g=(typeof scaleKey!=='undefined'&&scaleKey==='grand');
-      const md=(typeof modeKey!=='undefined')?modeKey:'duel';
-      netRelay({k:'init',seed:NET.seed,grand:g,mode:md});
-      lobbyClose(); startOnline(NET.seed,g,md);
-    } else lobbySetState('linking');
+  if(m.t==='roster'){
+    NET.slot=m.slot|0; NET.isHost=!!m.host; NET.roomN=m.n|0; NET.code=m.code||NET.code;
+    lobbyRoster(m);
     return;
   }
-  if(m.t==='relay'){ netData(m.d); return; }
+  if(m.t==='start'){
+    NET.role=m.role; NET.code=m.code; NET.ended=false; NET.byId=new Map();
+    NET.slot=m.slot|0; NET.humans=m.count|0||1;
+    lobbyClose();
+    startOnline(m.seed>>>0,!!m.grand,m.mode||'duel');
+    return;
+  }
+  if(m.t==='relay'){ NET.from=m.from; netData(m.d); NET.from=undefined; return; }
 }
 function netData(d){
   if(!d) return;
   if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose(); startOnline(d.seed,!!d.grand,d.mode||'duel'); return; }
   if(d.k==='no'&&NET.role==='guest'){ say(d.s||'Order refused'); SFX.play('deny'); return; }
   if(d.k==='S'&&NET.role==='guest'){ netApplySnapshot(d); return; }
-  if(d.k==='C'&&NET.role==='host'){ netHostApply(d); return; }
+  if(d.k==='C'&&NET.role==='host'){ netHostApply(d,NET.from); return; }
   if(d.k==='over'&&NET.role==='guest'){ NET.ended=true; endGame(d.w?'VICTORY':'DEFEAT',d.w?'#7dffb0':'#ff6b52'); return; }
 }
 function netDropped(){
@@ -1853,11 +1898,11 @@ function netSnapshot(){
     const ti2=netTypeIdx(o);
     if(ti2<0) continue;
     if(o.kind==='unit'){
-      e.push([o.id,ti2,o.owner^1,Math.round(o.x),Math.round(o.y),Math.round(o.hp),o.maxHp,
+      e.push([o.id,ti2,o.owner,Math.round(o.x),Math.round(o.y),Math.round(o.hp),o.maxHp,
               Math.round(o.face*100),o.carry>0?(o.carryType==='m'?1:2):0]);
     } else if(o.kind==='building'){
       const ang=o.target&&!o.target.dead?Math.atan2(o.target.y-o.y,o.target.x-o.x):0;
-      e.push([o.id,ti2,o.owner^1,Math.round(o.x),Math.round(o.y),Math.round(o.hp),o.maxHp,
+      e.push([o.id,ti2,o.owner,Math.round(o.x),Math.round(o.y),Math.round(o.hp),o.maxHp,
               Math.round(ang*100),o.done?1:0,Math.round(o.prog*100),o.queue?o.queue.length:0,
               Math.round((o.ptime||0)*10),o.lastBuildT===undefined?999:Math.round((gameTime-o.lastBuildT)*10),
               (o.queue&&o.queue.length)?NET_U.indexOf(o.queue[0]):-1,
@@ -1866,8 +1911,9 @@ function netSnapshot(){
       e.push([o.id,ti2,0,Math.round(o.x),Math.round(o.y),Math.round(o.amount),o.max,0,o.taken?1:0]);
     }
   }
-  const g=P[1];
-  netRelay({k:'S',e,r:[Math.round(g.m),Math.round(g.g),g.sup,g.cap],ev:NET.evOut.splice(0,80)});
+  // every slot's bank travels; each client reads its own out of the list
+  const r=[0,1,2,3].map(i=>[Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap]);
+  netRelay({k:'S',e,r,ev:NET.evOut.splice(0,80)});
 }
 /* ---------- guest consumes it ---------- */
 function netApplySnapshot(d){
@@ -1877,13 +1923,13 @@ function netApplySnapshot(d){
     seen.add(id);
     let o=NET.byId.get(id);
     if(!o){
-      if(info.kind==='unit') o=mkUnit(info.type,a[2],a[3],a[4]);
-      else if(info.kind==='building') o=mkBuilding(info.type,a[2],a[3],a[4],a[8]===1);
+      if(info.kind==='unit') o=mkUnit(info.type,netView(a[2]),a[3],a[4]);
+      else if(info.kind==='building') o=mkBuilding(info.type,netView(a[2]),a[3],a[4],a[8]===1);
       else o=mkResource(info.type,a[3],a[4],a[5]);
       o.id=id; NET.byId.set(id,o);
       o.px=a[3]; o.py=a[4];
     }
-    o.owner=info.kind==='res'?-1:a[2];
+    o.owner=info.kind==='res'?-1:netView(a[2]);
     if(info.kind==='unit'){
       o.px=o.x; o.py=o.y; o.nx=a[3]; o.ny=a[4];
       o.hp=a[5]; o.maxHp=a[6]; o.face=a[7]/100;
@@ -1905,7 +1951,12 @@ function netApplySnapshot(d){
   for(const [id,o] of NET.byId) if(!seen.has(id)){ o.dead=true; NET.byId.delete(id); }
   ents=ents.filter(o=>!o.dead);
   sel=sel.filter(o=>!o.dead);
-  P[0].m=d.r[0]; P[0].g=d.r[1]; P[0].sup=d.r[2]; P[0].cap=d.r[3];
+  if(d.r&&d.r.length&&Array.isArray(d.r[0])){
+    for(let i=0;i<4&&i<d.r.length;i++){
+      const v=d.r[i], w=netView(i);
+      P[w].m=v[0]; P[w].g=v[1]; P[w].sup=v[2]; P[w].cap=v[3];
+    }
+  }
   if(!NET.centered){
     const home=ents.find(e=>!e.dead&&e.kind==='building'&&e.owner===0&&e.type==='keystone');
     if(home){ centerOn(home.x,home.y); NET.centered=true; }
@@ -1917,14 +1968,14 @@ function netApplySnapshot(d){
 }
 function netPlayEvent(v){
   if(v[0]===1){
-    const own=v[5]^1;
+    const own=netView(v[5]);
     const bx=v[10]!==undefined?v[10]:v[1], by=v[11]!==undefined?v[11]:v[2];
     shots.push({x:bx,y:by,tx:v[3],ty:v[4],t:0,
       dur:Math.max(.06,Math.hypot(v[3]-bx,v[4]-by)/900),
       c:TEAM[own].c,big:!!v[6],target:null,dmg:0,splash:0,owner:own});
     if(v[8]!==undefined){
       const ang=v[8]/100, sc=v[9]||14;
-      fx.push({k:'flash',t:0,dur:.16,a:ang,sc,own:v[5]^1,x:v[1]+Math.cos(ang)*sc*1.4,y:v[2]+Math.sin(ang)*sc*1.4});
+      fx.push({k:'flash',t:0,dur:.16,a:ang,sc,own,x:v[1]+Math.cos(ang)*sc*1.4,y:v[2]+Math.sin(ang)*sc*1.4});
     }
     SFX.play(['rifle','cannon','turret','drill'][v[7]||0],v[1],v[2]);
   } else if(v[0]===2){
@@ -1945,6 +1996,12 @@ function netInterp(){
 /* ---------- orders: the guest asks, the host decides ---------- */
 function selIds(){ return sel.filter(e=>e&&!e.dead&&e.owner===0).map(e=>e.id); }
 function netCmd(op,extra){ netRelay(Object.assign({k:'C',op},extra||{})); }
+function netBegin(){
+  if(!NET.isHost) return;
+  const g=(typeof scaleKey!=='undefined'&&scaleKey==='grand');
+  const md=(typeof modeKey!=='undefined')?modeKey:'duel';
+  netSend({t:'begin',mode:md,grand:g,seed:(Math.random()*4294967295)>>>0});
+}
 function contextOrder(mine,wx,wy){
   mine=mine.filter(e=>e&&!e.dead);
   if(!mine.length) return;
@@ -1973,12 +2030,13 @@ function contextOrder(mine,wx,wy){
   }
   formation(us,wx,wy,(x,y)=>({t:'move',x,y}));
 }
-function netHostApply(c){
+function netHostApply(c,from){
+  const ME=(from===undefined?1:from)|0;
   const byId=new Map();
   for(const e of ents) if(!e.dead) byId.set(e.id,e);
-  const mine=(c.ids||[]).map(i=>byId.get(i)).filter(e=>e&&e.owner===1);
+  const mine=(c.ids||[]).map(i=>byId.get(i)).filter(e=>e&&e.owner===ME);
   const us=mine.filter(e=>e.kind==='unit');
-  const bld=id=>{ const b=byId.get(id); return (b&&b.owner===1&&b.kind==='building')?b:null; };
+  const bld=id=>{ const b=byId.get(id); return (b&&b.owner===ME&&b.kind==='building')?b:null; };
   switch(c.op){
     case 'ctx': contextOrder(mine,c.x,c.y); break;
     case 'move': formation(us,c.x,c.y,(x,y)=>({t:'move',x,y})); break;
@@ -1989,8 +2047,8 @@ function netHostApply(c){
     case 'train': { const b=bld(c.id); if(b&&b.done&&UDEF[c.type]) tryTrain(b,c.type); break; }
     case 'build': {
       if(!BDEF[c.type]) break;
-      const okB=startBuild(c.type,c.x,c.y,1,us.filter(u=>UDEF[u.type].worker));
-      if(!okB) netRelay({k:'no',s:canAfford(1,BDEF[c.type])?'Cannot build there':'Not enough resources'});
+      const okB=startBuild(c.type,c.x,c.y,ME,us.filter(u=>UDEF[u.type].worker));
+      if(!okB) netRelay({k:'no',s:canAfford(ME,BDEF[c.type])?'Cannot build there':'Not enough resources'},ME);
       break;
     }
     case 'cancelq': { const b=bld(c.id); if(b) cancelQueue(b,c.i|0); break; }
@@ -2018,9 +2076,15 @@ function startOnline(seed,grand,mode){
   SEED=seed>>>0;
   setMapScale(!!grand);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
-  setupSides(mode||'duel',true);
-  // Only the host simulates, so the guest must not run commanders of its own;
-  // it sees the allied bots through snapshots like everything else.
+  setupSides(mode||'duel',NET.humans||2);
+  // Teams are defined in real slots; a guest sees itself as 0, so swap its own
+  // slot into place or allies and enemies come out inverted on its screen.
+  if(NET.slot){
+    const t=TEAMOF.slice(), g=NET.slot;
+    const tmp=t[0]; t[0]=t[g]; t[g]=tmp; TEAMOF=t;
+  }
+  // Only the host simulates, so a guest runs no commanders of its own;
+  // it sees the bots through snapshots like everything else.
   if(NET.role==='guest') BOTS=[false,false,false,false];
   menuOn=false;
   document.getElementById('menu').style.display='none';
@@ -2038,12 +2102,15 @@ function startOnline(seed,grand,mode){
 function netCheckEnd(){
   if(NET.role!=='host'||NET.ended) return;
   const ts=aliveTeams();
-  const hostAlive=ts.indexOf(TEAMOF[0])>=0, guestAlive=ts.indexOf(TEAMOF[1])>=0;
-  // Settled once one side remains, or once either human is knocked out - in a
-  // free-for-all the survivor takes it even if bots are still scrapping.
-  if(ts.length>1&&hostAlive&&guestAlive) return;
+  const upright=i=>ts.indexOf(TEAMOF[i])>=0;
+  const hostAlive=upright(0);
+  let anyOut=false;
+  for(let i=1;i<(NET.humans||2);i++) if(!upright(i)) anyOut=true;
+  // Settled once one side remains, or once any human is knocked out - in a
+  // free-for-all the survivors take it even if bots are still scrapping.
+  if(ts.length>1&&hostAlive&&!anyOut) return;
   NET.ended=true;
-  netRelay({k:'over',w:guestAlive});
+  for(let i=1;i<(NET.humans||2);i++) netRelay({k:'over',w:upright(i)},i);
   endGame(hostAlive?'VICTORY':'DEFEAT',hostAlive?'#7dffb0':'#ff6b52');
 }
 
@@ -3453,11 +3520,13 @@ function updateCam(dt){
   if(keys['arrowright']) dx+=sp;
   if(keys['arrowup']) dy-=sp;
   if(keys['arrowdown']) dy+=sp;
-  const inside=OPT.edge&&!IS_TOUCH&&mouse.over&&mouse.x>=0&&mouse.y>=0&&mouse.x<=VW&&mouse.y<=VH;
-  if(inside&&!drag){
+  const W=window.innerWidth, H=window.innerHeight;
+  const live=OPT.edge&&!IS_TOUCH&&mouse.inWin&&mouse.ex!==undefined&&
+             mouse.ex>=0&&mouse.ey>=0&&mouse.ex<=W&&mouse.ey<=H;
+  if(live&&!drag){
     const E=22;
-    if(mouse.x<E) dx-=sp; else if(mouse.x>VW-E) dx+=sp;
-    if(mouse.y<E) dy-=sp; else if(mouse.y>VH-E) dy+=sp;
+    if(mouse.ex<E) dx-=sp; else if(mouse.ex>W-E) dx+=sp;
+    if(mouse.ey<E) dy-=sp; else if(mouse.ey>H-E) dy+=sp;
   }
   cam.x+=dx; cam.y+=dy; clampCam();
 }
@@ -3646,12 +3715,12 @@ const MODES={
 let modeKey='duel';
 /* Lays out the slot table for a match. In a skirmish every slot but yours is a
    bot; online, slot 1 is the other human and the allies (2 and 3) are bots. */
-function setupSides(mode,online){
+function setupSides(mode,humans){
   NPLAY=MODES[mode]?MODES[mode].players:2;
   TEAMOF=(mode==='ffa')?[0,1,2,3]:[0,1,0,1];
   BOTS=[false,false,false,false];
-  for(let o=1;o<NPLAY;o++) BOTS[o]=true;
-  if(online) BOTS[1]=false;
+  const h=Math.max(1,Math.min(humans||1,NPLAY));
+  for(let o=h;o<NPLAY;o++) BOTS[o]=true;
 }
 const SCALES={
   standard:{n:'STANDARD',d:'112 x 112 · normal pace'},
@@ -3845,6 +3914,37 @@ function lobbyError(msg){
   lobbySetState('error');
   document.getElementById('lobMsg').textContent=msg;
 }
+/* Who is in the room so far, and - for the host - the choice between waiting
+   for more commanders or starting now with bots filling the empty seats. */
+function lobbyRoster(m){
+  const seats=document.getElementById('lobSeats');
+  const startBtn=document.getElementById('lobStart');
+  // the room's mode comes from whoever opened it, not from this client's menu
+  if(m.mode&&typeof MODES!=='undefined'&&MODES[m.mode]) NET.mode=m.mode;
+  const key=NET.mode||modeKey;
+  const cap=(typeof MODES!=='undefined'&&MODES[key])?MODES[key].players:(m.max||4);
+  const n=m.n|0;
+  lobbySetState(NET.isHost?'hosting':'waiting');
+  document.getElementById('lobMsg').textContent=NET.isHost
+    ? (cap>2 ? 'Share the code. Wait for more commanders, or start now and let bots take the empty seats.'
+             : 'Share this code with your opponent.')
+    : 'You are in. Waiting for the host to start.';
+  let html='';
+  for(let i=0;i<cap;i++){
+    const filled=i<n;
+    const who=i===0?'HOST':('COMMANDER '+(i+1));
+    const tag=filled?(i===NET.slot?'you':'ready'):'bot seat';
+    html+='<div class="seat'+(i===NET.slot&&filled?' me':'')+(filled?'':' open')+'">'+
+          '<b>'+(filled?who:'OPEN')+'</b><i>'+tag+'</i></div>';
+  }
+  seats.innerHTML=html;
+  seats.style.display='block';
+  if(NET.isHost&&n>=2){ startBtn.style.display='block'; startBtn.textContent=
+    (n>=cap?'START':'START NOW ('+n+' of '+cap+')'); }
+  else startBtn.style.display='none';
+  // a full room needs no decision, so a duel still starts the moment two connect
+  if(NET.isHost&&n>=cap) netBegin();
+}
 function lobbyShowServer(){
   const row=document.getElementById('lobSrv');
   row.style.display='flex';
@@ -3869,6 +3969,8 @@ function lobbySetState(st){
   const spin=document.getElementById('lobSpin');
   codeBox.style.display='none'; entry.style.display='none'; spin.style.display='none';
   const srv=document.getElementById('lobSrv'); if(srv) srv.style.display='none';
+  const seats=document.getElementById('lobSeats'); if(seats) seats.style.display='none';
+  const startBtn=document.getElementById('lobStart'); if(startBtn) startBtn.style.display='none';
   if(st==='searching'){
     title.textContent='QUICK PLAY';
     msg.textContent='Looking for an opponent — this stays open until someone joins.';
@@ -3884,6 +3986,10 @@ function lobbySetState(st){
     msg.textContent='Type the four-digit code you were given.';
     entry.style.display='flex';
     setTimeout(()=>{ const i=document.getElementById('lobInput'); if(i){ i.value=''; i.focus(); } },30);
+  } else if(st==='waiting'){
+    title.textContent='LOBBY';
+    codeBox.textContent=NET.code||'----';
+    codeBox.style.display='block';
   } else if(st==='linking'){
     title.textContent='CONNECTED';
     msg.textContent='Setting up the battlefield...';
@@ -3910,13 +4016,13 @@ function lobbyInit(){
   document.getElementById('btnQuick').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
     lobbySetState('searching');
-    netConnect(()=>netSend({t:'quick'}));
+    netConnect(()=>netSend({t:'quick',mode:modeKey}));
   };
   document.getElementById('btnHost').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
     lobbySetState('hosting');
     document.getElementById('lobCode').textContent='----';
-    netConnect(()=>netSend({t:'host'}));
+    netConnect(()=>netSend({t:'host',mode:modeKey}));
   };
   document.getElementById('btnJoin').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
@@ -3932,6 +4038,7 @@ function lobbyInit(){
     document.getElementById('lobTitle').textContent='SERVER SET';
     document.getElementById('lobMsg').textContent=h+' saved — pick Quick Play, Host or Join.';
   };
+  document.getElementById('lobStart').onclick=()=>{ SFX.play('click'); netBegin(); };
   document.getElementById('lobSrvGo').onclick=srvGo;
   document.getElementById('lobSrvIn').addEventListener('keydown',e=>{
     if(e.key==='Enter'){ e.preventDefault(); srvGo(); }
@@ -4151,7 +4258,7 @@ function startTutorial(){
   diffKey='recruit'; DIFF=DIFFS.recruit||DIFFS.veteran;
   ELITE={hp:1,dmg:1};
   modeKey='duel';
-  setupSides('duel',false);
+  setupSides('duel',1);
   BOTS=[false,false,false,false];      // nobody attacks you while you learn
   TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={}; TUT.baseW=0; TUT.baseD=0;
   TUT_STEPS.forEach(st=>{ st._entered=false; });
@@ -4171,7 +4278,7 @@ function startGame(key){
   setMapScale(scaleKey==='grand');
   diffKey=key; DIFF=DIFFS[key]||DIFFS.veteran;
   ELITE={hp:DIFF.hp,dmg:DIFF.dmg};
-  setupSides(modeKey,false);
+  setupSides(modeKey,1);
   menuOn=false;
   document.getElementById('menu').style.display='none';
   init();

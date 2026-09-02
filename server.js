@@ -124,34 +124,52 @@ function sendFrame(c,op,payload){
 function send(c,obj){ sendFrame(c,0x1,Buffer.from(JSON.stringify(obj),'utf8')); }
 
 /* ---------------- lobby ---------------- */
-const rooms=new Map();                     // code -> {host, guest, quick, born}
+const rooms=new Map();          // code -> {code, players[], quick, born, started}
+const MAXP=4;
 function newCode(){
   let code;
   do{ code=String(Math.floor(1000+Math.random()*9000)); }while(rooms.has(code));
   return code;
 }
-function openRoom(c,quick){
+function openRoom(c,quick,mode){
   const code=newCode();
-  const room={code,host:c,guest:null,quick:!!quick,born:Date.now()};
+  const room={code,players:[c],quick:!!quick,born:Date.now(),started:false,
+              mode:(typeof mode==='string'?mode:'duel')};
   rooms.set(code,room); c.room=room;
   send(c,{t:'hosted',code,quick:!!quick});
+  roster(room);
   return room;
 }
-function pair(room){
-  send(room.host,{t:'start',role:'host',code:room.code});
-  send(room.guest,{t:'start',role:'guest',code:room.code});
+function hostOf(room){ return room.players[0]; }
+function roster(room){
+  room.players.forEach((c,i)=>{
+    send(c,{t:'roster',code:room.code,n:room.players.length,max:MAXP,slot:i,
+            host:i===0,mode:room.mode});
+  });
+}
+function addPlayer(room,c){
+  if(room.started||room.players.length>=MAXP) return false;
+  room.players.push(c); c.room=room; roster(room); return true;
+}
+/* The host decides when to go: everyone in gets a slot, the rest become bots. */
+function begin(room,mode,grand,seed){
+  room.started=true;
+  room.players.forEach((c,i)=>{
+    send(c,{t:'start',role:i===0?'host':'guest',code:room.code,
+            slot:i,count:room.players.length,mode:mode,grand:!!grand,seed:seed});
+  });
 }
 function handle(c,text){
   let m; try{ m=JSON.parse(text); }catch(e){ return; }
-  if(m.t==='host'){ if(c.room) return; openRoom(c,false); return; }
+  if(m.t==='host'){ if(c.room) return; openRoom(c,false,m.mode); return; }
   if(m.t==='quick'){
     if(c.room) return;
     for(const room of rooms.values()){
-      if(room.quick&&!room.guest&&room.host!==c){
-        room.guest=c; c.room=room; pair(room); return;
+      if(room.quick&&!room.started&&room.players.length<MAXP&&room.players.indexOf(c)<0){
+        if(addPlayer(room,c)) return;
       }
     }
-    openRoom(c,true);
+    openRoom(c,true,m.mode);
     send(c,{t:'searching'});
     return;
   }
@@ -159,25 +177,42 @@ function handle(c,text){
     if(c.room) return;
     const room=rooms.get(String(m.code||'').trim());
     if(!room){ send(c,{t:'error',msg:'No game with that code'}); return; }
-    if(room.guest){ send(c,{t:'error',msg:'That game is already full'}); return; }
-    if(room.host===c){ send(c,{t:'error',msg:'That is your own code'}); return; }
-    room.guest=c; c.room=room; pair(room);
+    if(room.started){ send(c,{t:'error',msg:'That game has already started'}); return; }
+    if(room.players.length>=MAXP){ send(c,{t:'error',msg:'That game is already full'}); return; }
+    if(room.players.indexOf(c)>=0){ send(c,{t:'error',msg:'That is your own code'}); return; }
+    addPlayer(room,c);
+    return;
+  }
+  if(m.t==='begin'){
+    const room=c.room;
+    if(!room||room.started||hostOf(room)!==c) return;
+    room.mode=m.mode||room.mode;
+    begin(room,room.mode,m.grand,m.seed);
     return;
   }
   if(m.t==='cancel'){ leaveRoom(c); return; }
   if(m.t==='relay'){
     const room=c.room; if(!room) return;
-    const other=room.host===c?room.guest:room.host;
-    if(other) sendFrame(other,0x1,Buffer.from(JSON.stringify({t:'relay',d:m.d}),'utf8'));
+    const from=room.players.indexOf(c); if(from<0) return;
+    const to=(typeof m.to==='number')?[room.players[m.to]]:room.players;
+    const buf=Buffer.from(JSON.stringify({t:'relay',d:m.d,from}),'utf8');
+    for(const o of to) if(o&&o!==c) sendFrame(o,0x1,buf);
     return;
   }
 }
 function leaveRoom(c){
   const room=c.room; if(!room) return;
   c.room=null;
-  const other=room.host===c?room.guest:room.host;
-  rooms.delete(room.code);
-  if(other){ other.room=null; send(other,{t:'peerleft'}); }
+  const i=room.players.indexOf(c);
+  if(i<0) return;
+  // The host owns the simulation, so its exit ends the room for everyone.
+  if(i===0||room.started){
+    rooms.delete(room.code);
+    for(const o of room.players) if(o&&o!==c){ o.room=null; send(o,{t:'peerleft'}); }
+    return;
+  }
+  room.players.splice(i,1);
+  roster(room);
 }
 function dropClient(c){
   if(!c.alive) return;
@@ -187,8 +222,10 @@ function dropClient(c){
 }
 setInterval(()=>{                            // sweep abandoned lobbies
   const now=Date.now();
-  for(const [code,room] of rooms) if(!room.guest&&now-room.born>10*60*1000){ 
-    if(room.host) send(room.host,{t:'error',msg:'Lobby timed out'});
+  for(const [code,room] of rooms) if(!room.started&&now-room.born>10*60*1000){
+    const h=hostOf(room);
+    if(h) send(h,{t:'error',msg:'Lobby timed out'});
+    for(const o of room.players) if(o) o.room=null;
     rooms.delete(code);
   }
 },60*1000);
