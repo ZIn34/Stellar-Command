@@ -31,6 +31,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070c;overscroll-b
 #mmWrap{width:min(clamp(96px,19vw,156px),calc(var(--panel) - 16px));aspect-ratio:1;flex:0 0 auto;border:2px solid #24486b;border-radius:4px;
   background:#04080e;overflow:hidden;position:relative}
 #mm{width:100%;height:100%;display:block;cursor:pointer;touch-action:none}
+#alert{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:7;display:none;
+  align-items:center;gap:10px;padding:7px 10px 7px 14px;border-radius:8px;
+  background:rgba(28,8,8,.92);border:1px solid #7d2b1c;box-shadow:0 4px 20px rgba(0,0,0,.5);
+  animation:alertPulse 1.5s ease-in-out infinite}
+#alertTxt{font-size:12px;letter-spacing:3px;color:#ff9b7f}
+#alertGo{font-family:inherit;font-size:10px;letter-spacing:2px;padding:5px 12px;cursor:pointer;
+  color:#2a0d08;background:linear-gradient(180deg,#ffb9a4,#ff6b52);border:0;border-radius:5px}
+#alertGo:hover{filter:brightness(1.12)}
+@keyframes alertPulse{0%,100%{border-color:#7d2b1c}50%{border-color:#ff6b52}}
+body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
 #groups{display:none;flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:3px;width:46px}
 #groups .grp{position:relative;height:26px;border:1px solid #24486b;border-radius:4px;background:#08121c;
   cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -302,6 +312,7 @@ body.touch .mouse-only{display:none}
   <div id="info"><div id="infoTitle">NO SELECTION</div><div id="body"></div></div>
   <div id="card"></div>
 </div>
+<div id="alert"><span id="alertTxt">BASE UNDER ATTACK</span><button id="alertGo">SHOW ME</button></div>
 <div id="msg"></div>
 <div id="menu">
   <canvas id="mcv"></canvas>
@@ -842,7 +853,14 @@ function findTarget(e,rad){
 function damage(t,amt,by){
   if(t.dead) return;
   t.hp-=amt; t.flash=.12;
-  if(t.owner===0) lastAlert={x:t.x,y:t.y};
+  if(t.owner===0){
+    lastAlert={x:t.x,y:t.y};
+    if(t.kind==='building'){
+      const first=!ALERT.until||gameTime>ALERT.until;
+      ALERT.x=t.x; ALERT.y=t.y; ALERT.name=BDEF[t.type].n; ALERT.until=gameTime+11;
+      if(first&&gameTime-ALERT.spoke>16){ ALERT.spoke=gameTime; SFX.play('deny'); }
+    }
+  }
   if(t.kind==='building'&&!t.done) t.maxHp=BDEF[t.type].hp;
   if(t.hp<=0){
     t.dead=true;
@@ -2247,6 +2265,19 @@ const cardEl=document.getElementById('card');
 const infoT=document.getElementById('infoTitle');
 const bodyEl=document.getElementById('body');
 let cardButtons=[], lastAlert=null;
+/* A structure taking fire raises a banner that stays up while the attack lasts
+   and jumps the camera to whatever was hit last. */
+const ALERT={x:0,y:0,name:'',until:0,spoke:-99,shown:false};
+function alertStep(){
+  const el=document.getElementById('alert'); if(!el) return;
+  const on=gameOn&&!over&&ALERT.until>gameTime;
+  if(on!==ALERT.shown){ el.style.display=on?'flex':'none'; ALERT.shown=on; }
+  if(on){
+    const txt=document.getElementById('alertTxt');
+    const want=(ALERT.name||'BASE').toUpperCase()+' UNDER ATTACK';
+    if(txt.textContent!==want) txt.textContent=want;
+  }
+}
 function say(t){
   const m=document.getElementById('msg');
   m.textContent=t; m.classList.add('on');
@@ -2432,7 +2463,7 @@ function buildInfo(){
   }
 }
 function refreshUI(){
-  buildInfo(); buildCard(); buildGroups();
+  buildInfo(); buildCard(); buildGroups(); alertStep();
   document.getElementById('min').textContent=Math.floor(P[0].m);
   document.getElementById('gas').textContent=Math.floor(P[0].g);
   const sp=document.getElementById('supply');
@@ -3749,6 +3780,7 @@ function leaveMatch(){
 function init(){
   ents=[]; nextId=1; shots=[]; fx=[]; gameTime=0; over=false; paused=false;
   sel=[]; placing=null; pending=null; pathQ.length=0; lastAlert=null; cardMode='main';
+  ALERT.until=0; ALERT.spoke=-99; ALERT.shown=false;
   for(const k in groups) delete groups[k];
   const startM=GRAND?600:150;
   for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=0; P[i].sup=0; P[i].cap=0; }
@@ -4131,6 +4163,9 @@ function lobbyInit(){
     document.getElementById('lobSrv').style.display='none';
     document.getElementById('lobTitle').textContent='SERVER SET';
     document.getElementById('lobMsg').textContent=h+' saved — pick Quick Play, Host or Join.';
+  };
+  document.getElementById('alertGo').onclick=()=>{
+    SFX.play('click'); centerOn(ALERT.x,ALERT.y);
   };
   document.getElementById('lobStart').onclick=()=>{ SFX.play('click'); netBegin(); };
   document.getElementById('lobSrvGo').onclick=srvGo;
