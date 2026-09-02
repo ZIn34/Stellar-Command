@@ -353,6 +353,8 @@ body.touch .mouse-only{display:none}
       <h3>CAMERA</h3>
       <div class="srow"><span>EDGE SCROLLING</span><button id="tEdge" class="tog"></button></div>
       <label>SCROLL SPEED<span id="vScroll">100%</span></label><input type="range" id="sScroll" min="40" max="220">
+      <label>MOUSE PAN SPEED<span id="vEdgeSpd">100%</span></label><input type="range" id="sEdgeSpd" min="30" max="250">
+      <label>EDGE ZONE<span id="vEdgeZone">22px</span></label><input type="range" id="sEdgeZone" min="8" max="60">
       <h3>DISPLAY</h3>
       <div class="srow"><span>HEALTH BARS</span>
         <span class="seg"><button data-hp="damaged">HURT</button><button data-hp="always">ALL</button><button data-hp="never">OFF</button></span></div>
@@ -3611,9 +3613,9 @@ function updateCam(dt){
   const live=OPT.edge&&!IS_TOUCH&&mouse.inWin&&mouse.ex!==undefined&&
              mouse.ex>=0&&mouse.ey>=0&&mouse.ex<=W&&mouse.ey<=H;
   if(live&&!drag){
-    const E=22;
-    if(mouse.ex<E) dx-=sp; else if(mouse.ex>W-E) dx+=sp;
-    if(mouse.ey<E) dy-=sp; else if(mouse.ey>H-E) dy+=sp;
+    const E=OPT.edgeZone||22, ms=sp*(OPT.edgeSpd||1);
+    if(mouse.ex<E) dx-=ms; else if(mouse.ex>W-E) dx+=ms;
+    if(mouse.ey<E) dy-=ms; else if(mouse.ey>H-E) dy+=ms;
   }
   cam.x+=dx; cam.y+=dy; clampCam();
 }
@@ -4151,7 +4153,8 @@ function lobbyInit(){
 }
 
 /* ===================== SETTINGS ===================== */
-const OPT={master:1, music:.7, sfx:.5, edge:true, scroll:1, hpBars:'damaged', hints:true, lowFx:false};
+const OPT={master:1, music:.7, sfx:.5, edge:true, scroll:1, edgeSpd:1, edgeZone:22,
+  hpBars:'damaged', hints:true, lowFx:false};
 function optLoad(){
   try{ const j=JSON.parse(localStorage.getItem('sc_opt')||'null'); if(j) Object.assign(OPT,j); }catch(e){}
 }
@@ -4163,6 +4166,9 @@ function optApply(){
   if(h) h.style.opacity=(OPT.hints&&!hintFaded)?'1':'0';
   const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=Math.round(v*100)+'%'; };
   set('vMaster',OPT.master); set('vMusic',OPT.music); set('vSfx',OPT.sfx); set('vScroll',OPT.scroll);
+  set('vEdgeSpd',OPT.edgeSpd);
+  const ez=document.getElementById('vEdgeZone');
+  if(ez) ez.textContent=Math.round(OPT.edgeZone)+'px';
   const tog=(id,on)=>{ const e=document.getElementById(id); if(e) e.classList.toggle('on',!!on); };
   tog('tEdge',OPT.edge); tog('tHints',OPT.hints); tog('tLowFx',OPT.lowFx);
   document.querySelectorAll('.seg button[data-hp]').forEach(b=>
@@ -4176,6 +4182,8 @@ function settingsOpen(){
   g('sMusic').value=Math.round(OPT.music*100);
   g('sSfx').value=Math.round(OPT.sfx*100);
   g('sScroll').value=Math.round(OPT.scroll*100);
+  g('sEdgeSpd').value=Math.round(OPT.edgeSpd*100);
+  g('sEdgeZone').value=Math.round(OPT.edgeZone);
   optApply();
   el.style.display='flex';
 }
@@ -4189,6 +4197,7 @@ function settingsInit(){
   };
   bind('sMaster','master',100); bind('sMusic','music',100);
   bind('sSfx','sfx',100); bind('sScroll','scroll',100);
+  bind('sEdgeSpd','edgeSpd',100); bind('sEdgeZone','edgeZone',1);
   g('tEdge').onclick=()=>{ OPT.edge=!OPT.edge; SFX.play('click'); optApply(); optSave(); };
   g('tHints').onclick=()=>{ OPT.hints=!OPT.hints; hintFaded=false; SFX.play('click'); optApply(); optSave(); };
   g('tLowFx').onclick=()=>{ OPT.lowFx=!OPT.lowFx; SFX.play('click'); optApply(); optSave(); };
