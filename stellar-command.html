@@ -45,10 +45,18 @@ body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
 #sumT td:last-child{text-align:right;color:#dff1ff;letter-spacing:2px}
 .overRow{display:flex;gap:10px;align-items:center}
 #specBtn{display:none}
-#idle{display:none;align-items:center;gap:5px;font-family:inherit;font-size:12.5px;letter-spacing:1px;
-  color:#ffcf5a;background:#1c1608;border:1px solid #6b5518;border-radius:6px;padding:2px 9px;cursor:pointer}
-#idle:hover{border-color:#ffcf5a}
-#idle.on{display:flex}
+#sideBtns{display:flex;flex-direction:column;justify-content:flex-end;gap:5px;flex:0 0 auto;width:42px}
+#sideBtns button{font-family:inherit;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1px;height:38px;border-radius:5px;cursor:pointer;
+  background:#0d1a28;border:1px solid #2d5a80;color:#9fc4dd;line-height:1}
+#sideBtns button:hover{border-color:#4bd6ff;color:#dff1ff}
+#sideBtns .ib{font-size:15px}
+#idle{color:#ffcf5a;border-color:#6b5518;background:#1c1608}
+#idle b{font-weight:400;font-size:10.5px}
+#idle.none{opacity:.35;color:#7c9cb4;border-color:#2d5a80;background:#0d1a28}
+#idle.on{border-color:#ffcf5a}
+body.touch #sideBtns{width:38px}
+body.touch #sideBtns button{height:34px}
 #groups{display:none;flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:3px;width:46px}
 #groups .grp{position:relative;height:26px;border:1px solid #24486b;border-radius:4px;background:#08121c;
   cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -109,7 +117,6 @@ body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
   background:linear-gradient(180deg,#14283c,#0b1622);color:#9fc7e0;border:1px solid #2d5a80;
   border-radius:5px;font-size:14px;line-height:1;cursor:pointer}
 body.touch .touchbtn{display:block}
-#armyBtn{top:44px;left:10px}
 #mmOrder{position:absolute;left:10px;bottom:calc(var(--panel) + 6px);z-index:9;display:none;
   width:30px;height:26px;background:linear-gradient(180deg,#14283c,#0b1622);color:#9fc7e0;
   border:1px solid #2d5a80;border-radius:5px;font-size:12px;cursor:pointer;padding:0}
@@ -126,7 +133,6 @@ body.touch .btn{font-size:9px}
 body.touch #panel{padding:6px;gap:6px}
 body.touch #topbar{padding-top:max(7px,env(safe-area-inset-top))}
 body.touch #pauseBtn{top:max(8px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left))}
-body.touch #armyBtn{top:calc(max(8px,env(safe-area-inset-top)) + 36px);left:max(10px,env(safe-area-inset-left))}
 #rotate{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;
   background:#05070c;color:#9fc7e0;text-align:center;font-size:13px;letter-spacing:3px}
 #rotate .rot{font-size:44px;margin-bottom:14px;color:#4bd6ff}
@@ -302,11 +308,9 @@ body.touch .mouse-only{display:none}
   <div class="res" title="Aurite"><span class="dot" style="background:#7fd0ff"></span><b id="min">0</b></div>
   <div class="res" title="Ichor"><span class="dot" style="background:#35d18a"></span><b id="gas">0</b></div>
   <div class="res" title="Population"><span style="color:#8fb0c8">POP</span><b id="supply">0/0</b></div>
-  <button id="idle" title="Idle Delvers - click to select (F1)"><span class="dot" style="background:#ffcf5a"></span><b id="idleN">0</b></button>
   <button id="snd" title="Sound on/off (Ctrl+M)">&#128266;</button>
 </div>
 <button id="pauseBtn" title="Pause (Esc)">&#9612;&#9612;</button>
-<button id="armyBtn" class="touchbtn" title="Select army">&#9876;</button>
 <button id="mmOrder" title="Minimap order mode">&#10148;</button>
 <div id="rotate"><div><div class="rot">&#8635;</div>ROTATE YOUR DEVICE<br><span>Stellar Command plays in landscape</span></div></div>
 <div id="pause">
@@ -324,6 +328,10 @@ body.touch .mouse-only{display:none}
   Minimap: LMB pans the camera, RMB sends the selection there &nbsp;·&nbsp; Esc: cancel
 </div>
 <div id="panel">
+  <div id="sideBtns">
+    <button id="idle" title="Idle Delvers - select (F1)"><span class="ib">&#9874;</span><b id="idleN">0</b></button>
+    <button id="armyBtn" title="Select army (F2)"><span class="ib">&#9876;</span></button>
+  </div>
   <div id="mmWrap"><canvas id="mm" width="200" height="200"></canvas><div id="clock">0:00</div></div>
   <div id="groups"></div>
   <div id="info"><div id="infoTitle">NO SELECTION</div><div id="body"></div></div>
@@ -2443,6 +2451,7 @@ function idleStep(){
   if(n===idleN) return;
   idleN=n;
   el.classList.toggle('on',n>0);
+  el.classList.toggle('none',n===0);
   document.getElementById('idleN').textContent=n;
 }
 function selectIdle(){
@@ -2707,6 +2716,30 @@ function updateFog(){
       const x=cx+dx, y=cy+dy;
       if(x<0||y<0||x>=MAP_W||y>=MAP_H) continue;
       visible[ti(x,y)]=1; explored[ti(x,y)]=1;
+    }
+  }
+  revealRuins();
+}
+/* A side with no Keystone left cannot rebuild or expand, so its remaining
+   buildings stop being a secret - otherwise finishing a beaten opponent turns
+   into sweeping the map for one stray Habitat. */
+function revealRuins(){
+  for(let o=0;o<NPLAY;o++){
+    if(isAlly(o)) continue;
+    let bs=null, hasCore=false;
+    for(const e of ents){
+      if(e.dead||e.owner!==o||e.kind!=='building') continue;
+      if(e.type==='keystone'){ hasCore=true; break; }
+      (bs=bs||[]).push(e);
+    }
+    if(hasCore||!bs) continue;
+    for(const b of bs){
+      const x0=((b.x-b.w/2)/TILE)|0, x1=((b.x+b.w/2)/TILE)|0;
+      const y0=((b.y-b.h/2)/TILE)|0, y1=((b.y+b.h/2)/TILE)|0;
+      for(let x=x0-1;x<=x1+1;x++) for(let y=y0-1;y<=y1+1;y++){
+        if(x<0||y<0||x>=MAP_W||y>=MAP_H) continue;
+        const i=ti(x,y); visible[i]=1; explored[i]=1;
+      }
     }
   }
 }
