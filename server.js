@@ -152,11 +152,12 @@ function addPlayer(room,c){
   room.players.push(c); c.room=room; roster(room); return true;
 }
 /* The host decides when to go: everyone in gets a slot, the rest become bots. */
-function begin(room,mode,grand,seed){
+function begin(room,mode,grand,seed,terrain){
   room.started=true;
+  room.cfg={mode:mode,grand:!!grand,seed:seed,terrain:terrain,count:room.players.length};
   room.players.forEach((c,i)=>{
     send(c,{t:'start',role:i===0?'host':'guest',code:room.code,
-            slot:i,count:room.players.length,mode:mode,grand:!!grand,seed:seed});
+            slot:i,count:room.players.length,mode:mode,grand:!!grand,seed:seed,terrain:terrain});
   });
 }
 function handle(c,text){
@@ -177,7 +178,16 @@ function handle(c,text){
     if(c.room) return;
     const room=rooms.get(String(m.code||'').trim());
     if(!room){ send(c,{t:'error',msg:'No game with that code'}); return; }
-    if(room.started){ send(c,{t:'error',msg:'That game has already started'}); return; }
+    if(room.started){                          // rejoin a seat that opened up
+      const seat=room.players.indexOf(null);
+      if(seat<0){ send(c,{t:'error',msg:'That game is full'}); return; }
+      room.players[seat]=c; c.room=room;
+      const g=room.cfg||{};
+      send(c,{t:'start',role:'guest',code:room.code,slot:seat,count:g.count||room.players.length,
+              mode:g.mode,grand:!!g.grand,seed:g.seed,terrain:g.terrain,rejoin:true});
+      for(const o of room.players) if(o&&o!==c) send(o,{t:'peerback',slot:seat});
+      return;
+    }
     if(room.players.length>=MAXP){ send(c,{t:'error',msg:'That game is already full'}); return; }
     if(room.players.indexOf(c)>=0){ send(c,{t:'error',msg:'That is your own code'}); return; }
     addPlayer(room,c);
@@ -187,7 +197,7 @@ function handle(c,text){
     const room=c.room;
     if(!room||room.started||hostOf(room)!==c) return;
     room.mode=m.mode||room.mode;
-    begin(room,room.mode,m.grand,m.seed);
+    begin(room,room.mode,m.grand,m.seed,m.terrain);
     return;
   }
   if(m.t==='cancel'){ leaveRoom(c); return; }
@@ -195,6 +205,7 @@ function handle(c,text){
     const room=c.room; if(!room) return;
     const from=room.players.indexOf(c); if(from<0) return;
     const to=(typeof m.to==='number')?[room.players[m.to]]:room.players;
+    if(!to) return;
     const buf=Buffer.from(JSON.stringify({t:'relay',d:m.d,from}),'utf8');
     for(const o of to) if(o&&o!==c) sendFrame(o,0x1,buf);
     return;
@@ -206,9 +217,14 @@ function leaveRoom(c){
   const i=room.players.indexOf(c);
   if(i<0) return;
   // The host owns the simulation, so its exit ends the room for everyone.
-  if(i===0||room.started){
+  if(i===0){
     rooms.delete(room.code);
     for(const o of room.players) if(o&&o!==c){ o.room=null; send(o,{t:'peerleft'}); }
+    return;
+  }
+  if(room.started){
+    room.players[i]=null;                     // seat held open for a reconnect
+    for(const o of room.players) if(o) send(o,{t:'peergone',slot:i});
     return;
   }
   room.players.splice(i,1);

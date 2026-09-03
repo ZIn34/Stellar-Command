@@ -343,6 +343,7 @@ body.touch .mouse-only{display:none}
     <p class="tag">Frontier war for the aurite seams of Kepler-9c</p>
     <div class="rows">
       <div class="col"><h2>SIDES</h2><div id="modes"></div>
+        <h2 style="margin-top:9px">TERRAIN</h2><div id="terrains"></div>
         <h2 style="margin-top:9px">THEATRE</h2><div id="diffs"></div>
         <h2 style="margin-top:9px">SCALE</h2><div id="scales"></div></div>
       <div class="col"><h2>FIELD MANUAL</h2><div id="manual"></div>
@@ -473,18 +474,19 @@ const myFoes=()=>[0,1,2,3].filter(o=>o<NPLAY&&TEAMOF[o]!==TEAMOF[0]);
 /* ===================== DEFINITIONS ===================== */
 const UDEF={
   delver:  {n:'Delver',   hp:60,  sp:118, dmg:5,  rng:18,  cd:1.1, sight:7, m:50,  g:0,  sup:1, bt:12, r:10, worker:true},
-  warden:  {n:'Warden',   hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10},
-  bulwark: {n:'Bulwark',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13},
+  warden:  {n:'Warden',   hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
+  bulwark: {n:'Bulwark',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
   sunderer:{n:'Sunderer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
-  harrower:{n:'Harrower', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16}
+  harrower:{n:'Harrower', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
+  talon:   {n:'Talon',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true}
 };
 const BDEF={
   keystone:  {n:'Keystone',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
   habitat:   {n:'Habitat',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
   musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark'],hk:'R'},
   siphon:    {n:'Siphon',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
-  forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower'],req:'musterhall',hk:'F'},
-  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:100,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,req:'musterhall',hk:'W'}
+  forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'F'},
+  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:100,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'}
 };
 const DEF=(e)=> e.kind==='unit'?UDEF[e.type]:BDEF[e.type];
 
@@ -541,7 +543,7 @@ function clamp(v,a,b){return v<a?a:v>b?b:v}
 const ti=(tx,ty)=>ty*MAP_W+tx;
 
 /* ===================== MAP GENERATION ===================== */
-const ROCK_CLUSTERS=0;          // obstacles per map, before scaling
+let ROCK_CLUSTERS=0;            // obstacles per map, before scaling (set by terrain style)
 function genMap(){
   const R=()=>srand(), IR=(a,b)=>Math.floor(a+R()*(b-a+1));
   for(let i=0;i<terr.length;i++) terr[i]=R()<.14?1:(R()<.08?2:0);
@@ -862,10 +864,14 @@ function around(x,y,rad){
     const a=grid.get(cx+','+cy); if(a) for(const e of a) out.push(e); }
   return out;
 }
+const isAir=e=>e.kind==='unit'&&!!UDEF[e.type].air;
+const canHitAir=e=>!!DEF(e).aa;
 function findTarget(e,rad){
   let best=null,bd=1e9;
+  const aa=canHitAir(e);
   for(const o of around(e.x,e.y,rad)){
     if(o.dead||!isFoe(o.owner,e.owner)) continue;
+    if(isAir(o)&&!aa) continue;                 // nothing to shoot back with
     if(o.kind==='building'&&!o.done&&o.hp<=0) continue;
     const d=Math.hypot(o.x-e.x,o.y-e.y)-hitRadius(o);
     if(d>rad) continue;
@@ -1105,6 +1111,7 @@ function servicePaths(){
 }
 /* ---- steer along a path, going direct whenever the way is clear ---- */
 function navigate(u,tx,ty,dt,stopAt){
+  if(UDEF[u.type].air) return steer(u,tx,ty,dt,stopAt);   // nothing in the way up there
   u.repathT=(u.repathT||0)-dt;
   const wide=UDEF[u.type].r>=WIDE_R;
 
@@ -1177,6 +1184,10 @@ function steer(u,tx,ty,dt,stopAt){
   const step=Math.min(sp*dt,d);
   let nx=dx/d, ny=dy/d;
   u.face=Math.atan2(ny,nx);
+  if(UDEF[u.type].air){                       // straight line, terrain ignored
+    u.x=clamp(u.x+nx*step,16,WW-16); u.y=clamp(u.y+ny*step,16,WH-16);
+    return false;
+  }
   let px=u.x+nx*step, py=u.y+ny*step;
   if(tileBlocked(px,u.y)){ px=u.x; py=u.y+Math.sign(dy||1)*step*.9; }
   if(tileBlocked(u.x,py)&&py!==u.y){ py=u.y; if(px===u.x) px=u.x+Math.sign(dx||1)*step*.9; }
@@ -1195,6 +1206,16 @@ function steer(u,tx,ty,dt,stopAt){
 function separate(){
   for(const u of ents){
     if(u.dead||u.kind!=='unit') continue;
+    if(UDEF[u.type].air){                     // share the sky, ignore the ground
+      let ax=0,ay=0;
+      for(const o of around(u.x,u.y,40)){
+        if(o===u||o.dead||o.kind!=='unit'||!UDEF[o.type].air) continue;
+        const dx=u.x-o.x, dy=u.y-o.y, dd=Math.hypot(dx,dy)||.01, mind=u.r+o.r;
+        if(dd<mind){ const f=(mind-dd)/mind*.5; ax+=dx/dd*f*mind; ay+=dy/dd*f*mind; }
+      }
+      if(ax||ay){ u.x=clamp(u.x+clamp(ax,-8,8),16,WW-16); u.y=clamp(u.y+clamp(ay,-8,8),16,WH-16); }
+      continue;
+    }
     if(tileBlocked(u.x,u.y)){                 // shoved into rock by a crowd - climb out
       const open=nearestOpen((u.x/TILE)|0,(u.y/TILE)|0);
       if(open){
@@ -1658,6 +1679,7 @@ function rightClick(wx,wy,queue){
    stand on - it just grinds against the rock face. Snap every slot to ground
    the unit actually fits on, and never give two units the same tile. */
 function slotFor(u,x,y,taken){
+  if(UDEF[u.type].air) return {x,y};        // any patch of sky will do
   const wide=UDEF[u.type].r>=WIDE_R;
   const tx=clamp((x/TILE)|0,0,MAP_W-1), ty=clamp((y/TILE)|0,0,MAP_H-1);
   if(!navBlocked(tx,ty,wide)&&!taken.has(ti(tx,ty))){ taken.add(ti(tx,ty)); return {x,y}; }
@@ -1905,7 +1927,7 @@ function netView(o){
   if(!g||o<0||o===undefined) return o;
   return o===0?g:(o===g?0:o);
 }
-const NET_U=['delver','warden','bulwark','sunderer','harrower'];
+const NET_U=['delver','warden','bulwark','sunderer','harrower','talon'];
 const NET_B=['keystone','habitat','musterhall','siphon','forgeworks','watchspire'];
 const NET_R=['aurite','vent'];
 function netTypeIdx(e){
@@ -1970,7 +1992,11 @@ function netConnect(then){
   try{ NET.ws=new WebSocket(url); }catch(e){ lobbyError('Could not reach the server'); return; }
   NET.ws.onopen=()=>{ then&&then(); };
   NET.ws.onmessage=ev=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } netRecv(m); };
-  NET.ws.onclose=()=>{ if(netOnline()&&!NET.ended) netDropped(); };
+  NET.ws.onclose=()=>{
+    if(!netOnline()||NET.ended) return;
+    if(NET.role==='guest'&&gameOn) netLost();   // seat is held; offer to rejoin
+    else netDropped();
+  };
   NET.ws.onerror=()=>{
     const h=relayHost();
     lobbyError('Could not reach '+h+'. '+
@@ -1986,6 +2012,8 @@ function netRecv(m){
   if(m.t==='searching'){ lobbySetState('searching'); return; }
   if(m.t==='error'){ lobbyError(m.msg||'Error'); return; }
   if(m.t==='peerleft'){ netDropped(); return; }
+  if(m.t==='peergone'){ say('Commander '+((m.slot|0)+1)+' dropped - their forces fight on'); return; }
+  if(m.t==='peerback'){ say('Commander '+((m.slot|0)+1)+' reconnected'); return; }
   if(m.t==='roster'){
     NET.slot=m.slot|0; NET.isHost=!!m.host; NET.roomN=m.n|0; NET.code=m.code||NET.code;
     lobbyRoster(m);
@@ -1993,7 +2021,9 @@ function netRecv(m){
   }
   if(m.t==='start'){
     NET.role=m.role; NET.code=m.code; NET.ended=false; NET.byId=new Map();
-    NET.slot=m.slot|0; NET.humans=m.count|0||1;
+    NET.slot=m.slot|0; NET.humans=m.count|0||1; NET.terrain=m.terrain||terrainKey;
+    NET.lostAt=null;
+    if(m.rejoin) say('Reconnected as Commander '+(NET.slot+1)+'.');
     lobbyClose();
     startOnline(m.seed>>>0,!!m.grand,m.mode||'duel');
     return;
@@ -2018,6 +2048,24 @@ function netDropped(){
   NET.ended=true;
   if(gameOn){ say('Opponent left the match'); endGame('VICTORY','#7dffb0'); }
   NET.role=null;
+}
+function netLost(){
+  if(NET.ended||NET.role!=='guest'||!gameOn) return;
+  NET.lostAt=NET.code;
+  lobbySetState('error');
+  document.getElementById('lobTitle').textContent='CONNECTION LOST';
+  document.getElementById('lobMsg').textContent=
+    'The match is still running. Rejoin to pick up where you left off.';
+  const b=document.getElementById('lobStart');
+  b.style.display='block'; b.textContent='RECONNECT';
+  b.onclick=()=>{ SFX.play('click'); netRejoin(); };
+}
+function netRejoin(){
+  const code=NET.lostAt||NET.code; if(!code) return;
+  lobbySetState('linking');
+  document.getElementById('lobMsg').textContent='Rejoining match '+code+'...';
+  NET.ws=null; NET.ended=false;
+  netConnect(()=>netSend({t:'join',code:code}));
 }
 function netQuit(){
   if(netOnline()){ NET.ended=true; netSend({t:'cancel'}); }
@@ -2142,7 +2190,7 @@ function netBegin(){
   if(!NET.isHost) return;
   const g=(typeof scaleKey!=='undefined'&&scaleKey==='grand');
   const md=(typeof modeKey!=='undefined')?modeKey:'duel';
-  netSend({t:'begin',mode:md,grand:g,seed:(Math.random()*4294967295)>>>0});
+  netSend({t:'begin',mode:md,grand:g,terrain:terrainKey,seed:(Math.random()*4294967295)>>>0});
 }
 function contextOrder(mine,wx,wy){
   mine=mine.filter(e=>e&&!e.dead);
@@ -2219,6 +2267,7 @@ function startOnline(seed,grand,mode){
   SEED=seed>>>0;
   setMapScale(!!grand);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
+  ROCK_CLUSTERS=(TERRAINS[NET.terrain]||TERRAINS.open).rocks;
   setupSides(mode||'duel',NET.humans||2);
   // Teams are defined in real slots; a guest sees itself as 0, so swap its own
   // slot into place or allies and enemies come out inverted on its screen.
@@ -2885,8 +2934,13 @@ function aiRun(AI,ME,dt){
         const key=UP[ME].wep<=UP[ME].arm?'wep':'arm';
         if(UP[ME][key]<UPG[key].max&&tryResearch(b,key)) continue;
       }
-      const sn=us.filter(u=>u.type==='sunderer').length, hr=us.filter(u=>u.type==='harrower').length;
-      tryTrain(b,hr<sn?'harrower':'sunderer'); continue;
+      const sn=us.filter(u=>u.type==='sunderer').length,
+            hr=us.filter(u=>u.type==='harrower').length,
+            tl=us.filter(u=>u.type==='talon').length;
+      // answer enemy air with air, otherwise keep the ground mix rolling
+      const foeAir=ents.some(e=>!e.dead&&e.kind==='unit'&&isFoe(e.owner,ME)&&UDEF[e.type].air);
+      const want=(foeAir&&tl<4)?'talon':(tl<2&&AI.t>240?'talon':(hr<sn?'harrower':'sunderer'));
+      tryTrain(b,want); continue;
     }
     if(P[ME].m>=(workers.length<8?150:55)) tryTrain(b,(P[ME].m>=380&&AI.t>170)?'bulwark':'warden');
   }
@@ -3122,6 +3176,16 @@ function makeUnitSpr(type,owner){
     glow(g,()=>{ g.fillStyle=t.c; rr(g,R*.42,-R*.16,R*.26,R*.32,1.2); g.fill(); },t.c,7);
     g.strokeStyle=t.c; g.lineWidth=1.6;
     g.beginPath(); g.moveTo(R*.1,-R*.32); g.lineTo(R*.1,R*.32); g.stroke();
+  } else if(type==='talon'){
+    poly(g,[[-R*.5,-R*.95],[R*.15,-R*.28],[R*.15,R*.28],[-R*.5,R*.95],[-R*.15,0]]);
+    g.fillStyle=HULL_LO; g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
+    poly(g,[[-R*.8,-R*.34],[R*.4,-R*.3],[R*1.05,0],[R*.4,R*.3],[-R*.8,R*.34]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.fillStyle=t.c;
+    poly(g,[[-R*.55,-R*.2],[R*.1,-R*.17],[R*.1,R*.17],[-R*.55,R*.2]]); g.fill();
+    glow(g,()=>{ g.fillStyle='#cdefff'; g.beginPath(); g.arc(R*.5,0,R*.16,0,7); g.fill(); },t.c,7);
+    g.fillStyle=t.c; rr(g,-R*.95,-2,R*.3,4,1.4); g.fill();
   } else if(type==='harrower'){
     g.fillStyle=DARK;                                   // outrigger legs
     [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
@@ -3573,10 +3637,12 @@ function drawBuilding(b){
 function drawUnit(u){
   const d=UDEF[u.type], t=TEAM[u.owner], spr=unitSpr(u.type,u.owner);
   const sw=spr.width/SS, sh=spr.height/SS;
+  const lift=d.air?d.r*1.5:0;
   ctx.save();
-  ctx.fillStyle='rgba(0,0,0,.34)';
-  ctx.beginPath(); ctx.ellipse(u.x+2,u.y+d.r*.6,d.r*1.05,d.r*.52,0,0,7); ctx.fill();
-  ctx.translate(u.x,u.y); ctx.rotate(u.face);
+  ctx.fillStyle=d.air?'rgba(0,0,0,.30)':'rgba(0,0,0,.34)';
+  ctx.beginPath(); ctx.ellipse(u.x+2+(d.air?4:0),u.y+d.r*.6+(d.air?lift*.4:0),
+    d.r*(d.air?.85:1.05),d.r*(d.air?.4:.52),0,0,7); ctx.fill();
+  ctx.translate(u.x,u.y-lift); ctx.rotate(u.face);
   ctx.drawImage(spr,-sw/2,-sh/2,sw,sh);
   ctx.restore();
   if(u.flash>0){
@@ -4045,6 +4111,12 @@ const DIFFS={
            wk:.85, halls:4, qd:2, expoAt:190, expo:2, techAt:145, spires:3, hallCost:290, expoCost:430}
 };
 let DIFF=DIFFS.veteran, ELITE={hp:1.35,dmg:1.30}, diffKey='veteran', scaleKey='standard';
+const TERRAINS={
+  open:    {n:'OPEN FIELD', d:'nothing in the way',           rocks:0},
+  standard:{n:'BROKEN',     d:'scattered rock, some cover',   rocks:46},
+  choke:   {n:'CHOKEPOINTS',d:'dense rock, defensible lanes', rocks:95}
+};
+let terrainKey='open';
 const MODES={
   duel:{n:'1 v 1', d:'you vs one commander', players:2},
   team:{n:'2 v 2', d:'you + an ally vs two', players:4},
@@ -4064,7 +4136,7 @@ const SCALES={
   standard:{n:'STANDARD',d:'112 x 112 · normal pace'},
   grand:{n:'GRAND WAR',d:'10x map · 7x income & build · huge armies'}
 };
-const ENAME={delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',harrower:'Devourer'};
+const ENAME={delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',harrower:'Devourer',talon:'Shrike'};
 function unitName(type,owner){ return owner===1?(ENAME[type]||UDEF[type].n):UDEF[type].n; }
 function dmgOf(e){
   const d=DEF(e);
@@ -4102,6 +4174,16 @@ function menuInit(){
     el.onclick=()=>{ SFX.unlock(); SFX.play('click'); modeKey=k;
       mw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
     mw.appendChild(el);
+  });
+  const tw=document.getElementById('terrains');
+  tw.innerHTML='';
+  Object.keys(TERRAINS).forEach(k=>{
+    const d=TERRAINS[k], el=document.createElement('div');
+    el.className='scard'+(k===terrainKey?' on':'');
+    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
+    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); terrainKey=k;
+      tw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
+    tw.appendChild(el);
   });
   const sw=document.getElementById('scales');
   sw.innerHTML='';
@@ -4619,6 +4701,7 @@ function startTutorial(){
   diffKey='recruit'; DIFF=DIFFS.recruit||DIFFS.veteran;
   ELITE={hp:1,dmg:1};
   modeKey='duel';
+  ROCK_CLUSTERS=0;                       // training stays clear
   setupSides('duel',1);
   BOTS=[false,false,false,false];      // nobody attacks you while you learn
   TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={}; TUT.baseW=0; TUT.baseD=0;
@@ -4639,6 +4722,7 @@ function startGame(key){
   setMapScale(scaleKey==='grand');
   diffKey=key; DIFF=DIFFS[key]||DIFFS.veteran;
   ELITE={hp:DIFF.hp,dmg:DIFF.dmg};
+  ROCK_CLUSTERS=(TERRAINS[terrainKey]||TERRAINS.open).rocks;
   setupSides(modeKey,1);
   menuOn=false;
   document.getElementById('menu').style.display='none';
