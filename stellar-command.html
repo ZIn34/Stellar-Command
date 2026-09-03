@@ -259,6 +259,9 @@ body.touch .mouse-only{display:none}
   background:#08121c;color:#4bd6ff;border:1px solid #2d5a80;border-radius:6px;padding:7px}
 #lobSrvGo{font-family:inherit;font-size:12px;letter-spacing:2px;padding:0 14px;cursor:pointer;color:#04121c;
   background:linear-gradient(180deg,#7fe4ff,#2aa8d8);border:0;border-radius:6px}
+#lobSrvReset{font-family:inherit;font-size:11px;letter-spacing:1px;padding:0 11px;cursor:pointer;
+  color:#9fc4dd;background:#0d1d2a;border:1px solid #2d5a80;border-radius:6px}
+#lobSrvReset:hover{border-color:#4bd6ff;color:#dff1ff}
 #lobSeats{display:none;margin:10px 0 2px}
 #lobSeats .seat{display:flex;justify-content:space-between;align-items:center;
   font-size:11px;letter-spacing:1px;padding:5px 9px;margin:4px 0;border-radius:6px;
@@ -383,7 +386,7 @@ body.touch .mouse-only{display:none}
     <div id="lobCode">----</div>
     <p id="lobMsg"></p>
     <div id="lobEntry"><input id="lobInput" inputmode="numeric" maxlength="4" placeholder="0000"><button id="lobGo">JOIN</button></div>
-    <div id="lobSrv"><input id="lobSrvIn" placeholder="your-server.onrender.com" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="lobSrvGo">SAVE</button></div>
+    <div id="lobSrv"><input id="lobSrvIn" placeholder="your-server.onrender.com" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="lobSrvGo">SAVE</button><button id="lobSrvReset">RESET</button></div>
     <div id="lobSeats"></div>
     <button id="lobStart">START NOW</button>
     <div id="lobSpin"><i></i><i></i><i></i></div>
@@ -1902,7 +1905,10 @@ function netConnect(then){
   NET.ws.onmessage=ev=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } netRecv(m); };
   NET.ws.onclose=()=>{ if(netOnline()&&!NET.ended) netDropped(); };
   NET.ws.onerror=()=>{
-    lobbyError('Could not reach '+relayHost()+'.');
+    const h=relayHost();
+    lobbyError('Could not reach '+h+'. '+
+      (getRelay()?'That address is saved on this device - RESET to use the default.'
+                :'The server may be waking up; try again in a moment.'));
     lobbyShowServer();
   };
 }
@@ -4190,6 +4196,16 @@ function lobbyInit(){
   };
   document.getElementById('lobStart').onclick=()=>{ SFX.play('click'); netBegin(); };
   document.getElementById('lobSrvGo').onclick=srvGo;
+  document.getElementById('lobSrvReset').onclick=()=>{
+    setRelay('');                                  // drop it and fall back to the built-in host
+    SFX.play('click');
+    document.getElementById('lobSrvIn').value='';
+    document.getElementById('lobTitle').textContent='SERVER RESET';
+    document.getElementById('lobMsg').textContent=
+      (RELAY_DEFAULT?('Back to the default server ('+RELAY_DEFAULT+'). '):'')+
+      'Pick Quick Play, Host or Join.';
+    document.getElementById('lobSrv').style.display='none';
+  };
   document.getElementById('lobSrvIn').addEventListener('keydown',e=>{
     if(e.key==='Enter'){ e.preventDefault(); srvGo(); }
     e.stopPropagation();
