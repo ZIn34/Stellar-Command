@@ -11,7 +11,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--panel:clamp(118px,23vh,172px)}
-html,body{width:100%;height:100%;overflow:hidden;background:#05070c;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#05070c;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
   font-family:"Consolas","DejaVu Sans Mono",monospace;color:#cfe3f2;user-select:none}
 #cv{position:absolute;top:0;left:0;width:100%;height:calc(100% - var(--panel));display:block;cursor:crosshair;
   touch-action:none;-webkit-user-select:none;user-select:none}
@@ -107,7 +107,9 @@ body.touch .touchbtn{display:block}
   border:1px solid #2d5a80;border-radius:5px;font-size:12px;cursor:pointer;padding:0}
 body.touch #mmOrder{display:block}
 #mmOrder.on{background:linear-gradient(180deg,#7fe4ff,#2aa8d8);color:#04121c;border-color:#7fe4ff}
-body.touch{--panel:clamp(132px,32vh,190px)}
+body.touch{--panel:calc(clamp(126px,30vh,182px) + env(safe-area-inset-bottom,0px))}
+body.touch #panel{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
+body.touch #groups{display:none!important}
 body.touch #hint{display:none}
 body.touch .btn{font-size:9px}
 body.touch #panel{padding:6px;gap:6px}
@@ -1654,7 +1656,7 @@ function orderAttackMove(wx,wy){
    holding still for a moment starts a selection box, two fingers pinch-zoom.  */
 const TOUCH={
   pts:new Map(), mode:'none',        // none | pan | box | pinch
-  sx:0, sy:0, lx:0, ly:0, t0:0, holdTimer:null, moved:0,
+  sx:0, sy:0, lx:0, ly:0, wx:0, wy:0, t0:0, holdTimer:null, moved:0,
   pinchD:0, pinchZ:1, pinchX:0, pinchY:0
 };
 function tPos(e){ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
@@ -1695,6 +1697,9 @@ cv.addEventListener('pointerdown',e=>{
   if(TOUCH.pts.size>2) return;
   TOUCH.mode='pan'; TOUCH.moved=0; TOUCH.t0=performance.now();
   TOUCH.sx=TOUCH.lx=p.x; TOUCH.sy=TOUCH.ly=p.y;
+  // The camera pans with the finger, so resolving the tap from screen space at
+  // release would land it wherever the view had drifted to. Pin it now.
+  const w0=screenToWorld(p.x,p.y); TOUCH.wx=w0.x; TOUCH.wy=w0.y;
   tCancelHold();
   TOUCH.holdTimer=setTimeout(()=>{           // held in place -> drag a selection box
     if(TOUCH.mode==='pan'&&TOUCH.moved<14){
@@ -1746,7 +1751,7 @@ function touchEnd(e){
   if(TOUCH.mode==='box'){
     const d=drag; drag=null; TOUCH.mode='none';
     if(d&&Math.abs(d.x1-d.x0)<14&&Math.abs(d.y1-d.y0)<14){
-      tapAt(d.x0,d.y0);                       // a box that never opened is just a slow tap
+      tapWorld(TOUCH.wx,TOUCH.wy);            // a box that never opened is just a slow tap
       return;
     }
     if(d){
@@ -1761,11 +1766,12 @@ function touchEnd(e){
   }
   if(TOUCH.mode==='pan'){
     TOUCH.mode='none';
-    if(TOUCH.moved<14) tapAt(TOUCH.sx,TOUCH.sy);
+    if(TOUCH.moved<14) tapWorld(TOUCH.wx,TOUCH.wy);
   }
 }
-function tapAt(sx,sy){
-  const w=screenToWorld(sx,sy);
+function tapAt(sx,sy){ const w=screenToWorld(sx,sy); tapWorld(w.x,w.y); }
+function tapWorld(wx,wy){
+  const w={x:wx,y:wy};
   if(placing){
     const ws=sel.filter(s2=>s2.kind==='unit'&&UDEF[s2.type].worker);
     const one=pickBuilder(ws,snap(w.x),snap(w.y));
@@ -1850,6 +1856,10 @@ function srand(){ SEED=(SEED*1664525+1013904223)>>>0; return SEED/4294967296; }
    that server the page host is also the relay, which is the localhost case.
    On a static host such as GitHub Pages there is no relay behind the page, so
    the player points the game at their own deployment once and it sticks. */
+/* Fill this in with your deployed server.js host (no protocol), e.g.
+   'stellar-command.onrender.com', and the public build plays online with no
+   setup. A host typed into the lobby still overrides it. */
+const RELAY_DEFAULT='stellar-command-6hfd.onrender.com';
 const STATIC_HOST=/(^|\.)github\.io$|(^|\.)githubusercontent\.com$|(^|\.)pages\.dev$/i.test(location.hostname);
 function normHost(v){
   return String(v||'').trim()
@@ -1872,8 +1882,9 @@ function setRelay(v){
 })();
 function relayHost(){
   const h=getRelay();
-  if(h) return h;
-  return STATIC_HOST?'':location.host;
+  if(h) return h;                       // whatever the player set wins
+  if(STATIC_HOST) return RELAY_DEFAULT; // Pages has no server behind it
+  return location.host;                 // served by server.js itself
 }
 function netURL(){
   if(location.protocol==='file:') return null;
@@ -2264,7 +2275,7 @@ window.addEventListener('mouseup',()=>{ mmDrag=false; });
 const cardEl=document.getElementById('card');
 const infoT=document.getElementById('infoTitle');
 const bodyEl=document.getElementById('body');
-let cardButtons=[], lastAlert=null;
+let cardButtons=[], lastAlert=null, cardSig='';
 /* A structure taking fire raises a banner that stays up while the attack lasts
    and jumps the camera to whatever was hit last. */
 const ALERT={x:0,y:0,name:'',until:0,spoke:-99,shown:false};
@@ -2379,6 +2390,10 @@ function buildCard(){
     }
   }
   while(cardButtons.length<9) cardButtons.push({empty:true});
+  const sig=cardMode+'|'+cardButtons.map(o=>o.empty?'-':
+    [o.name,o.ic,o.hk,o.dis?1:0,o.img?1:0,o.cost?o.cost.m+'/'+(o.cost.g||0):''].join(',')).join('|');
+  if(sig===cardSig) return;
+  cardSig=sig;
   cardEl.innerHTML='';
   cardButtons.forEach(function(o){
     const el=document.createElement('div');
@@ -2389,7 +2404,13 @@ function buildCard(){
         (o.img?'<img class="bic" src="'+o.img+'" alt="">':'<span class="ic">'+o.ic+'</span>')+
         '<span class="nm">'+(o.name||'')+'</span>';
       el.title=o.tip||'';
-      el.onclick=function(){ if(o.dis){ say(o.tip||'Unavailable'); SFX.play('deny'); return; } SFX.play('click'); o.act(); refreshUI(); };
+      const fire=function(ev){
+        if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+        if(o.dis){ say(o.tip||'Unavailable'); SFX.play('deny'); return; }
+        SFX.play('click'); o.act(); refreshUI();
+      };
+      el.onpointerdown=fire;                 // act on press, not on a click that may never land
+      el.onclick=function(ev){ if(ev) ev.preventDefault(); };
     }
     cardEl.appendChild(el);
   });
@@ -3780,7 +3801,7 @@ function leaveMatch(){
 function init(){
   ents=[]; nextId=1; shots=[]; fx=[]; gameTime=0; over=false; paused=false;
   sel=[]; placing=null; pending=null; pathQ.length=0; lastAlert=null; cardMode='main';
-  ALERT.until=0; ALERT.spoke=-99; ALERT.shown=false;
+  ALERT.until=0; ALERT.spoke=-99; ALERT.shown=false; cardSig='';
   for(const k in groups) delete groups[k];
   const startM=GRAND?600:150;
   for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=0; P[i].sup=0; P[i].cap=0; }
