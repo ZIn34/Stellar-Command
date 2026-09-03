@@ -1459,6 +1459,17 @@ function tryResearch(b,key){
   b.res={key,t:0,dur:UPG[key].bt};
   return true;
 }
+/* One press, one unit from each building in the group - the ones that cannot
+   take it (no room, no cash) simply pass. */
+function trainGroup(list,type){
+  const gs=(list&&list.length?list:[]).filter(x=>x&&!x.dead&&x.done);
+  if(!gs.length) return false;
+  if(gs.length===1) return tryTrain(gs[0],type);
+  let made=0;
+  const order=gs.slice().sort((a,b2)=>(a.queue?a.queue.length:0)-(b2.queue?b2.queue.length:0));
+  for(const g of order){ if(tryTrain(g,type)) made++; }
+  return made>0;
+}
 function tryTrain(b,type){
   if(NET.role==='guest'&&b.owner===0){
     const d=UDEF[type];
@@ -1629,7 +1640,13 @@ window.addEventListener('mouseup',e=>{
   const b2=screenToWorld(Math.max(d.x0,d.x1),Math.max(d.y0,d.y1));
   const x0=a.x, y0=a.y, x1=b2.x, y1=b2.y;
   let pick=ents.filter(en=>!en.dead&&en.kind==='unit'&&en.owner===0&&en.x>x0&&en.x<x1&&en.y>y0&&en.y<y1);
-  if(!pick.length) pick=ents.filter(en=>!en.dead&&en.kind==='building'&&en.owner===0&&en.x>x0&&en.x<x1&&en.y>y0&&en.y<y1).slice(0,1);
+  if(!pick.length){
+    const bs=ents.filter(en=>!en.dead&&en.kind==='building'&&en.owner===0&&
+      en.x>x0&&en.x<x1&&en.y>y0&&en.y<y1);
+    // a box over the base grabs the production line, not the housing
+    const prod=bs.filter(x=>x.done&&BDEF[x.type].trains);
+    pick=prod.length?prod.filter(x=>x.type===prod[0].type):bs.slice(0,1);
+  }
   if(pick.length>1) { const combat=pick.filter(u=>!UDEF[u.type].worker); if(combat.length) pick=combat; }
   setSel(d.shift?sel.concat(pick.filter(p=>!sel.includes(p))):pick);
 });
@@ -2491,7 +2508,16 @@ function buildCard(){
   cardButtons=[];
   const mine=sel.filter(s=>s.owner===0&&!s.dead);
   const us=mine.filter(s=>s.kind==='unit');
-  const b=(mine.length===1&&mine[0].kind==='building')?mine[0]:null;
+  /* Several production buildings act as one: the card shows their shared
+     options and an order goes to every one of them, so a grouped set of halls
+     spits out a whole batch on a single press. */
+  const bldSel=mine.filter(s=>s.kind==='building');
+  let b=null, bGroup=[];
+  if(!us.length&&bldSel.length){
+    const t0=bldSel[0].type;
+    bGroup=bldSel.filter(x=>x.type===t0);
+    b=bGroup[0];
+  }
   if(us.length){
     if(cardMode==='build'){
       for(const t of ['keystone','habitat','musterhall','siphon','forgeworks','watchspire']){
@@ -2537,8 +2563,10 @@ function buildCard(){
     } else if(d.trains){
       for(const t of d.trains){
         const ud=UDEF[t];
-        cardButtons.push({img:iconOf('unit',t,0),name:ud.n,cost:{m:ud.m,g:ud.g},hk:ud.n.charAt(0),
-          act:function(){ tryTrain(b,t); }});
+        cardButtons.push({img:iconOf('unit',t,0),
+          name:ud.n+(bGroup.length>1?' ×'+bGroup.length:''),
+          cost:{m:ud.m,g:ud.g},hk:ud.n.charAt(0),
+          act:function(){ trainGroup(bGroup,t); }});
       }
       if(b.type==='forgeworks'){
         for(const key in UPG){
@@ -2548,16 +2576,18 @@ function buildCard(){
             cost:maxed?null:c, dis:maxed||!!b.res,
             tip:maxed?'Fully researched':(b.res?'Already researching':
                  ('+'+Math.round(u.step*100)+'% army-wide, permanent')),
-            act:function(){ tryResearch(b,key); }});
+            act:function(){ for(const g of bGroup){ if(!g.res&&tryResearch(g,key)) return; } }});
         }
       }
       while(cardButtons.length<8) cardButtons.push({empty:true});
-      cardButtons.push({ic:'✕',name:'Cancel Last',hk:'X',dis:!b.queue.length,
-        act:function(){ cancelQueue(b,b.queue.length-1); }});
+      const anyQ=bGroup.some(x=>x.queue&&x.queue.length);
+      cardButtons.push({ic:'✕',name:'Cancel Last',hk:'X',dis:!anyQ,
+        act:function(){ for(let i=bGroup.length-1;i>=0;i--){ const g=bGroup[i];
+          if(g.queue&&g.queue.length){ cancelQueue(g,g.queue.length-1); return; } } }});
     }
   }
   while(cardButtons.length<9) cardButtons.push({empty:true});
-  const sig=cardMode+'|'+UP[0].wep+UP[0].arm+'|'+cardButtons.map(o=>o.empty?'-':
+  const sig=cardMode+'|'+UP[0].wep+UP[0].arm+'|'+bGroup.length+'|'+cardButtons.map(o=>o.empty?'-':
     [o.name,o.ic,o.hk,o.dis?1:0,o.img?1:0,o.cost?o.cost.m+'/'+(o.cost.g||0):''].join(',')).join('|');
   if(sig===cardSig) return;
   cardSig=sig;
