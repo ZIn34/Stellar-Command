@@ -503,8 +503,8 @@ let ents=[], nextId=1, shots=[], fx=[], gameTime=0, over=false, paused=false, ga
 /* Forgeworks research. Weapons raise damage, plating cuts damage taken; both
    apply army-wide and give a late economy somewhere to go besides more bodies. */
 const UPG={
-  wep:{n:'Weapons', ic:'⚔', hk:'1', step:.12, max:3, m:150, g:50, bt:38},
-  arm:{n:'Plating', ic:'⛨', hk:'2', step:.09, max:3, m:150, g:50, bt:38}
+  wep:{n:'Weapons', ic:'⚔', hk:'A', step:.12, max:3, m:150, g:50, bt:38},
+  arm:{n:'Plating', ic:'⛨', hk:'D', step:.09, max:3, m:150, g:50, bt:38}
 };
 let UP=[{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0}];
 function upCost(key,lvl){ const u=UPG[key]; return {m:Math.round(u.m*(1+lvl*.8)), g:Math.round(u.g*(1+lvl*.8))}; }
