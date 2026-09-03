@@ -10,7 +10,7 @@
 <title>Stellar Command</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--panel:clamp(118px,23vh,172px)}
+:root{--panel:clamp(152px,29vh,224px)}
 html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#05070c;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
   font-family:"Consolas","DejaVu Sans Mono",monospace;color:#cfe3f2;user-select:none}
 #cv{position:absolute;top:0;left:0;width:100%;height:calc(100% - var(--panel));display:block;cursor:crosshair;
@@ -28,22 +28,27 @@ html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#05070
 #snd:hover{opacity:1}
 #panel{position:absolute;bottom:0;left:0;right:0;height:var(--panel);display:flex;gap:8px;padding:7px;
   background:linear-gradient(180deg,#0c1622,#070d16);border-top:2px solid #1d3a55}
-#mmWrap{width:min(clamp(96px,19vw,156px),calc(var(--panel) - 16px));aspect-ratio:1;flex:0 0 auto;border:2px solid #24486b;border-radius:4px;
+#mmWrap{width:min(clamp(120px,23vw,200px),calc(var(--panel) - 16px));aspect-ratio:1;flex:0 0 auto;border:2px solid #24486b;border-radius:4px;
   background:#04080e;overflow:hidden;position:relative}
 #mm{width:100%;height:100%;display:block;cursor:pointer;touch-action:none}
 #alert{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:7;display:none;
-  align-items:center;gap:10px;padding:7px 10px 7px 14px;border-radius:8px;
+  align-items:center;gap:10px;padding:7px 16px;border-radius:8px;
   background:rgba(28,8,8,.92);border:1px solid #7d2b1c;box-shadow:0 4px 20px rgba(0,0,0,.5);
   animation:alertPulse 1.5s ease-in-out infinite}
 #alertTxt{font-size:12px;letter-spacing:3px;color:#ff9b7f}
-#alertGo{font-family:inherit;font-size:10px;letter-spacing:2px;padding:5px 12px;cursor:pointer;
-  color:#2a0d08;background:linear-gradient(180deg,#ffb9a4,#ff6b52);border:0;border-radius:5px}
-#alertGo:hover{filter:brightness(1.12)}
 @keyframes alertPulse{0%,100%{border-color:#7d2b1c}50%{border-color:#ff6b52}}
 body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
 #overSub{font-size:11.5px;letter-spacing:1px;color:#9fc4dd;margin:-4px 0 4px;line-height:1.5}
+#sumT{border-collapse:collapse;margin:6px auto 12px;font-size:11.5px;color:#9fc4dd}
+#sumT td{padding:3px 12px;border-bottom:1px solid rgba(45,90,128,.35)}
+#sumT td:first-child{text-align:left;letter-spacing:1px}
+#sumT td:last-child{text-align:right;color:#dff1ff;letter-spacing:2px}
 .overRow{display:flex;gap:10px;align-items:center}
 #specBtn{display:none}
+#idle{display:none;align-items:center;gap:5px;font-family:inherit;font-size:12.5px;letter-spacing:1px;
+  color:#ffcf5a;background:#1c1608;border:1px solid #6b5518;border-radius:6px;padding:2px 9px;cursor:pointer}
+#idle:hover{border-color:#ffcf5a}
+#idle.on{display:flex}
 #groups{display:none;flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:3px;width:46px}
 #groups .grp{position:relative;height:26px;border:1px solid #24486b;border-radius:4px;background:#08121c;
   cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -72,7 +77,7 @@ body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
 #queue{display:flex;gap:4px;margin-top:6px}
 .qi{width:26px;height:26px;border:1px solid #2d5a80;background:#0d1a28;border-radius:3px;
   display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer}
-#card{width:clamp(150px,29vw,232px);flex:0 0 auto;border:2px solid #24486b;border-radius:4px;background:#080f18;
+#card{width:clamp(190px,34vw,300px);flex:0 0 auto;border:2px solid #24486b;border-radius:4px;background:#080f18;
   padding:6px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:5px}
 .btn{border:1px solid #2d5a80;border-radius:4px;background:linear-gradient(180deg,#14283c,#0d1a28);
   color:#cfe3f2;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -111,6 +116,9 @@ body.touch .touchbtn{display:block}
 body.touch #mmOrder{display:block}
 #mmOrder.on{background:linear-gradient(180deg,#7fe4ff,#2aa8d8);color:#04121c;border-color:#7fe4ff}
 body.touch{--panel:calc(clamp(126px,30vh,182px) + env(safe-area-inset-bottom,0px))}
+/* the roomier desktop panel would crowd a phone, so touch keeps its own sizes */
+body.touch #card{width:clamp(150px,29vw,232px)}
+body.touch #mmWrap{width:min(clamp(96px,19vw,156px),calc(var(--panel) - 16px))}
 body.touch #panel{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
 body.touch #groups{display:none!important}
 body.touch #hint{display:none}
@@ -294,6 +302,7 @@ body.touch .mouse-only{display:none}
   <div class="res" title="Aurite"><span class="dot" style="background:#7fd0ff"></span><b id="min">0</b></div>
   <div class="res" title="Ichor"><span class="dot" style="background:#35d18a"></span><b id="gas">0</b></div>
   <div class="res" title="Population"><span style="color:#8fb0c8">POP</span><b id="supply">0/0</b></div>
+  <button id="idle" title="Idle Delvers - click to select (F1)"><span class="dot" style="background:#ffcf5a"></span><b id="idleN">0</b></button>
   <button id="snd" title="Sound on/off (Ctrl+M)">&#128266;</button>
 </div>
 <button id="pauseBtn" title="Pause (Esc)">&#9612;&#9612;</button>
@@ -320,7 +329,7 @@ body.touch .mouse-only{display:none}
   <div id="info"><div id="infoTitle">NO SELECTION</div><div id="body"></div></div>
   <div id="card"></div>
 </div>
-<div id="alert"><span id="alertTxt">BASE UNDER ATTACK</span><button id="alertGo">SHOW ME</button></div>
+<div id="alert"><span id="alertTxt">BASE UNDER ATTACK</span></div>
 <div id="msg"></div>
 <div id="menu">
   <canvas id="mcv"></canvas>
@@ -481,6 +490,14 @@ const DEF=(e)=> e.kind==='unit'?UDEF[e.type]:BDEF[e.type];
 
 /* ===================== WORLD STATE ===================== */
 let ents=[], nextId=1, shots=[], fx=[], gameTime=0, over=false, paused=false, gameOn=false;
+/* Forgeworks research. Weapons raise damage, plating cuts damage taken; both
+   apply army-wide and give a late economy somewhere to go besides more bodies. */
+const UPG={
+  wep:{n:'Weapons', ic:'⚔', hk:'1', step:.12, max:3, m:150, g:50, bt:38},
+  arm:{n:'Plating', ic:'⛨', hk:'2', step:.09, max:3, m:150, g:50, bt:38}
+};
+let UP=[{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0}];
+function upCost(key,lvl){ const u=UPG[key]; return {m:Math.round(u.m*(1+lvl*.8)), g:Math.round(u.g*(1+lvl*.8))}; }
 const P=[{m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0},
          {m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0}];   // slot 0 is always the local player
 let blocked, terr, explored, visible;
@@ -861,6 +878,7 @@ function findTarget(e,rad){
 /* ===================== COMBAT ===================== */
 function damage(t,amt,by){
   if(t.dead) return;
+  if(t.kind==='unit'&&UP[t.owner]) amt*=Math.max(.35,1-UP[t.owner].arm*UPG.arm.step);
   t.hp-=amt; t.flash=.12;
   if(t.owner===0){
     lastAlert={x:t.x,y:t.y};
@@ -873,6 +891,8 @@ function damage(t,amt,by){
   if(t.kind==='building'&&!t.done) t.maxHp=BDEF[t.type].hp;
   if(t.hp<=0){
     t.dead=true;
+    if(t.owner===0) STATS[t.kind==='building'?'bLost':'lost']++;
+    else if(by===0&&t.owner>0) STATS[t.kind==='building'?'bKilled':'killed']++;
     if(by!==undefined&&by!==null&&by!==t.owner&&P[by]){      // salvage bounty
       const bd=DEF(t), cut=t.kind==='building'?.15:.2;
       const bm=Math.floor((bd.m||0)*cut), bg=Math.floor((bd.g||0)*cut);
@@ -1248,7 +1268,11 @@ function updateUnit(u,dt){
 
   switch(c.t){
     case 'move': case 'amove': {
-      if(navigate(u,c.x,c.y,dt,c.near||6)){ u.cmd={t:'idle'}; u.stuck=0; u.path=null; break; }
+      if(navigate(u,c.x,c.y,dt,c.near||6)){
+        if(u.wp&&u.wp.length){ const n=u.wp.shift();
+          const keep=u.wp; clearNav(u); u.wp=keep; u.cmd={t:c.t,x:n.x,y:n.y}; break; }
+        u.cmd={t:'idle'}; u.stuck=0; u.path=null; break;
+      }
       if((u.jam||0)>26){ u.cmd={t:'idle'}; u.stuck=0; u.jam=0; u.path=null; }
       break; }
     case 'gather': gatherStep(u,dt); break;
@@ -1272,7 +1296,10 @@ function gatherStep(u,dt){
     if(!dep||dep.dead){ dep=u.cmd.dep=nearestDepot(u.owner,u.x,u.y); }
     if(!dep){ u.cmd={t:'idle'}; return; }
     if(Math.hypot(dep.x-u.x,dep.y-u.y) < Math.max(dep.w,dep.h)*.55+u.r+6){
-      P[u.owner][u.carryType]+=u.carry*ECO*(isBot(u.owner)?DIFF.eco:1); u.carry=0;
+      const got=u.carry*ECO*(isBot(u.owner)?DIFF.eco:1);
+      P[u.owner][u.carryType]+=got;
+      if(u.owner===0) STATS[u.carryType==='m'?'aurite':'ichor']+=got;
+      u.carry=0;
       if(u.owner===0) SFX.play('deposit',dep.x,dep.y);
       if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+8',c:u.carryType==='m'?'#7fd0ff':'#35d18a'});
       let back=node;
@@ -1342,6 +1369,7 @@ function buildStep(u,dt){
     b.lastBuildT=gameTime;
     b.hp=Math.min(b.maxHp, b.maxHp*(.12+.88*b.prog));
     if(b.prog>=1){ b.done=true; b.hp=b.maxHp; recalcSupply(b.owner);
+      if(b.owner===0) STATS.bBuilt++;
       if(b.owner===0){ say(BDEF[b.type].n+' complete'); SFX.play('complete'); }
       if(b.type==='siphon') u.cmd={t:'gather',node:b,dep:null};
       else { const n=findMineralNear(u,u); u.cmd=n?{t:'gather',node:n,dep:null}:{t:'idle'}; }
@@ -1359,6 +1387,14 @@ function updateBuilding(b,dt){
     if(!b.target||b.target.dead||Math.hypot(b.target.x-b.x,b.target.y-b.y)>d.rng+40) b.target=findTarget(b,d.rng);
     if(b.target&&b.atkCd<=0&&Math.hypot(b.target.x-b.x,b.target.y-b.y)<=d.rng+hitRadius(b.target)) fire(b,b.target);
   }
+  if(b.res){
+    b.res.t+=dt*TRAIN_RATE;
+    if(b.res.t>=b.res.dur){
+      UP[b.owner][b.res.key]++;
+      if(b.owner===0){ say(UPG[b.res.key].n+' '+UP[0][b.res.key]+' complete'); SFX.play('complete'); }
+      b.res=null;
+    }
+  }
   if(b.queue.length){
     b.ptime+=dt;
     const it=b.queue[0], need=UDEF[it].bt/TRAIN_RATE;
@@ -1375,7 +1411,7 @@ function updateBuilding(b,dt){
       }
       const u=mkUnit(it,b.owner,sx,sy);
       recalcSupply(b.owner);
-      if(b.owner===0) SFX.play('trained',b.x,b.y);
+      if(b.owner===0){ SFX.play('trained',b.x,b.y); STATS.built++; }
       if(UDEF[it].worker){
         const n=nearest(ents,b.x,b.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
         if(n) u.cmd={t:'gather',node:n,dep:null};
@@ -1386,6 +1422,22 @@ function updateBuilding(b,dt){
 function canAfford(o,cost){ return P[o].m>=cost.m&&P[o].g>=cost.g }
 function pay(o,cost){ P[o].m-=cost.m; P[o].g-=cost.g }
 
+function tryResearch(b,key){
+  if(NET.role==='guest'&&b.owner===0){
+    const lvl=UP[0][key], c=upCost(key,lvl);
+    if(lvl>=UPG[key].max){ say('Fully researched'); SFX.play('deny'); return false; }
+    if(b.res){ say('Already researching'); SFX.play('deny'); return false; }
+    if(!canAfford(0,c)){ say(P[0].m<c.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); return false; }
+    netCmd('research',{id:b.id,key}); return true;
+  }
+  const o=b.owner, lvl=UP[o][key];
+  if(lvl>=UPG[key].max||b.res) { if(!o){ say(b.res?'Already researching':'Fully researched'); SFX.play('deny'); } return false; }
+  const c=upCost(key,lvl);
+  if(!canAfford(o,c)){ if(!o){ say(P[o].m<c.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); } return false; }
+  pay(o,c);
+  b.res={key,t:0,dur:UPG[key].bt};
+  return true;
+}
 function tryTrain(b,type){
   if(NET.role==='guest'&&b.owner===0){
     const d=UDEF[type];
@@ -1518,7 +1570,7 @@ cv.addEventListener('mousedown',e=>{
   const w=screenToWorld(mx,my);
   if(e.button===2){
     if(placing||pending){ placing=null; pending=null; refreshUI(); return; }
-    rightClick(w.x,w.y); return;
+    rightClick(w.x,w.y,e.shiftKey); return;
   }
   if(e.button!==0) return;
   if(placing){
@@ -1563,8 +1615,8 @@ window.addEventListener('mouseup',e=>{
 function onScreen(e){ return e.x>cam.x&&e.x<cam.x+viewW()&&e.y>cam.y&&e.y<cam.y+viewH() }
 function snap(v){ return Math.round(v/16)*16 }
 
-function rightClick(wx,wy){
-  if(NET.role==='guest'){
+function rightClick(wx,wy,queue){
+  if(NET.role==='guest'&&!queue){
     netCmd('ctx',{ids:selIds(),x:wx,y:wy});
     SFX.play('order');
     fx.push({x:wx,y:wy,t:0,dur:.5,r:18,k:'ping',c:'#7dffb0'});
@@ -1600,7 +1652,7 @@ function rightClick(wx,wy){
     for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'repair',target:t}; u.target=null; any=true; }
     if(any){ SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:24,k:'ping',c:'#ffd27f'}); return; }
   }
-  orderMove(wx,wy);
+  orderMove(wx,wy,queue);
 }
 /* A grid slot can land inside rock, which hands a unit a goal it can never
    stand on - it just grinds against the rock face. Snap every slot to ground
@@ -1623,6 +1675,7 @@ function slotFor(u,x,y,taken){
   return o?{x:o[0]*TILE+TILE/2,y:o[1]*TILE+TILE/2}:{x,y};
 }
 function clearNav(u){
+  u.wp=null;
   u.target=null; u.retreat=null; u.yield=0; u.stuck=0; u.jam=0; u.chk=0;
   u.cx0=undefined; u.cy0=undefined; u.path=null; u.goal=null; u.snapK=null;
 }
@@ -1638,14 +1691,24 @@ function formation(us,wx,wy,cmdMaker){
     clearNav(u);
   });
 }
-function orderMove(wx,wy){
+function orderMove(wx,wy,queue){
   const us=sel.filter(s=>s.kind==='unit'&&s.owner===0);
   if(!us.length) return;
-  if(NET.role==='guest'){ netCmd('move',{ids:selIds(),x:wx,y:wy}); SFX.play('order');
-    fx.push({x:wx,y:wy,t:0,dur:.5,r:18,k:'ping',c:'#7dffb0'}); return; }
+  if(NET.role==='guest'){ netCmd('move',{ids:selIds(),x:wx,y:wy,q:queue?1:0}); SFX.play('order');
+    fx.push({x:wx,y:wy,t:0,dur:.5,r:18,k:'ping',c:queue?'#ffcf5a':'#7dffb0'}); return; }
+  if(queue){ queueMove(us,wx,wy); SFX.play('order');
+    fx.push({x:wx,y:wy,t:0,dur:.5,r:14,k:'ping',c:'#ffcf5a'}); return; }
   formation(us,wx,wy,(x,y)=>({t:'move',x,y}));
   SFX.play('order');
   fx.push({x:wx,y:wy,t:0,dur:.5,r:18,k:'ping',c:'#7dffb0'});
+}
+/* Shift-click builds a route: each unit keeps a list of stops and takes the
+   next one as it arrives, so an attack can be walked around the long way. */
+function queueMove(us,wx,wy){
+  for(const u of us){
+    if(u.cmd.t!=='move'&&u.cmd.t!=='amove'){ u.cmd={t:'move',x:wx,y:wy}; u.wp=[]; clearNav(u); continue; }
+    (u.wp=u.wp||[]).push({x:wx,y:wy});
+  }
 }
 function orderAttackMove(wx,wy){
   const us=sel.filter(s=>s.kind==='unit'&&s.owner===0);
@@ -2118,7 +2181,7 @@ function netHostApply(c,from){
   const bld=id=>{ const b=byId.get(id); return (b&&b.owner===ME&&b.kind==='building')?b:null; };
   switch(c.op){
     case 'ctx': contextOrder(mine,c.x,c.y); break;
-    case 'move': formation(us,c.x,c.y,(x,y)=>({t:'move',x,y})); break;
+    case 'move': if(c.q) queueMove(us,c.x,c.y); else formation(us,c.x,c.y,(x,y)=>({t:'move',x,y})); break;
     case 'amove': formation(us,c.x,c.y,(x,y)=>({t:'amove',x,y})); break;
     case 'stop': for(const u of us){ u.cmd={t:'idle'}; u.target=null; } break;
     case 'hold': for(const u of us) u.cmd={t:'hold'}; break;
@@ -2130,6 +2193,7 @@ function netHostApply(c,from){
       if(!okB) netRelay({k:'no',s:canAfford(ME,BDEF[c.type])?'Cannot build there':'Not enough resources'},ME);
       break;
     }
+    case 'research': { const b=bld(c.id); if(b&&b.done&&UPG[c.key]) tryResearch(b,c.key); break; }
     case 'cancelq': { const b=bld(c.id); if(b) cancelQueue(b,c.i|0); break; }
     case 'cancelb': {
       const b=bld(c.id);
@@ -2238,6 +2302,7 @@ window.addEventListener('keydown',e=>{
     say(army.length+' unit'+(army.length>1?'s':'')+' selected');
     return;
   }
+  if(k==='f1'){ selectIdle(); e.preventDefault(); return; }
   if(k===' '){ if(lastAlert) centerOn(lastAlert.x,lastAlert.y); e.preventDefault(); return; }
   for(const b of cardButtons) if(b.hk&&b.hk.length===1&&b.hk.toLowerCase()===k){
     if(b.dis){ say(b.tip||'Unavailable'); return; }
@@ -2301,6 +2366,26 @@ let cardButtons=[], lastAlert=null, cardSig='';
 /* A structure taking fire raises a banner that stays up while the attack lasts
    and jumps the camera to whatever was hit last. */
 const ALERT={x:0,y:0,name:'',until:0,spoke:-99,shown:false};
+function idleWorkers(){
+  return ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='unit'&&UDEF[e.type].worker&&
+    e.cmd.t==='idle'&&!e.isScout);
+}
+let idleN=-1;
+function idleStep(){
+  const el=document.getElementById('idle'); if(!el) return;
+  const n=gameOn&&!over?idleWorkers().length:0;
+  if(n===idleN) return;
+  idleN=n;
+  el.classList.toggle('on',n>0);
+  document.getElementById('idleN').textContent=n;
+}
+function selectIdle(){
+  const w=idleWorkers();
+  if(!w.length){ say('No idle Delvers'); return; }
+  setSel([w[0]]); centerOn(w[0].x,w[0].y);
+  say(w.length+' idle Delver'+(w.length>1?'s':''));
+  refreshUI();
+}
 function alertStep(){
   const el=document.getElementById('alert'); if(!el) return;
   const on=gameOn&&!over&&ALERT.until>gameTime;
@@ -2406,13 +2491,24 @@ function buildCard(){
         cardButtons.push({img:iconOf('unit',t,0),name:ud.n,cost:{m:ud.m,g:ud.g},hk:ud.n.charAt(0),
           act:function(){ tryTrain(b,t); }});
       }
+      if(b.type==='forgeworks'){
+        for(const key in UPG){
+          const u=UPG[key], lvl=UP[0][key], maxed=lvl>=u.max, c=upCost(key,lvl);
+          cardButtons.push({ic:u.ic, hk:u.hk,
+            name:u.n+' '+(maxed?'MAX':(lvl+1)),
+            cost:maxed?null:c, dis:maxed||!!b.res,
+            tip:maxed?'Fully researched':(b.res?'Already researching':
+                 ('+'+Math.round(u.step*100)+'% army-wide, permanent')),
+            act:function(){ tryResearch(b,key); }});
+        }
+      }
       while(cardButtons.length<8) cardButtons.push({empty:true});
       cardButtons.push({ic:'✕',name:'Cancel Last',hk:'X',dis:!b.queue.length,
         act:function(){ cancelQueue(b,b.queue.length-1); }});
     }
   }
   while(cardButtons.length<9) cardButtons.push({empty:true});
-  const sig=cardMode+'|'+cardButtons.map(o=>o.empty?'-':
+  const sig=cardMode+'|'+UP[0].wep+UP[0].arm+'|'+cardButtons.map(o=>o.empty?'-':
     [o.name,o.ic,o.hk,o.dis?1:0,o.img?1:0,o.cost?o.cost.m+'/'+(o.cost.g||0):''].join(',')).join('|');
   if(sig===cardSig) return;
   cardSig=sig;
@@ -2506,12 +2602,13 @@ function buildInfo(){
   }
 }
 function refreshUI(){
-  buildInfo(); buildCard(); buildGroups(); alertStep();
+  buildInfo(); buildCard(); buildGroups(); alertStep(); idleStep();
   document.getElementById('min').textContent=Math.floor(P[0].m);
   document.getElementById('gas').textContent=Math.floor(P[0].g);
   const sp=document.getElementById('supply');
   sp.textContent=P[0].sup+'/'+P[0].cap;
   sp.classList.toggle('low',P[0].sup>=P[0].cap);
+  if(P[0].sup>STATS.peak) STATS.peak=P[0].sup;
   const cl=document.getElementById('clock');
   if(cl){ const t=Math.max(0,Math.floor(gameTime));
     cl.textContent=Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); }
@@ -2784,6 +2881,10 @@ function aiRun(AI,ME,dt){
     if(!b.done||!BDEF[b.type].trains||b.type==='keystone') continue;
     if(b.queue.length>=(DIFF.qd||2)) continue;
     if(b.type==='forgeworks'){
+      if(!b.res&&P[ME].m>=420&&P[ME].g>=120){        // bank it into permanent power
+        const key=UP[ME].wep<=UP[ME].arm?'wep':'arm';
+        if(UP[ME][key]<UPG[key].max&&tryResearch(b,key)) continue;
+      }
       const sn=us.filter(u=>u.type==='sunderer').length, hr=us.filter(u=>u.type==='harrower').length;
       tryTrain(b,hr<sn?'harrower':'sunderer'); continue;
     }
@@ -3458,6 +3559,11 @@ function drawBuilding(b){
     ctx.fillText(txt,b.x,y);
     ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   }
+  if(b.done&&b.res){
+    const f=clamp(b.res.t/b.res.dur,0,1), w=b.w*.8;
+    ctx.fillStyle='rgba(4,10,17,.9)'; ctx.fillRect(b.x-w/2,b.y+hh+4,w,4);
+    ctx.fillStyle='#ffcf5a'; ctx.fillRect(b.x-w/2,b.y+hh+4,w*f,4);
+  }
   if(b.done&&b.queue&&b.queue.length){
     const f=clamp(b.ptime/(UDEF[b.queue[0]].bt/TRAIN_RATE),0,1), w=b.w*.8;
     ctx.fillStyle='rgba(4,10,17,.9)'; ctx.fillRect(b.x-w/2,b.y+hh+4,w,4);
@@ -3524,6 +3630,17 @@ function render(){
     ctx.lineWidth=2;
     if(e.kind==='building'){ ctx.strokeRect(e.x-e.w/2-3,e.y-e.h/2-3,e.w+6,e.h+6); }
     else { ctx.beginPath(); ctx.ellipse(e.x,e.y+ (e.r*.5),e.r+5,(e.r+5)*.55,0,0,7); ctx.stroke(); }
+  }
+  // queued waypoints
+  ctx.strokeStyle='rgba(255,207,90,.55)'; ctx.lineWidth=1.4;
+  for(const e of sel){
+    if(e.dead||e.kind!=='unit'||!e.wp||!e.wp.length) continue;
+    let px=e.cmd.x!==undefined?e.cmd.x:e.x, py=e.cmd.y!==undefined?e.cmd.y:e.y;
+    ctx.setLineDash([5,5]);
+    ctx.beginPath(); ctx.moveTo(e.x,e.y); ctx.lineTo(px,py);
+    for(const w of e.wp){ ctx.lineTo(w.x,w.y); }
+    ctx.stroke(); ctx.setLineDash([]);
+    for(const w of e.wp){ ctx.beginPath(); ctx.arc(w.x,w.y,3.5,0,7); ctx.stroke(); }
   }
   // rally lines
   for(const e of sel) if(e.kind==='building'&&e.owner===0&&e.done&&BDEF[e.type].trains){
@@ -3799,6 +3916,28 @@ function checkEnd(){
   if(!mine&&ts.length<=1) endGame('DEFEAT','#ff6b52');
   else if(mine&&ts.length===1) endGame('VICTORY','#7dffb0');
 }
+/* Match tally. The counters are filled by the simulation, so a guest - which
+   only renders snapshots - falls back to what can be read from the world. */
+const STATS={built:0,lost:0,killed:0,bBuilt:0,bLost:0,bKilled:0,aurite:0,ichor:0,peak:0};
+function statsReset(){ for(const k in STATS) STATS[k]=0; }
+function fmt(n){ return n>=1000?(n/1000).toFixed(1)+'k':String(Math.round(n)); }
+function matchSummary(){
+  const live=ents.filter(e=>!e.dead&&e.owner===0);
+  const rows=[
+    ['Peak population', STATS.peak||P[0].sup],
+    ['Units built', STATS.built],
+    ['Units lost', STATS.lost],
+    ['Enemy units killed', STATS.killed],
+    ['Buildings raised', STATS.bBuilt],
+    ['Buildings lost', STATS.bLost],
+    ['Enemy buildings razed', STATS.bKilled],
+    ['Aurite gathered', fmt(STATS.aurite)],
+    ['Ichor gathered', fmt(STATS.ichor)],
+    ['Still standing', live.filter(e=>e.kind==='unit').length+' units, '+
+                       live.filter(e=>e.kind==='building').length+' buildings']
+  ];
+  return '<table id="sumT">'+rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>').join('')+'</table>';
+}
 let SPECTATING=false;
 function endGame(t,c,opts){
   const o2=opts||{};
@@ -3809,8 +3948,8 @@ function endGame(t,c,opts){
   const h=document.getElementById('overT');
   h.textContent=t; h.style.color=c;
   const sub=document.getElementById('overSub');
-  sub.textContent=o2.sub||'';
-  sub.style.display=o2.sub?'block':'none';
+  if(o2.sub){ sub.textContent=o2.sub; sub.style.display='block'; }
+  else { sub.innerHTML=matchSummary(); sub.style.display='block'; }
   const sp=document.getElementById('specBtn');
   sp.style.display=o2.spectate?'inline-block':'none';
   document.getElementById('againBtn').textContent=o2.spectate?'LEAVE':'HOME';
@@ -3849,10 +3988,10 @@ function init(){
   ents=[]; nextId=1; shots=[]; fx=[]; gameTime=0; over=false; paused=false;
   sel=[]; placing=null; pending=null; pathQ.length=0; lastAlert=null; cardMode='main';
   ALERT.until=0; ALERT.spoke=-99; ALERT.shown=false; cardSig=''; SPECTATING=false;
-  LOCAL_OUT=false; NET.told={};
+  LOCAL_OUT=false; NET.told={}; statsReset();
   for(const k in groups) delete groups[k];
   const startM=GRAND?600:150;
-  for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=0; P[i].sup=0; P[i].cap=0; }
+  for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=0; P[i].sup=0; P[i].cap=0; UP[i]={wep:0,arm:0}; }
   explored.fill(0); visible.fill(0); blocked.fill(0); nav.fill(0);
   document.getElementById('pause').style.display='none';
   document.getElementById('over').style.display='none';
@@ -3927,7 +4066,11 @@ const SCALES={
 };
 const ENAME={delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',harrower:'Devourer'};
 function unitName(type,owner){ return owner===1?(ENAME[type]||UDEF[type].n):UDEF[type].n; }
-function dmgOf(e){ const d=DEF(e); return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1); }
+function dmgOf(e){
+  const d=DEF(e);
+  const up=(e.kind==='unit'&&UP[e.owner])?1+UP[e.owner].wep*UPG.wep.step:1;
+  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up;
+}
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
 let menuOn=true, mstars=[], mshards=[], mt=0;
@@ -4064,6 +4207,7 @@ document.getElementById('resumeBtn').onclick=function(){ togglePause(false); };
 document.getElementById('leaveBtn').onclick=function(){ SFX.play('click'); leaveMatch(); };
 document.getElementById('againBtn').onclick=function(){ SFX.play('click'); leaveMatch(); };
 document.getElementById('specBtn').onclick=function(){ SFX.play('click'); spectate(); };
+document.getElementById('idle').onclick=function(){ SFX.play('click'); selectIdle(); };
 window.addEventListener('pointerdown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 window.addEventListener('keydown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 musicInit(); updSnd(); musicPlay();
@@ -4237,9 +4381,6 @@ function lobbyInit(){
     document.getElementById('lobSrv').style.display='none';
     document.getElementById('lobTitle').textContent='SERVER SET';
     document.getElementById('lobMsg').textContent=h+' saved — pick Quick Play, Host or Join.';
-  };
-  document.getElementById('alertGo').onclick=()=>{
-    SFX.play('click'); centerOn(ALERT.x,ALERT.y);
   };
   document.getElementById('lobStart').onclick=()=>{ SFX.play('click'); netBegin(); };
   document.getElementById('lobSrvGo').onclick=srvGo;
