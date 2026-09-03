@@ -41,6 +41,9 @@ html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#05070
 #alertGo:hover{filter:brightness(1.12)}
 @keyframes alertPulse{0%,100%{border-color:#7d2b1c}50%{border-color:#ff6b52}}
 body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
+#overSub{font-size:11.5px;letter-spacing:1px;color:#9fc4dd;margin:-4px 0 4px;line-height:1.5}
+.overRow{display:flex;gap:10px;align-items:center}
+#specBtn{display:none}
 #groups{display:none;flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:3px;width:46px}
 #groups .grp{position:relative;height:26px;border:1px solid #24486b;border-radius:4px;background:#08121c;
   cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -399,7 +402,8 @@ body.touch .mouse-only{display:none}
   <div id="tutHint"></div>
   <button id="tutSkip">SKIP</button>
 </div>
-<div id="over"><h1 id="overT"></h1><button id="againBtn">HOME</button></div>
+<div id="over"><h1 id="overT"></h1><p id="overSub"></p>
+  <div class="overRow"><button id="specBtn">SPECTATE</button><button id="againBtn">HOME</button></div></div>
 <script>
 'use strict';
 /* ===================== CORE SETUP ===================== */
@@ -1936,6 +1940,11 @@ function netRecv(m){
 function netData(d){
   if(!d) return;
   if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose(); startOnline(d.seed,!!d.grand,d.mode||'duel'); return; }
+  if(d.k==='out'&&NET.role==='guest'){
+    endGame('ELIMINATED','#ff6b52',
+      {keepRunning:true, spectate:true, sub:'Your forces are gone. The battle continues.'});
+    return;
+  }
   if(d.k==='no'&&NET.role==='guest'){ say(d.s||'Order refused'); SFX.play('deny'); return; }
   if(d.k==='S'&&NET.role==='guest'){ netApplySnapshot(d); return; }
   if(d.k==='C'&&NET.role==='host'){ netHostApply(d,NET.from); return; }
@@ -2173,15 +2182,22 @@ function netCheckEnd(){
   if(NET.role!=='host'||NET.ended) return;
   const ts=aliveTeams();
   const upright=i=>ts.indexOf(TEAMOF[i])>=0;
-  const hostAlive=upright(0);
-  let anyOut=false;
-  for(let i=1;i<(NET.humans||2);i++) if(!upright(i)) anyOut=true;
-  // Settled once one side remains, or once any human is knocked out - in a
-  // free-for-all the survivors take it even if bots are still scrapping.
-  if(ts.length>1&&hostAlive&&!anyOut) return;
+  const H=NET.humans||2;
+  NET.told=NET.told||{};
+  /* Knocking one player out is not the end of the match. Tell only that player
+     they are done - announcing a winner here handed a "victory" to anyone still
+     alive, even with two rivals left standing. */
+  for(let i=0;i<H;i++){
+    if(upright(i)||NET.told[i]) continue;
+    NET.told[i]=1;
+    if(i===0) endGame('ELIMINATED','#ff6b52',
+      {keepRunning:true, spectate:true, sub:'Your forces are gone. The battle continues.'});
+    else netRelay({k:'out'},i);
+  }
+  if(ts.length>1) return;              // still contested - nobody has won yet
   NET.ended=true;
-  for(let i=1;i<(NET.humans||2);i++) netRelay({k:'over',w:upright(i)},i);
-  endGame(hostAlive?'VICTORY':'DEFEAT',hostAlive?'#7dffb0':'#ff6b52');
+  for(let i=1;i<H;i++) netRelay({k:'over',w:upright(i)},i);
+  endGame(upright(0)?'VICTORY':'DEFEAT',upright(0)?'#7dffb0':'#ff6b52');
 }
 
 /* ===================== KEYBOARD ===================== */
@@ -2504,6 +2520,7 @@ function refreshUI(){
 /* ===================== FOG OF WAR ===================== */
 let fogT=0;
 function updateFog(){
+  if(SPECTATING){ visible.fill(1); explored.fill(1); return; }
   visible.fill(0);
   for(const e of ents){
     if(e.dead||!isAlly(e.owner)) continue;
@@ -3769,17 +3786,41 @@ function aliveTeams(){
     if(out.indexOf(t)<0&&teamAlive(t)) out.push(t); }
   return out;
 }
+let LOCAL_OUT=false;
 function checkEnd(){
   const ts=aliveTeams();                 // any number of sides, not just two
-  if(ts.indexOf(TEAMOF[0])<0) endGame('DEFEAT','#ff6b52');
-  else if(ts.length===1) endGame('VICTORY','#7dffb0');
+  const mine=ts.indexOf(TEAMOF[0])>=0;
+  if(!mine&&ts.length>1&&!LOCAL_OUT){    // others are still fighting - watch or leave
+    LOCAL_OUT=true;
+    endGame('ELIMINATED','#ff6b52',
+      {keepRunning:true, spectate:true, sub:'Your forces are gone. The battle continues.'});
+    return;
+  }
+  if(!mine&&ts.length<=1) endGame('DEFEAT','#ff6b52');
+  else if(mine&&ts.length===1) endGame('VICTORY','#7dffb0');
 }
-function endGame(t,c){
-  over=true;
+let SPECTATING=false;
+function endGame(t,c,opts){
+  const o2=opts||{};
+  if(!o2.keepRunning) over=true;
+  SPECTATING=false;
   SFX.play(t==='VICTORY'?'victory':'defeat');
   const o=document.getElementById('over');
   const h=document.getElementById('overT');
-  h.textContent=t; h.style.color=c; o.style.display='flex';
+  h.textContent=t; h.style.color=c;
+  const sub=document.getElementById('overSub');
+  sub.textContent=o2.sub||'';
+  sub.style.display=o2.sub?'block':'none';
+  const sp=document.getElementById('specBtn');
+  sp.style.display=o2.spectate?'inline-block':'none';
+  document.getElementById('againBtn').textContent=o2.spectate?'LEAVE':'HOME';
+  o.style.display='flex';
+}
+function spectate(){
+  SPECTATING=true;
+  document.getElementById('over').style.display='none';
+  explored.fill(1); visible.fill(1); paintFog();
+  say('Spectating - your forces are gone.');
 }
 
 /* ===================== INIT ===================== */
@@ -3807,7 +3848,8 @@ function leaveMatch(){
 function init(){
   ents=[]; nextId=1; shots=[]; fx=[]; gameTime=0; over=false; paused=false;
   sel=[]; placing=null; pending=null; pathQ.length=0; lastAlert=null; cardMode='main';
-  ALERT.until=0; ALERT.spoke=-99; ALERT.shown=false; cardSig='';
+  ALERT.until=0; ALERT.spoke=-99; ALERT.shown=false; cardSig=''; SPECTATING=false;
+  LOCAL_OUT=false; NET.told={};
   for(const k in groups) delete groups[k];
   const startM=GRAND?600:150;
   for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=0; P[i].sup=0; P[i].cap=0; }
@@ -4017,6 +4059,7 @@ if(IS_TOUCH) document.body.classList.add('touch');
 document.getElementById('resumeBtn').onclick=function(){ togglePause(false); };
 document.getElementById('leaveBtn').onclick=function(){ SFX.play('click'); leaveMatch(); };
 document.getElementById('againBtn').onclick=function(){ SFX.play('click'); leaveMatch(); };
+document.getElementById('specBtn').onclick=function(){ SFX.play('click'); spectate(); };
 window.addEventListener('pointerdown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 window.addEventListener('keydown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 musicInit(); updSnd(); musicPlay();
