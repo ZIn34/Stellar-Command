@@ -21,6 +21,22 @@ const server=http.createServer((req,res)=>{
     return;
   }
   if(url==='/health'){ res.writeHead(200); res.end('ok'); return; }
+  /* ---- store ----
+     The shop calls these from the public GitHub Pages site, so they allow any
+     origin. Payments are deliberately OFF: nothing here creates a charge yet.
+     Turning it on means adding Stripe Checkout session creation to /api/checkout,
+     a signed /api/webhook that records purchases, and a database to hold them -
+     ownership must live here, never in the browser. */
+  if(url.indexOf('/api/')===0){
+    res.setHeader('Access-Control-Allow-Origin','*');
+    res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers','Content-Type');
+    if(req.method==='OPTIONS'){ res.writeHead(204); res.end(); return; }
+    const json=(code,obj)=>{ res.writeHead(code,{'Content-Type':'application/json'}); res.end(JSON.stringify(obj)); };
+    if(url==='/api/store'){ json(200,{enabled:false, owned:[]}); return; }
+    if(url==='/api/checkout'){ json(503,{error:'Payments are not set up yet.'}); return; }
+    json(404,{error:'Not found'}); return;
+  }
   if(url==='/_save'&&req.method==='POST'){          // local asset authoring helper
     const q=(req.url.split('?')[1]||'');
     const nm=decodeURIComponent((/name=([^&]+)/.exec(q)||[])[1]||'');

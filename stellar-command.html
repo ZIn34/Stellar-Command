@@ -39,6 +39,36 @@ html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#05070
 @keyframes alertPulse{0%,100%{border-color:#7d2b1c}50%{border-color:#ff6b52}}
 body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
 #overSub{font-size:11.5px;letter-spacing:1px;color:#9fc4dd;margin:-4px 0 4px;line-height:1.5}
+.unlock{color:#ffcf5a;letter-spacing:2px;margin:0 0 6px}
+.ban-gilded{background:linear-gradient(180deg,#fff3c4,#ffcf5a 45%,#a8741a);-webkit-background-clip:text;
+  background-clip:text;color:transparent!important;text-shadow:none}
+.ban-aurora{background:linear-gradient(90deg,#7dffb0,#4bd6ff,#b58cff,#ff66d9,#7dffb0);background-size:300% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent!important;animation:aur 4s linear infinite}
+@keyframes aur{to{background-position:300% 0}}
+.ban-void{color:#e9dcff!important;text-shadow:0 0 18px #7a3cff,0 0 40px #3a1480}
+#shop{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(2,5,9,.78)}
+.shopBox{width:min(640px,94vw);max-height:88vh;overflow:auto;background:#07101a;border:1px solid #24486b;
+  border-radius:12px;padding:16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.shopHead{display:flex;justify-content:space-between;align-items:center}
+.shopHead h2{font-size:14px;letter-spacing:5px;color:#4bd6ff;font-weight:400}
+#shopClose{font-family:inherit;background:none;border:1px solid #2d5a80;color:#9fc4dd;border-radius:6px;width:30px;height:28px;cursor:pointer}
+.shopTabs{display:flex;gap:6px;margin:12px 0 6px}
+.shopTabs button{font-family:inherit;font-size:10.5px;letter-spacing:2px;padding:6px 12px;cursor:pointer;
+  background:#0d1a28;color:#7c9cb4;border:1px solid #21405e;border-radius:6px}
+.shopTabs button.on{color:#dff1ff;border-color:#4bd6ff}
+#shopNote{font-size:10.5px;color:#ffcf5a;letter-spacing:1px;margin:4px 0 8px;min-height:13px}
+#shopGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:9px}
+.item{border:1px solid #21405e;border-radius:9px;background:#0a1622;padding:10px;display:flex;flex-direction:column;gap:7px}
+.item.eq{border-color:#7dffb0;box-shadow:inset 0 0 16px rgba(125,255,176,.12)}
+.sw{height:46px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;letter-spacing:3px;background:#050b12;border:1px solid #16293b}
+.item b{font-weight:400;font-size:11.5px;letter-spacing:2px;color:#dff1ff}
+.item .st{font-size:9.5px;letter-spacing:1px;color:#7c9cb4;min-height:11px}
+.item button{font-family:inherit;font-size:10px;letter-spacing:2px;padding:6px;cursor:pointer;border-radius:6px;
+  border:1px solid #2d5a80;background:#0d1a28;color:#9fc4dd}
+.item button.go{color:#04121c;border:0;background:linear-gradient(180deg,#8dffc0,#2fbf7a)}
+.item button:disabled{opacity:.45;cursor:default}
+.shopFoot{font-size:10px;color:#5f7f96;line-height:1.5;margin-top:12px}
 #sumT{border-collapse:collapse;margin:6px auto 12px;font-size:11.5px;color:#9fc4dd}
 #sumT td{padding:3px 12px;border-bottom:1px solid rgba(45,90,128,.35)}
 #sumT td:first-child{text-align:left;letter-spacing:1px}
@@ -374,6 +404,7 @@ body.touch .mouse-only{display:none}
       <button id="btnJoin">JOIN</button>
       <button id="btnSettings">AUDIO</button>
       <button id="btnTutorial">TUTORIAL</button>
+      <button id="btnShop">SHOP</button>
     </div>
     <p class="fine">AZURE CONCORD vs. THE EMBER LEGION — Legion troops are tougher one-on-one. Wrecks pay a salvage bounty, so trade aggressively.</p>
   </div>
@@ -419,6 +450,15 @@ body.touch .mouse-only{display:none}
   <div id="tutBody"></div>
   <div id="tutHint"></div>
   <button id="tutSkip">SKIP</button>
+</div>
+<div id="shop">
+  <div class="shopBox">
+    <div class="shopHead"><h2>ARMOURY</h2><button id="shopClose">&#10005;</button></div>
+    <div class="shopTabs"><button data-tab="palette" class="on">COLOURS</button><button data-tab="banner">VICTORY BANNERS</button></div>
+    <p id="shopNote"></p>
+    <div id="shopGrid"></div>
+    <p class="shopFoot">Cosmetic only - nothing here changes how units fight. Colours show on your own screen; opponents keep the colours that tell the sides apart.</p>
+  </div>
 </div>
 <div id="over"><h1 id="overT"></h1><p id="overSub"></p>
   <div class="overRow"><button id="specBtn">SPECTATE</button><button id="againBtn">HOME</button></div></div>
@@ -472,6 +512,107 @@ window.addEventListener('resize',resize);
 const PC='#4bd6ff', EC='#ff6b52';              // player / enemy colour
 const TEAM=[{c:PC,dk:'#12617f'},{c:EC,dk:'#7d2b1c'},
             {c:'#57e3a8',dk:'#127f55'},{c:'#ffab3d',dk:'#8a5210'}];
+/* ===================== COSMETICS =====================
+   Looks only - nothing here touches stats, so buying never buys an edge.
+   A palette recolours YOUR forces on YOUR screen; opponents keep the colours
+   that tell the sides apart. Hues avoid the red, green and orange rival slots. */
+const TEAM0_DEFAULT={c:'#4bd6ff',dk:'#12617f'};
+const COSMETICS=[
+  {id:'pal_azure',   kind:'palette', n:'Azure',    c:'#4bd6ff', dk:'#12617f', free:true},
+  {id:'pal_frost',   kind:'palette', n:'Frost',    c:'#dff4ff', dk:'#5d7f96', earn:{wins:1}},
+  {id:'pal_violet',  kind:'palette', n:'Violet',   c:'#b58cff', dk:'#4b2f86', price:0.99},
+  {id:'pal_royal',   kind:'palette', n:'Royal',    c:'#6f8bff', dk:'#23348a', price:0.99},
+  {id:'pal_magenta', kind:'palette', n:'Magenta',  c:'#ff66d9', dk:'#8a1f72', price:1.99},
+  {id:'pal_obsidian',kind:'palette', n:'Obsidian', c:'#9fb4c8', dk:'#1c2731', price:1.99},
+  {id:'ban_standard',kind:'banner',  n:'Standard', cls:'',            free:true},
+  {id:'ban_gilded',  kind:'banner',  n:'Gilded',   cls:'ban-gilded',  earn:{wins:3}},
+  {id:'ban_aurora',  kind:'banner',  n:'Aurora',   cls:'ban-aurora',  price:1.99},
+  {id:'ban_void',    kind:'banner',  n:'Void',     cls:'ban-void',    price:1.99}
+];
+const COSM_BY=Object.fromEntries(COSMETICS.map(x=>[x.id,x]));
+function lsGet(k,d){ try{ const v=JSON.parse(localStorage.getItem(k)||'null'); return v==null?d:v; }catch(e){ return d; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+let COSM=lsGet('sc_cosm',{palette:'pal_azure',banner:'ban_standard'});
+let WINS=lsGet('sc_wins',0)|0;
+/* Paid items must come from the server once payments are switched on - a list
+   kept in the browser could be edited by anyone. Until then it stays empty. */
+let PURCHASED=[];
+function owns(id){
+  const it=COSM_BY[id]; if(!it) return false;
+  if(it.free) return true;
+  if(it.earn&&it.earn.wins&&WINS>=it.earn.wins) return true;
+  return PURCHASED.indexOf(id)>=0;
+}
+function equip(id){
+  const it=COSM_BY[id]; if(!it||!owns(id)) return false;
+  COSM[it.kind]=id; lsSet('sc_cosm',COSM); applyCosmetics(); return true;
+}
+function applyCosmetics(){
+  const pal=COSM_BY[COSM.palette]; const use=(pal&&owns(pal.id))?pal:COSM_BY.pal_azure;
+  TEAM[0].c=use.c; TEAM[0].dk=use.dk;
+  for(const k in SPR) delete SPR[k];            // sprites regenerate in the new colours
+  for(const k in ICO) delete ICO[k];
+}
+/* ---------- shop ---------- */
+// Payments run through the server.js deployment and stay off until it reports Stripe.
+const STORE={enabled:false, checked:false};
+function apiBase(){ return STATIC_HOST?('https://'+RELAY_DEFAULT):''; }
+function storeCheck(){
+  if(STORE.checked) return;
+  STORE.checked=true;
+  try{
+    fetch(apiBase()+'/api/store').then(r=>r.ok?r.json():null).then(j=>{
+      STORE.enabled=!!(j&&j.enabled);
+      if(j&&Array.isArray(j.owned)) PURCHASED=j.owned;
+      if(document.getElementById('shop').style.display==='flex') shopRender();
+    }).catch(()=>{});
+  }catch(e){}
+}
+let shopTab='palette';
+function shopOpen(){ storeCheck(); document.getElementById('shop').style.display='flex'; shopRender(); }
+function shopClose(){ document.getElementById('shop').style.display='none'; }
+function shopRender(){
+  const grid=document.getElementById('shopGrid');
+  document.getElementById('shopNote').textContent=STORE.enabled?'':
+    'Purchases are not switched on yet. Free and earned items can be equipped now.';
+  grid.innerHTML=COSMETICS.filter(x=>x.kind===shopTab).map(it=>{
+    const mine=owns(it.id), on=COSM[it.kind]===it.id;
+    const sw=it.kind==='palette'
+      ?'<div class="sw" style="background:linear-gradient(180deg,'+it.c+','+it.dk+')"></div>'
+      :'<div class="sw"><span class="'+it.cls+'" style="color:#7dffb0">VICTORY</span></div>';
+    let st='', btn='';
+    if(on){ st='Equipped'; btn='<button disabled>EQUIPPED</button>'; }
+    else if(mine){ st=it.free?'Free':'Owned'; btn='<button class="go" data-eq="'+it.id+'">EQUIP</button>'; }
+    else if(it.earn){
+      const w=it.earn.wins;
+      st='Win '+w+' match'+(w>1?'es':'')+' ('+Math.min(WINS,w)+'/'+w+')';
+      btn='<button disabled>LOCKED</button>';
+    } else {
+      st='$'+it.price.toFixed(2);
+      btn='<button data-buy="'+it.id+'"'+(STORE.enabled?'':' disabled')+'>'+
+          (STORE.enabled?'BUY':'COMING SOON')+'</button>';
+    }
+    return '<div class="item'+(on?' eq':'')+'">'+sw+'<b>'+it.n.toUpperCase()+'</b>'+
+           '<div class="st">'+st+'</div>'+btn+'</div>';
+  }).join('');
+  grid.querySelectorAll('[data-eq]').forEach(b=>b.onclick=()=>{ SFX.play('click'); equip(b.dataset.eq); shopRender(); });
+  grid.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>shopBuy(b.dataset.buy));
+}
+function shopBuy(id){
+  if(!STORE.enabled){ SFX.play('deny'); return; }
+  SFX.play('click');
+  fetch(apiBase()+'/api/checkout',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({item:id})})
+    .then(r=>r.json()).then(j=>{ if(j&&j.url) location.href=j.url;
+      else document.getElementById('shopNote').textContent=(j&&j.error)||'Checkout unavailable.'; })
+    .catch(()=>{ document.getElementById('shopNote').textContent='Could not reach the store.'; });
+}
+function recordWin(){
+  const before=COSMETICS.filter(x=>x.earn&&owns(x.id)).map(x=>x.id);
+  WINS++; lsSet('sc_wins',WINS);
+  const fresh=COSMETICS.filter(x=>x.earn&&owns(x.id)&&before.indexOf(x.id)<0);
+  return fresh;
+}
 let TEAMOF=[0,1,0,1];        // slot -> team. Paired for a duel or 2v2, all
 let NPLAY=2;                 // distinct for a free-for-all. 2 or 4 slots.
 const sameTeam=(a,b)=>a>=0&&b>=0&&TEAMOF[a]===TEAMOF[b];
@@ -1330,7 +1471,7 @@ function gatherStep(u,dt){
       if(u.owner===0) STATS[u.carryType==='m'?'aurite':'ichor']+=got;
       u.carry=0;
       if(u.owner===0) SFX.play('deposit',dep.x,dep.y);
-      if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+8',c:u.carryType==='m'?'#7fd0ff':'#35d18a'});
+      if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+'+Math.round(got),c:u.carryType==='m'?'#7fd0ff':'#35d18a'});
       let back=node;
       if(!back||back.dead||(back.kind==='res'&&back.amount<=0)) back=findMineralNear(u,dep);
       if(back) u.cmd={t:'gather',node:back,dep:null}; else u.cmd={t:'idle'};
@@ -4076,9 +4217,20 @@ function endGame(t,c,opts){
   const o=document.getElementById('over');
   const h=document.getElementById('overT');
   h.textContent=t; h.style.color=c;
+  h.className='';
+  if(t==='VICTORY'&&!o2.keepRunning){
+    const ban=COSM_BY[COSM.banner];
+    if(ban&&owns(ban.id)&&ban.cls){ h.className=ban.cls; h.style.color=''; }
+    const fresh=recordWin();
+    if(fresh.length) o2.unlocked=fresh.map(x=>x.n+' '+x.kind);
+  }
   const sub=document.getElementById('overSub');
   if(o2.sub){ sub.textContent=o2.sub; sub.style.display='block'; }
-  else { sub.innerHTML=matchSummary(); sub.style.display='block'; }
+  else {
+    sub.innerHTML=(o2.unlocked&&o2.unlocked.length
+      ?'<div class="unlock">Unlocked: '+o2.unlocked.join(', ')+'</div>':'')+matchSummary();
+    sub.style.display='block';
+  }
   const sp=document.getElementById('specBtn');
   sp.style.display=o2.spectate?'inline-block':'none';
   document.getElementById('againBtn').textContent=o2.spectate?'LEAVE':'HOME';
@@ -4148,6 +4300,7 @@ function init(){
   for(let i=0;i<NPLAY;i++) recalcSupply(i);
   updateFog(); paintFog();
   // every match opens at the same framing rather than inheriting the last pinch
+  applyCosmetics();
   cam.z=clamp(START_Z,zoomLimits().min,zoomLimits().max);
   // Terrain and resource fields are known from the start, the way an RTS map
   // is: you can see where the aurite is, but not what anyone is doing on it.
@@ -4494,6 +4647,13 @@ function lobbyCancel(){
   lobbyClose();
 }
 function lobbyInit(){
+  document.getElementById('btnShop').onclick=()=>{ SFX.unlock(); SFX.play('click'); shopOpen(); };
+  document.getElementById('shopClose').onclick=()=>{ SFX.play('click'); shopClose(); };
+  document.querySelectorAll('.shopTabs button').forEach(t=>t.onclick=()=>{
+    SFX.play('click'); shopTab=t.dataset.tab;
+    document.querySelectorAll('.shopTabs button').forEach(x=>x.classList.toggle('on',x===t));
+    shopRender();
+  });
   document.getElementById('btnTutorial').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
     startTutorial();
