@@ -157,7 +157,9 @@ body.touch{--panel:calc(clamp(126px,30vh,182px) + env(safe-area-inset-bottom,0px
 body.touch #card{width:clamp(150px,29vw,232px)}
 body.touch #mmWrap{width:min(clamp(96px,19vw,156px),calc(var(--panel) - 16px))}
 body.touch #panel{padding-bottom:calc(6px + env(safe-area-inset-bottom,0px))}
-body.touch #groups{display:none!important}
+body.touch #groups{width:36px;gap:3px}
+body.touch #groups .grp{height:calc((var(--panel) - 30px) / 4)}
+#groups .grp.empty{border-style:dashed;color:#4d6b83;font-size:15px}
 body.touch #hint{display:none}
 body.touch .btn{font-size:9px}
 body.touch #panel{padding:6px;gap:6px}
@@ -3597,8 +3599,42 @@ function iconTag(kind,type,owner,cls){ return '<img class="'+(cls||'ico')+'" src
 /* Control-group strip beside the minimap: the number, what is in it and how
    many, and clicking one selects it - the same as pressing the key. */
 let grpSig='';
+/* On a touch screen there is no Ctrl+number, so the strip is how groups get made:
+   tap an empty slot to save what is selected, tap a full one to recall it, and
+   hold a full one to overwrite it. */
+function touchGroups(wrap){
+  const slots=[];
+  for(let n=1;n<=4;n++) slots.push([String(n),(groups[n]||[]).filter(e=>e&&!e.dead)]);
+  const sig='T|'+slots.map(([k,g])=>k+':'+g.length+':'+(g[0]&&g[0].type)).join('|')+'#'+sel.length;
+  if(sig===grpSig) return;
+  grpSig=sig;
+  wrap.style.display='flex';
+  wrap.innerHTML=slots.map(([k,g])=>{
+    if(!g.length) return '<div class="grp empty" data-g="'+k+'">+<b>'+k+'</b></div>';
+    const lead=g.find(e=>e.kind==='unit')||g[0];
+    return '<div class="grp" data-g="'+k+'">'+iconTag(lead.kind==='unit'?'unit':'bld',lead.type,0)+
+      '<b>'+k+'</b><i>'+g.length+'</i></div>';
+  }).join('');
+  wrap.querySelectorAll('.grp').forEach(el=>{
+    let held=null, fired=false;
+    const save=()=>{ const mine=sel.filter(e=>e.owner===0&&!e.dead);
+      if(!mine.length){ say('Select something first'); SFX.play('deny'); return; }
+      groups[el.dataset.g]=mine.slice(); SFX.play('complete');
+      say('Group '+el.dataset.g+' saved ('+mine.length+')'); grpSig=''; refreshUI(); };
+    el.onpointerdown=ev=>{ ev.preventDefault(); fired=false;
+      held=setTimeout(()=>{ fired=true; if((groups[el.dataset.g]||[]).length) save(); },520); };
+    el.onpointerup=ev=>{ ev.preventDefault(); clearTimeout(held); if(fired) return;
+      const g=(groups[el.dataset.g]||[]).filter(e=>!e.dead);
+      if(!g.length){ save(); return; }
+      setSel(g); SFX.play('click');
+      if(lastGroup===el.dataset.g&&performance.now()-lastGroupT<420) centerOn(g[0].x,g[0].y);
+      lastGroup=el.dataset.g; lastGroupT=performance.now(); refreshUI(); };
+    el.onpointerleave=()=>clearTimeout(held);
+  });
+}
 function buildGroups(){
   const wrap=document.getElementById('groups'); if(!wrap) return;
+  if(IS_TOUCH){ touchGroups(wrap); return; }
   const keys=[];
   for(let n=1;n<=9;n++){
     const g=(groups[n]||groups[String(n)]||[]).filter(e=>e&&!e.dead);
