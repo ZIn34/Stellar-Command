@@ -1777,29 +1777,51 @@ window.addEventListener('mouseup',e=>{
   if(w<6&&h<6){
     const p=screenToWorld(d.x0,d.y0);
     const e2=entAt(p.x,p.y);
-    if(!e2) { if(!d.shift) setSel([]); return; }
-    if(e2.owner===0&&e2.kind==='unit'&&e2.shiftClone!==1){}
+    if(!e2) { lastPick.t=0; if(!d.shift) setSel([]); return; }
+    if(isDoublePick(e2)){ selectKind(e2); return; }
     if(d.shift&&e2.owner===0) setSel(sel.includes(e2)?sel.filter(s=>s!==e2):sel.concat(e2));
-    else if(e.ctrlKey&&e2.kind==='unit'&&e2.owner===0){
-      setSel(unitsOf(0).filter(u=>u.type===e2.type&&onScreen(u)));
-    } else setSel([e2]);
+    else if(e.ctrlKey&&e2.owner===0) selectKind(e2);
+    else setSel([e2]);
     return;
   }
   const a=screenToWorld(Math.min(d.x0,d.x1),Math.min(d.y0,d.y1));
   const b2=screenToWorld(Math.max(d.x0,d.x1),Math.max(d.y0,d.y1));
   const x0=a.x, y0=a.y, x1=b2.x, y1=b2.y;
   let pick=ents.filter(en=>!en.dead&&en.kind==='unit'&&en.owner===0&&en.x>x0&&en.x<x1&&en.y>y0&&en.y<y1);
-  if(!pick.length){
-    const bs=ents.filter(en=>!en.dead&&en.kind==='building'&&en.owner===0&&
-      en.x>x0&&en.x<x1&&en.y>y0&&en.y<y1);
-    // a box over the base grabs the production line, not the housing
-    const prod=bs.filter(x=>x.done&&BDEF[x.type].trains);
-    pick=prod.length?prod.filter(x=>x.type===prod[0].type):bs.slice(0,1);
-  }
+  if(!pick.length) pick=boxBuildings(ents.filter(en=>!en.dead&&en.kind==='building'&&en.owner===0&&
+      en.x>x0&&en.x<x1&&en.y>y0&&en.y<y1));
   if(pick.length>1) { const combat=pick.filter(u=>!UDEF[u.type].worker); if(combat.length) pick=combat; }
   setSel(d.shift?sel.concat(pick.filter(p=>!sel.includes(p))):pick);
 });
 function onScreen(e){ return e.x>cam.x&&e.x<cam.x+viewW()&&e.y>cam.y&&e.y<cam.y+viewH() }
+/* "All of this kind". Buildings mean every one you own - that is how a whole
+   production line gets onto one control group, even the halls off-screen.
+   Units follow the RTS convention and stay to what is on screen. */
+function selectKind(e2){
+  if(!e2||e2.owner!==0) return;
+  if(e2.kind==='building'){
+    const all=ents.filter(x=>!x.dead&&x.owner===0&&x.kind==='building'&&x.type===e2.type);
+    setSel(all);
+    if(all.length>1) say(all.length+' '+BDEF[e2.type].n+(BDEF[e2.type].n.slice(-1)==='s'?'':'s')+' selected');
+  } else setSel(unitsOf(0).filter(u=>u.type===e2.type&&onScreen(u)));
+}
+/* A drag box over buildings takes the most common kind inside it, preferring
+   production, so it lands on one clean group rather than a mixed jumble. */
+function boxBuildings(bs){
+  if(!bs.length) return [];
+  const prod=bs.filter(x=>x.done&&BDEF[x.type].trains);
+  const pool=prod.length?prod:bs;
+  const n={}; for(const x of pool) n[x.type]=(n[x.type]||0)+1;
+  const top=Object.keys(n).sort((a,b)=>n[b]-n[a])[0];
+  return pool.filter(x=>x.type===top);
+}
+let lastPick={t:0,id:-1,type:null,kind:null};
+function isDoublePick(e2){
+  const now=performance.now();
+  const dbl=!!e2&&e2.owner===0&&lastPick.type===e2.type&&lastPick.kind===e2.kind&&now-lastPick.t<380;
+  lastPick={t:dbl?0:now,id:e2?e2.id:-1,type:e2?e2.type:null,kind:e2?e2.kind:null};
+  return dbl;
+}
 function snap(v){ return Math.round(v/16)*16 }
 
 function rightClick(wx,wy,queue){
@@ -1930,7 +1952,7 @@ function touchOrder(wx,wy){                 // a tap on the world = the sensible
     fx.push({x:hit.x,y:hit.y,t:0,dur:.5,r:24,k:'ping',c:'#7dffb0'});
     return;
   }
-  if(hit&&hit.owner===0){ setSel([hit]); return; }
+  if(hit&&hit.owner===0){ if(isDoublePick(hit)) selectKind(hit); else setSel([hit]); return; }
   if(!mine.length){ if(hit) setSel([hit]); return; }
   if(mine.every(s=>s.kind==='building')){ mmCommand(wx,wy,false); return; }
   rightClick(wx,wy);
@@ -2018,6 +2040,8 @@ function touchEnd(e){
       let pick=ents.filter(en=>!en.dead&&en.kind==='unit'&&en.owner===0&&
         en.x>a.x&&en.x<b.x&&en.y>a.y&&en.y<b.y);
       if(pick.length>1){ const c=pick.filter(u=>!UDEF[u.type].worker); if(c.length) pick=c; }
+      if(!pick.length) pick=boxBuildings(ents.filter(en=>!en.dead&&en.kind==='building'&&en.owner===0&&
+        en.x>a.x&&en.x<b.x&&en.y>a.y&&en.y<b.y));
       if(pick.length) setSel(pick);
     }
     return;
