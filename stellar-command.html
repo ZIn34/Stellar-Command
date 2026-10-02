@@ -416,6 +416,8 @@ body.touch .mouse-only{display:none}
       <button id="btnSettings">AUDIO</button>
       <button id="btnTutorial">TUTORIAL</button>
       <button id="btnShop">SHOP</button>
+      <button id="btnReplay">WATCH REPLAY</button>
+      <input id="replayFile" type="file" accept=".scr" style="display:none">
     </div>
     <p class="fine">AZURE CONCORD vs. THE EMBER LEGION — Legion troops are tougher one-on-one. Wrecks pay a salvage bounty, so trade aggressively.</p>
   </div>
@@ -467,6 +469,7 @@ body.touch .mouse-only{display:none}
   <button id="rpSpeed" title="Playback speed">1x</button>
   <input id="rpScrub" type="range" min="0" max="100" value="0">
   <span id="rpTime">0:00 / 0:00</span>
+  <button id="rpSave" title="Download this replay">SAVE</button>
   <button id="rpClose">CLOSE</button>
 </div>
 <div id="shop">
@@ -4331,6 +4334,85 @@ function replayUI(){
   document.getElementById('rpSpeed').textContent=REPLAY.speed+'x';
 }
 
+/* ---------- replay files ----------
+   Frames alone are not a battle: the map has to come back too, so the header
+   carries the seed, scale and terrain and the map is regenerated from them.
+   Layout: 'SCR1' | headerLen | header JSON | per frame: count + Int32 payload. */
+function replaySave(){
+  if(!REC.frames.length){ say('Nothing recorded'); SFX.play('deny'); return; }
+  const head={v:1, seed:SEED>>>0, scale:scaleKey, mode:modeKey, terrain:terrainKey,
+    rocks:ROCK_CLUSTERS, nplay:NPLAY, teamof:TEAMOF.slice(0,4), step:REC.step,
+    frames:REC.frames.length, when:new Date().toISOString()};
+  const hb=new TextEncoder().encode(JSON.stringify(head));
+  let bytes=8+hb.length;
+  for(const f of REC.frames) bytes+=4+f.byteLength;
+  const buf=new ArrayBuffer(bytes), dv=new DataView(buf), u8=new Uint8Array(buf);
+  u8[0]=83; u8[1]=67; u8[2]=82; u8[3]=49;            // SCR1
+  dv.setUint32(4,hb.length,true);
+  u8.set(hb,8);
+  let off=8+hb.length;
+  for(const f of REC.frames){
+    dv.setUint32(off,f.length,true); off+=4;
+    for(let i=0;i<f.length;i++){ dv.setInt32(off,f[i],true); off+=4; }
+  }
+  const stamp=new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download='stellar-replay-'+stamp+'.scr';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
+  say('Replay saved ('+Math.round(bytes/1024)+' KB)');
+}
+function replayParse(buf){
+  const dv=new DataView(buf), u8=new Uint8Array(buf);
+  if(u8[0]!==83||u8[1]!==67||u8[2]!==82||u8[3]!==49) throw new Error('Not a Stellar Command replay');
+  const hl=dv.getUint32(4,true);
+  const head=JSON.parse(new TextDecoder().decode(u8.subarray(8,8+hl)));
+  let off=8+hl; const frames=[];
+  while(off+4<=buf.byteLength){
+    const n=dv.getUint32(off,true); off+=4;
+    if(off+n*4>buf.byteLength) break;
+    const f=new Int32Array(n);
+    for(let i=0;i<n;i++){ f[i]=dv.getInt32(off,true); off+=4; }
+    frames.push(f);
+  }
+  return {head,frames};
+}
+function replayLoad(file){
+  const fr=new FileReader();
+  fr.onload=()=>{
+    let r;
+    try{ r=replayParse(fr.result); }
+    catch(e){ say('Could not read that replay'); SFX.play('deny'); return; }
+    if(!r.frames.length){ say('That replay is empty'); SFX.play('deny'); return; }
+    // rebuild the same battlefield, then let the frames fill it in
+    replayStop();
+    scaleKey=r.head.scale||'standard';
+    modeKey=r.head.mode||'duel';
+    terrainKey=r.head.terrain||'open';
+    setMapScale(scaleKey==='grand');
+    setupSides(modeKey,1);
+    if(Array.isArray(r.head.teamof)) TEAMOF=r.head.teamof.slice();
+    NPLAY=r.head.nplay||2;
+    ROCK_CLUSTERS=(r.head.rocks!==undefined)?r.head.rocks:0;
+    DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};
+    NET.role=null;
+    SEED=(r.head.seed>>>0)||1;
+    menuOn=false;
+    document.getElementById('menu').style.display='none';
+    init();                                  // regenerates terrain from the seed
+    REC.on=false;                            // watching, not recording
+    REC.step=r.head.step||.5;
+    REC.frames=r.frames;
+    over=false;
+    document.getElementById('over').style.display='none';
+    replayStart();
+    say('Replay loaded - '+r.frames.length+' frames');
+  };
+  fr.onerror=()=>{ say('Could not read that file'); SFX.play('deny'); };
+  fr.readAsArrayBuffer(file);
+}
+
 function step(now){
   if(!gameOn) return;
   requestAnimationFrame(step);
@@ -4712,6 +4794,14 @@ document.getElementById('againBtn').onclick=function(){ SFX.play('click'); leave
 document.getElementById('specBtn').onclick=function(){ SFX.play('click'); spectate(); };
 document.getElementById('replayBtn').onclick=function(){ SFX.play('click'); replayStart(); };
 document.getElementById('rpClose').onclick=function(){ SFX.play('click'); replayStop(); };
+document.getElementById('rpSave').onclick=function(){ SFX.play('click'); replaySave(); };
+document.getElementById('btnReplay').onclick=function(){
+  SFX.unlock(); SFX.play('click'); document.getElementById('replayFile').click();
+};
+document.getElementById('replayFile').onchange=function(){
+  const f=this.files&&this.files[0]; this.value='';
+  if(f) replayLoad(f);
+};
 document.getElementById('rpPlay').onclick=function(){
   if(REPLAY.i>=REC.frames.length-1&&!REPLAY.playing) replaySeek(0);
   REPLAY.playing=!REPLAY.playing; SFX.play('click'); replayUI();
