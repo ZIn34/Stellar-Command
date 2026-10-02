@@ -656,7 +656,7 @@ const BDEF={
   musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark'],hk:'R'},
   siphon:    {n:'Siphon',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
   forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'F'},
-  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:100,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'}
+  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'}
 };
 const DEF=(e)=> e.kind==='unit'?UDEF[e.type]:BDEF[e.type];
 
@@ -2652,7 +2652,11 @@ function selectIdle(){
   if(typeof tutAct==='function') tutAct('idle');
   const w=idleWorkers();
   if(!w.length){ say('No idle Delvers'); return; }
-  setSel([w[0]]); centerOn(w[0].x,w[0].y);
+  // prefer one already in view, and only move the camera if none is
+  const vis=w.filter(onScreen);
+  const pick=vis.length?vis[0]:w[0];
+  setSel([pick]);
+  if(!vis.length) centerOn(pick.x,pick.y);
   say(w.length+' idle Delver'+(w.length>1?'s':''));
   refreshUI();
 }
