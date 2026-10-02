@@ -46,6 +46,15 @@ body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
   -webkit-background-clip:text;background-clip:text;color:transparent!important;animation:aur 4s linear infinite}
 @keyframes aur{to{background-position:300% 0}}
 .ban-void{color:#e9dcff!important;text-shadow:0 0 18px #7a3cff,0 0 40px #3a1480}
+#replay{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--panel) + 12px);
+  z-index:30;display:none;align-items:center;gap:9px;padding:8px 12px;border-radius:10px;
+  background:rgba(6,13,20,.94);border:1px solid #2d5a80;box-shadow:0 6px 24px rgba(0,0,0,.55)}
+#replay button{font-family:inherit;font-size:11px;letter-spacing:1px;padding:6px 10px;cursor:pointer;
+  color:#cfe3f2;background:#0d1a28;border:1px solid #2d5a80;border-radius:6px;min-width:34px}
+#replay button:hover{border-color:#4bd6ff}
+#rpScrub{width:min(320px,42vw);accent-color:#4bd6ff}
+#rpTime{font-size:10.5px;letter-spacing:1px;color:#9fc4dd;min-width:86px;text-align:center}
+body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
 #shop{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(2,5,9,.78)}
 .shopBox{width:min(640px,94vw);max-height:88vh;overflow:auto;background:#07101a;border:1px solid #24486b;
   border-radius:12px;padding:16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
@@ -453,6 +462,13 @@ body.touch .mouse-only{display:none}
   <div id="tutHint"></div>
   <button id="tutSkip">SKIP</button>
 </div>
+<div id="replay">
+  <button id="rpPlay" title="Play / pause">&#9616;&#9616;</button>
+  <button id="rpSpeed" title="Playback speed">1x</button>
+  <input id="rpScrub" type="range" min="0" max="100" value="0">
+  <span id="rpTime">0:00 / 0:00</span>
+  <button id="rpClose">CLOSE</button>
+</div>
 <div id="shop">
   <div class="shopBox">
     <div class="shopHead"><h2>ARMOURY</h2><button id="shopClose">&#10005;</button></div>
@@ -463,7 +479,7 @@ body.touch .mouse-only{display:none}
   </div>
 </div>
 <div id="over"><h1 id="overT"></h1><p id="overSub"></p>
-  <div class="overRow"><button id="specBtn">SPECTATE</button><button id="againBtn">HOME</button></div></div>
+  <div class="overRow"><button id="specBtn">SPECTATE</button><button id="replayBtn">WATCH REPLAY</button><button id="againBtn">HOME</button></div></div>
 <script>
 'use strict';
 /* ===================== CORE SETUP ===================== */
@@ -1503,8 +1519,7 @@ function canRepair(t,own){
 function repairStep(u,dt){
   const t=u.cmd.target;
   if(!canRepair(t,u.owner)){ u.cmd={t:'idle'}; return; }
-  const reach=(t.kind==='building'?Math.max(t.w,t.h)*.5:t.r)+u.r+8;
-  if(Math.hypot(t.x-u.x,t.y-u.y)>reach){ navigate(u,t.x,t.y,dt,reach-2); return; }
+  if(edgeDist(u,t)>workReach(u,t)){ navigate(u,t.x,t.y,dt,workStop(u,t)); return; }
   u.face=Math.atan2(t.y-u.y,t.x-u.x);
   const d=DEF(t), pool=P[u.owner];
   const perSec=t.maxHp/Math.max(8,d.bt||20);      // a full rebuild takes about as long as building it
@@ -1530,12 +1545,21 @@ function repairStep(u,dt){
     u.cmd={t:'idle'};
   }
 }
+/* Buildings block the nav grid, so a worker is parked a tile clear of the
+   footprint and can never reach a centre-measured radius. Measure to the edge
+   with a tile of slack - a Siphon sits on a vent and was impossible to finish. */
+function edgeDist(u,t){
+  if(t.kind!=='building') return Math.hypot(t.x-u.x,t.y-u.y);
+  const dx=Math.max(0,Math.abs(u.x-t.x)-t.w/2), dy=Math.max(0,Math.abs(u.y-t.y)-t.h/2);
+  return Math.hypot(dx,dy);
+}
+function workReach(u,t){ return t.kind==='building'?(u.r+TILE+12):((t.r||0)+u.r+8); }
+function workStop(u,t){ return t.kind==='building'?(Math.max(t.w,t.h)*.5+u.r):((t.r||0)+u.r+6); }
 function buildStep(u,dt){
   const b=u.cmd.site;
   if(!b||b.dead||b.done){ u.cmd={t:'idle'};
     const n=findMineralNear(u,u); if(n) u.cmd={t:'gather',node:n,dep:null}; return; }
-  const reach=Math.max(b.w,b.h)*.5+u.r+8;
-  if(Math.hypot(b.x-u.x,b.y-u.y)<=reach){
+  if(edgeDist(u,b)<=workReach(u,b)){
     const rate=BUILD_RATE/BDEF[b.type].bt;
     b.prog=Math.min(1,b.prog+rate*dt);
     b.lastBuildT=gameTime;
@@ -1546,7 +1570,7 @@ function buildStep(u,dt){
       if(b.type==='siphon') u.cmd={t:'gather',node:b,dep:null};
       else { const n=findMineralNear(u,u); u.cmd=n?{t:'gather',node:n,dep:null}:{t:'idle'}; }
     }
-  } else navigate(u,b.x,b.y,dt,reach-2);
+  } else navigate(u,b.x,b.y,dt,workStop(u,b));
 }
 
 /* ===================== BUILDING BEHAVIOUR ===================== */
@@ -2622,6 +2646,7 @@ function idleStep(){
   document.getElementById('idleN').textContent=n;
 }
 function selectIdle(){
+  if(typeof tutAct==='function') tutAct('idle');
   const w=idleWorkers();
   if(!w.length){ say('No idle Delvers'); return; }
   setSel([w[0]]); centerOn(w[0].x,w[0].y);
@@ -4191,6 +4216,121 @@ function simTick(dt){
     if(!netOnline()&&!TUT.on) checkEnd();
   }
 }
+/* ===================== REPLAY =====================
+   Battles are recorded as world snapshots, the same compact rows the netcode
+   already sends: id, type, owner, position, health, facing. The simulation uses
+   Math.random in many places, so re-running a command log would drift - playing
+   back recorded state is exact by construction, and a guest can record the
+   stream it receives just as well as a host can record its own world. */
+const REC={frames:[], t:0, step:.5, cap:2400, on:false};
+const REPLAY={on:false, i:0, t:0, speed:1, playing:true, byId:new Map(), keep:null};
+function recReset(){ REC.frames=[]; REC.t=0; REC.on=true; }
+function recSnap(){
+  const n=[];
+  for(const e of ents){
+    if(e.dead) continue;
+    const ti2=netTypeIdx(e); if(ti2<0) continue;
+    n.push(e.id, ti2, e.owner===undefined?-1:e.owner, Math.round(e.x), Math.round(e.y),
+      Math.round(e.hp||0), Math.round(e.maxHp||e.hp||1), Math.round((e.face||0)*100),
+      e.kind==='building'?(e.done?1:0):(e.kind==='res'?Math.round(e.amount||0):0));
+  }
+  const a=new Int32Array(n.length); a.set(n);
+  REC.frames.push(a);
+  if(REC.frames.length>REC.cap) REC.frames.shift();     // keep the most recent stretch
+}
+function recTick(dt){
+  if(!REC.on||REPLAY.on||over) return;
+  REC.t-=dt;
+  if(REC.t<=0){ REC.t=REC.step; recSnap(); }
+}
+function recMinutes(){ return (REC.frames.length*REC.step/60); }
+
+function replayApply(a){
+  const seen=new Set();
+  for(let i=0;i<a.length;i+=9){
+    const id=a[i], info=netTypeOf(a[i+1]), own=a[i+2];
+    let o=REPLAY.byId.get(id);
+    if(!o){
+      if(info.kind==='unit') o=mkUnit(info.type,own<0?0:own,a[i+3],a[i+4]);
+      else if(info.kind==='building') o=mkBuilding(info.type,own<0?0:own,a[i+3],a[i+4],a[i+8]===1);
+      else o=mkResource(info.type,a[i+3],a[i+4],a[i+8]);
+      o.id=id; REPLAY.byId.set(id,o);
+      o.px=a[i+3]; o.py=a[i+4];
+    }
+    o.owner=info.kind==='res'?-1:own;
+    o.px=o.x; o.py=o.y; o.nx=a[i+3]; o.ny=a[i+4];
+    o.hp=a[i+5]; o.maxHp=a[i+6]; o.face=a[i+7]/100;
+    if(info.kind==='building') o.done=a[i+8]===1;
+    if(info.kind==='res') o.amount=a[i+8];
+    o.cmd=o.cmd||{t:'idle'};
+    seen.add(id);
+  }
+  for(const [id,o] of REPLAY.byId) if(!seen.has(id)){ o.dead=true; REPLAY.byId.delete(id); }
+  ents=ents.filter(e=>!e.dead);
+}
+function replaySeek(i){
+  REPLAY.i=clamp(i|0,0,Math.max(0,REC.frames.length-1));
+  REPLAY.t=0;
+  for(const [,o] of REPLAY.byId) o.dead=true;
+  ents=ents.filter(e=>!e.dead);
+  REPLAY.byId=new Map();
+  if(REC.frames.length) replayApply(REC.frames[REPLAY.i]);
+  replayUI();
+}
+function replayStart(){
+  if(!REC.frames.length){ say('Nothing recorded'); return; }
+  REPLAY.keep={ents:ents, sel:sel.slice(), camx:cam.x, camy:cam.y, camz:cam.z, over:over };
+  REPLAY.on=true; REPLAY.playing=true; REPLAY.speed=1;
+  ents=[]; sel=[]; shots=[]; fx=[];
+  REPLAY.byId=new Map();
+  document.getElementById('over').style.display='none';
+  document.getElementById('replay').style.display='flex';
+  explored.fill(1); visible.fill(1); paintFog();
+  over=false; paused=false;                 // the loop must run to animate playback
+  replaySeek(0);
+  say('Replay - ' + REC.frames.length + ' frames');
+}
+function replayStop(){
+  if(!REPLAY.on) return;
+  REPLAY.on=false;
+  document.getElementById('replay').style.display='none';
+  const k=REPLAY.keep;
+  if(k){ ents=k.ents; sel=k.sel; cam.x=k.camx; cam.y=k.camy; cam.z=k.camz; over=k.over; }
+  REPLAY.keep=null; REPLAY.byId=new Map();
+  document.getElementById('over').style.display='flex';
+}
+function replayTick(dt){
+  if(!REPLAY.on) return;
+  updateCam(dt);
+  if(REPLAY.playing&&REC.frames.length>1){
+    REPLAY.t+=dt*REPLAY.speed;
+    while(REPLAY.t>=REC.step){
+      REPLAY.t-=REC.step;
+      if(REPLAY.i>=REC.frames.length-1){ REPLAY.playing=false; REPLAY.t=0; break; }
+      REPLAY.i++;
+      replayApply(REC.frames[REPLAY.i]);
+    }
+  }
+  const a=clamp(REPLAY.t/REC.step,0,1);
+  for(const o of ents){
+    if(o.kind!=='unit'||o.nx===undefined) continue;
+    o.x=o.px+(o.nx-o.px)*a; o.y=o.py+(o.ny-o.py)*a;
+  }
+  for(const f of fx) f.t+=dt;
+  fx=fx.filter(f=>f.t<f.dur);
+  replayUI();
+}
+function replayUI(){
+  const sl=document.getElementById('rpScrub'); if(!sl) return;
+  sl.max=Math.max(0,REC.frames.length-1);
+  if(document.activeElement!==sl) sl.value=REPLAY.i;
+  const t=Math.floor(REPLAY.i*REC.step), T=Math.floor((REC.frames.length-1)*REC.step);
+  const f=n=>Math.floor(n/60)+':'+String(n%60).padStart(2,'0');
+  document.getElementById('rpTime').textContent=f(t)+' / '+f(T);
+  document.getElementById('rpPlay').textContent=REPLAY.playing?'‖':'▶';
+  document.getElementById('rpSpeed').textContent=REPLAY.speed+'x';
+}
+
 function step(now){
   if(!gameOn) return;
   requestAnimationFrame(step);
@@ -4198,7 +4338,9 @@ function step(now){
   let dt=(now-last)/1000; last=now;
   if(dt>.1) dt=.1;
   if(paused) dt=0;
+  if(REPLAY.on){ replayTick(dt); render(); mmT-=dt; if(mmT<=0){ mmT=.09; renderMM(); } return; }
   simTick(dt);
+  recTick(dt);
   render();
   mmT-=dt; if(mmT<=0){ mmT=.09; renderMM(); }
   uiT-=dt; if(uiT<=0){ uiT=.14; refreshUI(); }
@@ -4293,6 +4435,8 @@ function endGame(t,c,opts){
   }
   const sp=document.getElementById('specBtn');
   sp.style.display=o2.spectate?'inline-block':'none';
+  const rb=document.getElementById('replayBtn');
+  if(rb) rb.style.display=(!o2.keepRunning&&REC.frames.length>4)?'inline-block':'none';
   document.getElementById('againBtn').textContent=o2.spectate?'LEAVE':'HOME';
   o.style.display='flex';
 }
@@ -4329,6 +4473,7 @@ function init(){
   ents=[]; nextId=1; shots=[]; fx=[]; gameTime=0; over=false; paused=false;
   sel=[]; placing=null; pending=null; pathQ.length=0; lastAlert=null; cardMode='main';
   ALERT.until=0; ALERT.spoke=-99; ALERT.shown=false; cardSig=''; SPECTATING=false;
+  recReset();
   LOCAL_OUT=false; NET.told={}; statsReset();
   for(const k in groups) delete groups[k];
   const startM=GRAND?600:150;
@@ -4565,6 +4710,18 @@ document.getElementById('resumeBtn').onclick=function(){ togglePause(false); };
 document.getElementById('leaveBtn').onclick=function(){ SFX.play('click'); leaveMatch(); };
 document.getElementById('againBtn').onclick=function(){ SFX.play('click'); leaveMatch(); };
 document.getElementById('specBtn').onclick=function(){ SFX.play('click'); spectate(); };
+document.getElementById('replayBtn').onclick=function(){ SFX.play('click'); replayStart(); };
+document.getElementById('rpClose').onclick=function(){ SFX.play('click'); replayStop(); };
+document.getElementById('rpPlay').onclick=function(){
+  if(REPLAY.i>=REC.frames.length-1&&!REPLAY.playing) replaySeek(0);
+  REPLAY.playing=!REPLAY.playing; SFX.play('click'); replayUI();
+};
+document.getElementById('rpSpeed').onclick=function(){
+  const steps=[1,2,4,.5];
+  REPLAY.speed=steps[(steps.indexOf(REPLAY.speed)+1)%steps.length];
+  SFX.play('click'); replayUI();
+};
+document.getElementById('rpScrub').oninput=function(){ replaySeek(+this.value); };
 document.getElementById('idle').onclick=function(){ SFX.play('click'); selectIdle(); };
 window.addEventListener('pointerdown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 window.addEventListener('keydown',()=>{ SFX.unlock(); musicSync(); },{once:true});
@@ -4853,7 +5010,7 @@ function tutOpenSpot(x,y,r){        // a clear tile near a point, for spawning
 }
 function tutFoeUnits(){ return ents.filter(e=>!e.dead&&e.owner===1&&e.kind==='unit'); }
 function tutFoeBlds(){ return ents.filter(e=>!e.dead&&e.owner===1&&e.kind==='building'); }
-function tutSpawnRaiders(n){
+function tutSpawnRaiders(n,air){
   const home=tutHome(); if(!home) return;
   const ex=BASES[1]?BASES[1].tx*TILE:WW-home.x, ey=BASES[1]?BASES[1].ty*TILE:WH-home.y;
   const dx=ex-home.x, dy=ey-home.y, d=Math.hypot(dx,dy)||1;
@@ -4861,7 +5018,7 @@ function tutSpawnRaiders(n){
     const off=(i-(n-1)/2)*46;
     const px=home.x+dx/d*620-dy/d*off, py=home.y+dy/d*620+dx/d*off;
     const sp=tutOpenSpot(px,py);
-    const u=mkUnit('warden',1,sp.x,sp.y);
+    const u=mkUnit((air&&i===0)?'talon':'warden',1,sp.x,sp.y);
     u.cmd={t:'amove',x:home.x,y:home.y};
   }
 }
@@ -4889,18 +5046,15 @@ const TUT_STEPS=[
    h:dv('Right-click one of the blue crystal clusters. Aurite pays for everything you build.',
         'Tap one of the blue crystal clusters. Aurite pays for everything you build.'),
    ok:()=>(TUT.acts.gather||0)>=1},
-  {b:'Bank another 120 aurite.',
-   h:'Delvers haul each load back to the Keystone on their own. Watch the counter climb.',
-   ok:()=>P[0].m>=TUT.baseM+120},
   {b:'Train three more Delvers.',
    h:dv('Click your Keystone and pick Delver. More miners means more income - keep them coming all game.',
         'Tap your Keystone, then tap Delver three times. More miners means more income - keep them coming all game.'),
    enter:()=>{ TUT.baseD=mineU(u=>u.type==='delver').length; },
    ok:()=>mineU(u=>u.type==='delver').length>=(TUT.baseD||0)+3},
-  {b:'Put the new Delvers on aurite.',
-   h:dv('Select the idle ones and right-click a crystal cluster. Idle workers earn nothing.',
-        'Select the idle ones and tap a crystal cluster. Idle workers earn nothing.'),
-   ok:()=>mineU(u=>u.type==='delver'&&u.cmd.t==='gather').length>=(TUT.baseD||0)+3},
+  {b:'Use the idle button to put them to work.',
+   h:dv('New Delvers stand around doing nothing. The amber button by the minimap counts them - click it, or press F1, then send them to a crystal.',
+        'New Delvers stand around doing nothing. The amber button by the minimap counts them - tap it, then tap a crystal.'),
+   ok:()=>(TUT.acts.idle||0)>=1&&idleWorkers().length===0},
   {b:'Raise a Habitat.',
    h:dv('Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
         'Tap Build in the bottom panel, pick Habitat, then tap a clear patch of ground. It lifts your population cap.'),
@@ -4918,30 +5072,51 @@ const TUT_STEPS=[
    h:dv('Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
         'Select it, tap Attack in the panel, then tap across the map. Attack-move walks there and engages anything on the way.'),
    ok:()=>(TUT.acts.amove||0)>=1},
+  {b:'Raise a Watchspire near your Keystone.',
+   h:dv('Build menu, then W. Towers hit hard, outrange your infantry and never get stat bonuses used against them - they are your best answer to a rush.',
+        'Tap Build and pick Watchspire. Towers hit hard, outrange your infantry and are your best answer to a rush.'),
+   ok:()=>mineB(b=>b.type==='watchspire'&&b.done).length>=1},
   {b:'Build a squad: five Wardens.',
-   h:dv('Queue them from the Barracks. Hold the button to stack the queue.',
+   h:dv('Queue them from the Barracks. Hold the button to stack the queue, and select several Barracks at once to build from all of them.',
         'Tap the Barracks, then tap Warden five times to stack the queue.'),
    ok:()=>mineU(u=>u.type==='warden').length>=5},
-  {b:'Hold the line. Four raiders inbound.',
-   h:'They are heading for your Keystone. Meet them with your squad - concentrate fire and let your Watchspire help if you built one.',
-   enter:()=>{ tutSpawnRaiders(4); say('Four Legion Ravagers inbound. Hold your ground.'); SFX.play('attackOrder'); },
+  {b:'Put your army on a control group.',
+   h:dv('Select your Wardens and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
+        'Select your Wardens, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
+   ok:()=>Object.keys(groups).some(k=>(groups[k]||[]).filter(e=>e&&!e.dead).length>=3)},
+  {b:'Hold the line. Raiders inbound, one airborne.',
+   h:'Wardens, Bulwarks and Watchspires can shoot air. Sunderers and Harrowers cannot - that is the one hard rule of fighting here.',
+   enter:()=>{ tutSpawnRaiders(4,true); say('Legion raiders inbound - one Shrike in the air.'); SFX.play('attackOrder'); },
    ok:()=>tutFoeUnits().length===0},
-  {b:'Rebuild: four more Wardens.',
-   h:()=>(P[0].sup>=P[0].cap)
-     ? 'You are at your population cap - raise another Habitat before you can train more.'
-     : 'You will want the numbers before you push out. Replace your losses.',
-   enter:()=>{ TUT.baseW=mineU(u=>u.type==='warden').length; },
-   ok:()=>mineU(u=>u.type==='warden').length>=(TUT.baseW||0)+4},
+  {b:'Raise a Siphon on an ichor vent and crew it.',
+   h:dv('The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then right-click it with a Delver.',
+        'The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then tap it with a Delver.'),
+   ok:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
+     return sp.length>0&&mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length>=1; }},
+  {b:'Raise a Forgeworks.',
+   h:dv('Build menu, then F. It costs ichor and unlocks the heavy units - Sunderers, Harrowers and Talons - plus upgrades.',
+        'Tap Build and pick Forgeworks. It unlocks the heavy units and your upgrades.'),
+   ok:()=>mineB(b=>b.type==='forgeworks'&&b.done).length>=1},
+  {b:'Research an upgrade.',
+   h:dv('Click the Forgeworks, then A for Weapons or D for Plating. Both are permanent and apply to your whole army - the best use of a big bank.',
+        'Tap the Forgeworks, then Weapons or Plating. Both are permanent and apply to your whole army.'),
+   ok:()=>UP[0].wep+UP[0].arm>=1||mineB(b=>b.type==='forgeworks'&&b.res).length>0},
+  {b:'Build a Talon.',
+   h:dv('From the Forgeworks, press T. Talons fly straight over rock and anything in the way, and only anti-air can touch them.',
+        'From the Forgeworks, tap Talon. Talons fly over everything, and only anti-air can touch them.'),
+   ok:()=>mineU(u=>u.type==='talon').length>=1||
+       mineB(b=>b.type==='forgeworks'&&b.queue&&b.queue.length>0).length>0},
   {b:'Destroy the Legion outpost.',
-   h:dv('Their forward post is lightly held - a Habitat and a Barracks. Select your army, press A and click their base.',
-        'Their forward post is lightly held - a Habitat and a Barracks. Select your army, tap Attack, then tap their base.'),
+   h:dv('Their forward post is lightly held. Select your army, press A and click their base - buildings first cuts their reinforcements.',
+        'Their forward post is lightly held. Select your army, tap Attack, then tap their base.'),
    enter:()=>{ tutSpawnOutpost(); say('Legion outpost located. Level it.'); },
    ok:()=>tutFoeBlds().length===0},
   {b:'Outpost cleared. You are ready.',
-   h:dv('Bulwarks and Sunderers come from the Forgeworks. Delvers can repair anything of yours - right-click a damaged building. Good hunting, Commander.',
-        'Bulwarks and Sunderers come from the Forgeworks. Delvers can repair anything of yours - select one and tap a damaged building. Good hunting, Commander.'),
+   h:dv('Two habits win games: never stop making Delvers, and never let aurite pile up. Delvers repair too - right-click a damaged building. Good hunting, Commander.',
+        'Two habits win games: never stop making Delvers, and never let aurite pile up. Delvers repair too - select one and tap a damaged building. Good hunting, Commander.'),
    ok:()=>false, last:true}
 ];
+
 function tutEl(id){ return document.getElementById(id); }
 function tutShow(){
   const st=TUT_STEPS[TUT.i]; if(!st) return;
@@ -4994,6 +5169,7 @@ function startTutorial(){
   init();
   for(const e of ents) if(e.owner===1) e.dead=true;   // no Legion until the finale
   ents=ents.filter(e=>!e.dead);
+  P[0].m=Math.max(P[0].m,280); P[0].g=170;            // enough to reach the tech lesson
   TUT.baseM=P[0].m;
   tutShow();
   say('Training run - no one is coming for you. Take your time.');
