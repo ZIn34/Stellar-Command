@@ -392,6 +392,7 @@ body.touch .mouse-only{display:none}
     <p class="tag">Frontier war for the aurite seams of Kepler-9c</p>
     <div class="rows">
       <div class="col"><h2>SIDES</h2><div id="modes"></div>
+        <h2 style="margin-top:9px">DOCTRINE</h2><div id="factions"></div>
         <h2 style="margin-top:9px">TERRAIN</h2><div id="terrains"></div>
         <h2 style="margin-top:9px">THEATRE</h2><div id="diffs"></div>
         <h2 style="margin-top:9px">SCALE</h2><div id="scales"></div></div>
@@ -537,6 +538,26 @@ const TEAM=[{c:PC,dk:'#12617f'},{c:EC,dk:'#7d2b1c'},
    Looks only - nothing here touches stats, so buying never buys an edge.
    A palette recolours YOUR forces on YOUR screen; opponents keep the colours
    that tell the sides apart. Hues avoid the red, green and orange rival slots. */
+/* ===================== FACTIONS =====================
+   Each side runs the same roster through a different doctrine: multipliers on
+   health, damage, speed, price and build time. Buildings stay neutral so towers
+   and tech keep one balance point, and nothing here is a flat upgrade. */
+const FACTIONS={
+  concord:{n:'AZURI CONCORD', d:'even doctrine - no weaknesses',
+           hp:1,    dmg:1,    sp:1,    cost:1,   bt:1,    eco:1},
+  legion: {n:'EMBER LEGION',  d:'tougher, harder hitting, slower and dearer',
+           hp:1.28, dmg:1.14, sp:.86,  cost:1.2, bt:1.18, eco:1},
+  pact:   {n:'VERDANT PACT',  d:'cheap, quick, fragile - win on numbers',
+           hp:.8,   dmg:.92,  sp:1.22, cost:.8,  bt:.76,  eco:1.06}
+};
+let facKey='concord';
+let FACOF=['concord','concord','concord','concord'];
+function facOf(o){ return FACTIONS[FACOF[o]]||FACTIONS.concord; }
+function unitCost(type,owner){
+  const d=UDEF[type], f=facOf(owner);
+  return {m:Math.round(d.m*f.cost), g:Math.round(d.g*f.cost)};
+}
+function unitBT(type,owner){ return UDEF[type].bt*facOf(owner).bt; }
 const TEAM0_DEFAULT={c:'#4bd6ff',dk:'#12617f'};
 const COSMETICS=[
   {id:'pal_azure',   kind:'palette', n:'Azure',    c:'#4bd6ff', dk:'#12617f', free:true},
@@ -743,7 +764,7 @@ function tileBlocked(x,y){
 /* ===================== ENTITY FACTORY ===================== */
 function mkUnit(type,owner,x,y){
   const d=UDEF[type];
-  const mh=Math.round(d.hp*(isBot(owner)?ELITE.hp:1));
+  const mh=Math.round(d.hp*(isBot(owner)?ELITE.hp:1)*facOf(owner).hp);
   const u={id:nextId++,kind:'unit',type,owner,x,y,vx:0,vy:0,hp:mh,maxHp:mh,r:d.r,muzzle:0,
     cmd:{t:'idle'},target:null,atkCd:Math.random()*.5,face:owner?Math.PI*.75:-Math.PI*.25,
     carry:0,carryType:'m',hTimer:0,home:null,dead:false,flash:0};
@@ -1350,7 +1371,7 @@ function steer(u,tx,ty,dt,stopAt){
   const dx=tx-u.x, dy=ty-u.y, d=Math.hypot(dx,dy);
   const near=stopAt||3;
   if(d<=near) return true;
-  const sp=UDEF[u.type].sp*MOVE_RATE*(u.slow?.55:1);
+  const sp=UDEF[u.type].sp*facOf(u.owner).sp*MOVE_RATE*(u.slow?.55:1);
   const step=Math.min(sp*dt,d);
   let nx=dx/d, ny=dy/d;
   u.face=Math.atan2(ny,nx);
@@ -1487,7 +1508,7 @@ function gatherStep(u,dt){
     if(!dep||dep.dead){ dep=u.cmd.dep=nearestDepot(u.owner,u.x,u.y); }
     if(!dep){ u.cmd={t:'idle'}; return; }
     if(Math.hypot(dep.x-u.x,dep.y-u.y) < Math.max(dep.w,dep.h)*.55+u.r+6){
-      const got=u.carry*ECO*(isBot(u.owner)?DIFF.eco:1);
+      const got=u.carry*ECO*(isBot(u.owner)?DIFF.eco:1)*facOf(u.owner).eco;
       P[u.owner][u.carryType]+=got;
       if(u.owner===0) STATS[u.carryType==='m'?'aurite':'ichor']+=got;
       u.carry=0;
@@ -1596,7 +1617,7 @@ function updateBuilding(b,dt){
   }
   if(b.queue.length){
     b.ptime+=dt;
-    const it=b.queue[0], need=UDEF[it].bt/TRAIN_RATE;
+    const it=b.queue[0], need=unitBT(it,b.owner)/TRAIN_RATE;
     if(b.ptime>=need){
       b.ptime=0; b.queue.shift();
       const ang=Math.atan2(b.rally.y-b.y,b.rally.x-b.x);
@@ -1656,7 +1677,7 @@ function tryTrain(b,type){
     if(P[0].sup+d.sup>P[0].cap){ say('Build more habitats'); SFX.play('deny'); return false; }
     netCmd('train',{id:b.id,type}); return true;
   }
-  const d=UDEF[type], o=b.owner;
+  const o=b.owner, d=Object.assign({},UDEF[type],unitCost(type,b.owner));
   if(b.queue.length>=5){ if(!o){ say('Queue full'); SFX.play('deny'); } return false; }
   if(!canAfford(o,d)){ if(!o){ say(P[o].m<d.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); } return false; }
   if(P[o].sup+d.sup>P[o].cap){ if(!o){ say('Build more habitats'); SFX.play('deny'); } return false; }
@@ -2241,6 +2262,7 @@ function netRecv(m){
   if(m.t==='start'){
     NET.role=m.role; NET.code=m.code; NET.ended=false; NET.byId=new Map();
     NET.slot=m.slot|0; NET.humans=m.count|0||1; NET.terrain=m.terrain||terrainKey;
+    NET.facs=Array.isArray(m.facs)?m.facs:null;
     NET.lostAt=null;
     if(m.rejoin) say('Reconnected as Commander '+(NET.slot+1)+'.');
     lobbyClose();
@@ -2487,6 +2509,10 @@ function startOnline(seed,grand,mode){
   setMapScale(!!grand);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
   ROCK_CLUSTERS=(TERRAINS[NET.terrain]||TERRAINS.open).rocks;
+  FACOF=(NET.facs&&NET.facs.length===4)?NET.facs.slice():[facKey,'concord','concord','concord'];
+  if(NET.slot){                                      // a guest sees itself as slot 0
+    const t=FACOF.slice(), g=NET.slot, tmp=t[0]; t[0]=t[g]; t[g]=tmp; FACOF=t;
+  }
   setupSides(mode||'duel',NET.humans||2);
   // Teams are defined in real slots; a guest sees itself as 0, so swap its own
   // slot into place or allies and enemies come out inverted on its screen.
@@ -2771,9 +2797,10 @@ function buildCard(){
     } else if(d.trains){
       for(const t of d.trains){
         const ud=UDEF[t];
+        const uc=unitCost(t,0);
         cardButtons.push({img:iconOf('unit',t,0),
           name:ud.n+(bGroup.length>1?' ×'+bGroup.length:''),
-          cost:{m:ud.m,g:ud.g},hk:ud.n.charAt(0),
+          cost:{m:uc.m,g:uc.g},hk:ud.n.charAt(0),
           act:function(){ trainGroup(bGroup,t); }});
       }
       if(b.type==='forgeworks'){
@@ -3925,7 +3952,7 @@ function drawBuilding(b){
     ctx.fillStyle='#ffcf5a'; ctx.fillRect(b.x-w/2,b.y+hh+4,w*f,4);
   }
   if(b.done&&b.queue&&b.queue.length){
-    const f=clamp(b.ptime/(UDEF[b.queue[0]].bt/TRAIN_RATE),0,1), w=b.w*.8;
+    const f=clamp(b.ptime/(unitBT(b.queue[0],b.owner)/TRAIN_RATE),0,1), w=b.w*.8;
     ctx.fillStyle='rgba(4,10,17,.9)'; ctx.fillRect(b.x-w/2,b.y+hh+4,w,4);
     ctx.fillStyle='#4bd6ff'; ctx.fillRect(b.x-w/2,b.y+hh+4,w*f,4);
   }
@@ -4648,7 +4675,8 @@ function unitName(type,owner){ return owner===1?(ENAME[type]||UDEF[type].n):UDEF
 function dmgOf(e){
   const d=DEF(e);
   const up=(e.kind==='unit'&&UP[e.owner])?1+UP[e.owner].wep*UPG.wep.step:1;
-  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up;
+  const fac=e.kind==='unit'?facOf(e.owner).dmg:1;
+  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac;
 }
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
@@ -4681,6 +4709,16 @@ function menuInit(){
     el.onclick=()=>{ SFX.unlock(); SFX.play('click'); modeKey=k;
       mw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
     mw.appendChild(el);
+  });
+  const fw=document.getElementById('factions');
+  fw.innerHTML='';
+  Object.keys(FACTIONS).forEach(k=>{
+    const d=FACTIONS[k], el=document.createElement('div');
+    el.className='scard'+(k===facKey?' on':'');
+    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
+    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); facKey=k;
+      fw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
+    fw.appendChild(el);
   });
   const tw=document.getElementById('terrains');
   tw.innerHTML='';
@@ -4976,13 +5014,13 @@ function lobbyInit(){
   document.getElementById('btnQuick').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
     lobbySetState('searching');
-    netConnect(()=>netSend({t:'quick',mode:modeKey}));
+    netConnect(()=>netSend({t:'quick',mode:modeKey,fac:facKey}));
   };
   document.getElementById('btnHost').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
     lobbySetState('hosting');
     document.getElementById('lobCode').textContent='----';
-    netConnect(()=>netSend({t:'host',mode:modeKey}));
+    netConnect(()=>netSend({t:'host',mode:modeKey,fac:facKey}));
   };
   document.getElementById('btnJoin').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
@@ -5019,7 +5057,7 @@ function lobbyInit(){
     if(v.length!==4){ document.getElementById('lobMsg').textContent='Codes are four digits.'; SFX.play('deny'); return; }
     SFX.play('click');
     lobbySetState('linking');
-    netConnect(()=>netSend({t:'join',code:v}));
+    netConnect(()=>netSend({t:'join',code:v,fac:facKey}));
   };
   document.getElementById('lobCancel').onclick=()=>{ SFX.play('click'); lobbyCancel(); };
   document.getElementById('lobInput').addEventListener('keydown',e=>{
@@ -5254,6 +5292,7 @@ function startTutorial(){
   ELITE={hp:1,dmg:1};
   modeKey='duel';
   ROCK_CLUSTERS=0;                       // training stays clear
+  FACOF=['concord','concord','concord','concord'];   // learn on the even doctrine
   setupSides('duel',1);
   BOTS=[false,false,false,false];      // nobody attacks you while you learn
   TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={}; TUT.baseW=0; TUT.baseD=0;
@@ -5277,6 +5316,9 @@ function startGame(key){
   ELITE={hp:DIFF.hp,dmg:DIFF.dmg};
   ROCK_CLUSTERS=(TERRAINS[terrainKey]||TERRAINS.open).rocks;
   setupSides(modeKey,1);
+  const keys=Object.keys(FACTIONS);
+  FACOF=[facKey,'concord','concord','concord'];
+  for(let o=1;o<4;o++) FACOF[o]=keys[Math.floor(Math.random()*keys.length)];
   menuOn=false;
   document.getElementById('menu').style.display='none';
   init();
