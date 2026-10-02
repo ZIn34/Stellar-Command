@@ -1043,6 +1043,52 @@ function nearestDepot(o,x,y){
   return nearest(ents,x,y,e=>e.kind==='building'&&e.owner===o&&e.done&&
     BDEF[e.type].dropoff);
 }
+/* Saturation. A mineral line only holds so many Delvers before the extras
+   stand in a queue earning nothing, so each Keystone takes two per aurite
+   patch in reach and each Siphon takes three - the shape StarCraft uses.
+   Spare harvesters walk to the next base instead of piling on. */
+const MINE_REACH=380;
+let WCAP=new Map(), WCAP_AT=-1;
+function mineCap(b){
+  if(!b||b.kind!=='building') return 99;
+  if(b.type==='siphon') return 3;
+  if(WCAP_AT!==gameTime){ WCAP_AT=gameTime; WCAP=new Map(); }
+  if(WCAP.has(b.id)) return WCAP.get(b.id);
+  let n=0;
+  for(const e of ents) if(!e.dead&&e.kind==='res'&&e.type==='aurite'&&e.amount>0&&
+    Math.hypot(e.x-b.x,e.y-b.y)<MINE_REACH) n++;
+  const cap=Math.max(2,Math.min(24,n*2));
+  WCAP.set(b.id,cap); return cap;
+}
+/* How many are already working this line, not counting the one asking. */
+function lineLoad(b,except){
+  let c=workerCounts().get(b.id)||0;
+  if(except&&!except.dead&&except.cmd&&except.cmd.t==='gather'){
+    const n=except.cmd.node;
+    const eff=(n&&!n.dead&&n.kind==='building'&&n.type==='siphon')?n
+      :((except.cmd.dep&&!except.cmd.dep.dead)?except.cmd.dep
+                                              :nearestDepot(except.owner,except.x,except.y));
+    if(eff===b) c--;
+  }
+  return Math.max(0,c);
+}
+function lineFull(b,except){ return lineLoad(b,except)>=mineCap(b); }
+function openDepot(o,x,y,except){
+  let best=null,bd=1e18,any=null,ad=1e18;
+  for(const e of ents){
+    if(e.dead||e.kind!=='building'||e.owner!==o||!e.done||!BDEF[e.type].dropoff) continue;
+    const d=(e.x-x)**2+(e.y-y)**2;
+    if(d<ad){ ad=d; any=e; }
+    if(lineFull(e,except)) continue;
+    if(d<bd){ bd=d; best=e; }
+  }
+  return best||any;
+}
+/* Every gather order goes through here so the per-line tally is never stale
+   when a whole selection is assigned in one click. */
+function setGather(u,node,dep){
+  u.cmd={t:'gather',node:node,dep:dep||null}; u.target=null; WCOUNT_AT=-1;
+}
 function enemyOf(o){ return o===0?1:0 }        // legacy pairing, still used for 1v1 fallbacks
 function hitRadius(e){ return e.kind==='building'?Math.max(e.w,e.h)*.42:e.r }
 
@@ -1516,13 +1562,14 @@ function updateUnit(u,dt){
 }
 
 function findMineralNear(u,from){
-  return nearest(ents,from.x,from.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
+  const dep=u?openDepot(u.owner,from.x,from.y,u):null, o=dep||from;
+  return nearest(ents,o.x,o.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
 }
 function gatherStep(u,dt){
   const node=u.cmd.node;
   if(u.carry>0){
     let dep=u.cmd.dep;
-    if(!dep||dep.dead){ dep=u.cmd.dep=nearestDepot(u.owner,u.x,u.y); }
+    if(!dep||dep.dead){ dep=u.cmd.dep=openDepot(u.owner,u.x,u.y,u); WCOUNT_AT=-1; }
     if(!dep){ u.cmd={t:'idle'}; return; }
     if(Math.hypot(dep.x-u.x,dep.y-u.y) < Math.max(dep.w,dep.h)*.55+u.r+6){
       const got=u.carry*ECO*(isBot(u.owner)?DIFF.eco:1)*facOf(u.owner).eco;
@@ -1533,12 +1580,12 @@ function gatherStep(u,dt){
       if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+'+Math.round(got),c:u.carryType==='m'?'#7fd0ff':'#35d18a'});
       let back=node;
       if(!back||back.dead||(back.kind==='res'&&back.amount<=0)) back=findMineralNear(u,dep);
-      if(back) u.cmd={t:'gather',node:back,dep:null}; else u.cmd={t:'idle'};
+      if(back) setGather(u,back); else u.cmd={t:'idle'};
     } else navigate(u,dep.x,dep.y,dt,Math.max(dep.w,dep.h)*.5);
     return;
   }
   if(!node||node.dead||(node.kind==='res'&&node.amount<=0)){
-    const n=findMineralNear(u,u); if(n) u.cmd={t:'gather',node:n,dep:null}; else u.cmd={t:'idle'};
+    const n=findMineralNear(u,u); if(n) setGather(u,n); else u.cmd={t:'idle'};
     return;
   }
   const reach=(node.kind==='building'?Math.max(node.w,node.h)*.5:node.r)+u.r+6;
@@ -1550,7 +1597,7 @@ function gatherStep(u,dt){
       if(node.kind==='building'){ u.carry=8; u.carryType='g'; if(node.geyser) node.geyser.amount=Math.max(0,node.geyser.amount-8); }
       else { const got=Math.min(8,node.amount); node.amount-=got; u.carry=got; u.carryType='m';
              if(node.amount<=0){ node.dead=true; } }
-      u.cmd.dep=nearestDepot(u.owner,u.x,u.y);
+      u.cmd.dep=openDepot(u.owner,u.x,u.y,u); WCOUNT_AT=-1;
     }
   } else { u.hTimer=0; navigate(u,node.x,node.y,dt,reach-2); }
 }
@@ -1599,7 +1646,7 @@ function workStop(u,t){ return t.kind==='building'?(Math.max(t.w,t.h)*.5+u.r):((
 function buildStep(u,dt){
   const b=u.cmd.site;
   if(!b||b.dead||b.done){ u.cmd={t:'idle'};
-    const n=findMineralNear(u,u); if(n) u.cmd={t:'gather',node:n,dep:null}; return; }
+    const n=findMineralNear(u,u); if(n) setGather(u,n); return; }
   if(edgeDist(u,b)<=workReach(u,b)){
     const rate=BUILD_RATE/BDEF[b.type].bt;
     b.prog=Math.min(1,b.prog+rate*dt);
@@ -1608,8 +1655,8 @@ function buildStep(u,dt){
     if(b.prog>=1){ b.done=true; b.hp=b.maxHp; recalcSupply(b.owner);
       if(b.owner===0) STATS.bBuilt++;
       if(b.owner===0){ say(nameOf(b.type,0)+' complete'); SFX.play('complete'); }
-      if(b.type==='siphon') u.cmd={t:'gather',node:b,dep:null};
-      else { const n=findMineralNear(u,u); u.cmd=n?{t:'gather',node:n,dep:null}:{t:'idle'}; }
+      if(b.type==='siphon') setGather(u,b);
+      else { const n=findMineralNear(u,u); if(n) setGather(u,n); else u.cmd={t:'idle'}; }
     }
   } else navigate(u,b.x,b.y,dt,workStop(u,b));
 }
@@ -1651,7 +1698,7 @@ function updateBuilding(b,dt){
       if(b.owner===0){ SFX.play('trained',b.x,b.y); STATS.built++; }
       if(UDEF[it].worker){
         const n=nearest(ents,b.x,b.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
-        if(n) u.cmd={t:'gather',node:n,dep:null};
+        if(n) setGather(u,n);
       } else if(b.rally) u.cmd={t:'amove',x:b.rally.x+rnd(-26,26),y:b.rally.y+rnd(-26,26)};
     }
   }
@@ -1915,8 +1962,17 @@ function rightClick(wx,wy,queue){
     SFX.play('attackOrder');
     fx.push({x:t.x,y:t.y,t:0,dur:.5,r:hitRadius(t)+8,k:'ping',c:'#ff6b52'}); return; }
   if(t&&(t.kind==='res'&&t.amount>0||t.kind==='building'&&t.type==='siphon'&&t.owner===0&&t.done)){
-    let any=false;
-    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'gather',node:t,dep:null}; u.target=null; any=true; }
+    let any=false, full=false;
+    for(const u of us) if(UDEF[u.type].worker){
+      const line=t.kind==='building'?t:openDepot(u.owner,t.x,t.y,u);
+      if(line&&lineFull(line,u)){ full=true; continue; }
+      setGather(u,t,t.kind==='building'?null:line); any=true;
+    }
+    if(full&&!any){
+      say(t.kind==='building'?nameOf('siphon',0)+' is fully manned - 3 harvesters'
+                             :'That aurite line is full - raise another '+nameOf('keystone',0));
+      SFX.play('deny'); return;
+    }
     if(any){ tutAct('gather'); SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:t.r+8,k:'ping',c:'#7fd0ff'}); return; }
   }
   if(t&&t.kind==='building'&&t.owner===0&&!t.done){
@@ -2015,7 +2071,11 @@ function touchOrder(wx,wy){                 // a tap on the world = the sensible
   const hit=entAt(wx,wy);
   const ws=mine.filter(x=>x.kind==='unit'&&UDEF[x.type].worker);
   if(hit&&hit.owner===0&&hit.kind==='building'&&ws.length&&(!hit.done||hit.type==='siphon')){
-    for(const u of ws) u.cmd=hit.done?{t:'gather',node:hit,dep:null}:{t:'build',site:hit};
+    for(const u of ws){
+      if(!hit.done){ u.cmd={t:'build',site:hit}; continue; }
+      if(lineFull(hit,u)) continue;
+      setGather(u,hit);
+    }
     SFX.play('order');
     fx.push({x:hit.x,y:hit.y,t:0,dur:.5,r:24,k:'ping',c:'#7dffb0'});
     return;
@@ -2465,7 +2525,11 @@ function contextOrder(mine,wx,wy){
   if(t&&isFoe(t.owner,own)){ for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; } return; }
   if(t&&(t.kind==='res'&&t.amount>0||t.kind==='building'&&t.type==='siphon'&&t.owner===own&&t.done)){
     let any=false;
-    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'gather',node:t,dep:null}; u.target=null; any=true; }
+    for(const u of us) if(UDEF[u.type].worker){
+      const line=t.kind==='building'?t:openDepot(u.owner,t.x,t.y,u);
+      if(line&&lineFull(line,u)) continue;
+      setGather(u,t,t.kind==='building'?null:line); any=true;
+    }
     if(any) return;
   }
   if(t&&t.kind==='building'&&t.owner===own&&!t.done){
@@ -3118,20 +3182,19 @@ function aiWorkerTarget(ME){
   return Math.max(6,Math.round(cap*(DIFF.wk||1)));
 }
 function aiAssignWorker(ME,w){
-  const siphon=bldOf(ME).find(b=>b.type==='siphon'&&b.done&&
-    unitsOf(ME).filter(x=>x.cmd.t==='gather'&&x.cmd.node===b).length<3);
-  if(siphon){ w.cmd={t:'gather',node:siphon,dep:null}; return; }
+  const siphon=bldOf(ME).find(b=>b.type==='siphon'&&b.done&&!lineFull(b,w));
+  if(siphon){ setGather(w,siphon); return; }
   const nodes=ents.filter(e=>!e.dead&&e.kind==='res'&&e.type==='aurite'&&e.amount>0&&dist(e,w)<620)
     .sort((a,b)=>dist(a,w)-dist(b,w)).slice(0,10);
   if(!nodes.length){
     const any=nearest(ents,w.x,w.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
-    if(any) w.cmd={t:'gather',node:any,dep:null};
+    if(any) setGather(w,any);
     return;
   }
   const load=new Map();
   for(const u of unitsOf(ME)) if(u.cmd.t==='gather'&&u.cmd.node) load.set(u.cmd.node,(load.get(u.cmd.node)||0)+1);
   nodes.sort((a,b)=>(load.get(a)||0)-(load.get(b)||0));
-  w.cmd={t:'gather',node:nodes[0],dep:null};      // spread out instead of stacking
+  setGather(w,nodes[0],openDepot(ME,nodes[0].x,nodes[0].y,w));   // spread out instead of stacking
 }
 /* --- defending the home front, including pulling workers off the line --- */
 function aiDefend(AI,ME,threat,army,workers){
@@ -3185,7 +3248,7 @@ function aiRun(AI,ME,dt){
     if(on>=3) continue;
     const cand=workers.find(w=>!w.isScout&&!w.pulled&&w.cmd.t==='gather'&&
       w.cmd.node&&w.cmd.node!==sp&&w.cmd.node.kind==='res');
-    if(cand){ cand.cmd={t:'gather',node:sp,dep:null}; break; }
+    if(cand){ setGather(cand,sp); break; }
   }
 
   /* ---- patch up the base: worst-hurt structure first ---- */
@@ -3370,9 +3433,138 @@ function mixHex(a,b,k){
   const r=Math.round(ar+(br-ar)*k), g=Math.round(ag+(bg-ag)*k), bl=Math.round(ab+(bb-ab)*k);
   return '#'+((1<<24)|(r<<16)|(g<<8)|bl).toString(16).slice(1);
 }
+/* Each doctrine forges its own plating: the Concord mills cool blue-grey
+   alloy, the Legion pours rough iron, the Pact grows pale resin shell. The
+   team colour is still mixed in on top so you can tell players apart. */
+const FBUILD={
+  concord:{hi:'#61788f', mid:'#42566c', lo:'#2a3847', mix:.38, scale:1,   acc:'#9fd9ff'},
+  legion: {hi:'#8a6b4e', mid:'#56402c', lo:'#2b1d13', mix:.17, scale:1.1, acc:'#ffb173'},
+  pact:   {hi:'#9aae76', mid:'#5f7444', lo:'#333f27', mix:.15, scale:.92, acc:'#b6f08a'}
+};
+/* The structures were all drawn in one grey-blue, so tinting the trim alone
+   left every doctrine looking like the Concord. Re-grade the plate greys
+   themselves: read each colour's brightness, then look that brightness up in
+   the doctrine's own lo-mid-hi ramp. Iron reads as iron, wood as wood, and
+   the shading the art already had survives it. */
+function facShade(hx,fk){
+  const f=FBUILD[fk]; if(!f||fk==='concord') return hx;
+  const p=parseInt(hx.slice(1),16);
+  const L=((p>>16&255)*.299+(p>>8&255)*.587+(p&255)*.114)/255;
+  const k=Math.min(1,Math.pow(L,.82)*1.45);
+  const ramp=k<.5?mixHex(f.lo,f.mid,k*2):mixHex(f.mid,f.hi,(k-.5)*2);
+  return mixHex(hx,ramp,.88);
+}
+function facKeyOf(o){ return (o>=0&&o<4&&FBUILD[FACOF[o]])?FACOF[o]:'concord'; }
 function hullSet(owner){
-  const c=(TEAM[owner]||TEAM[0]).c;
-  return {hi:mixHex(HULL_HI,c,.38), mid:mixHex(HULL,c,.34), lo:mixHex(HULL_LO,c,.24)};
+  const c=(TEAM[owner]||TEAM[0]).c, f=FBUILD[facKeyOf(owner)]||FBUILD.concord;
+  return {hi:mixHex(f.hi,c,f.mix), mid:mixHex(f.mid,c,f.mix-.04),
+          lo:mixHex(f.lo,c,Math.max(0,f.mix-.14)), acc:f.acc};
+}
+/* Doctrine marks. Stats alone never read on the field, so each legion gets a
+   silhouette you can pick out at a glance: Legion grows horns and smoke
+   stacks, the Pact sprouts fronds and a shell, the Concord stays clean and
+   keeps a sensor vane. Drawn before the lighting pass so they sit in it. */
+function facMarkUnit(g,R,t,fk,h){
+  if(fk==='legion'){
+    g.fillStyle='#2a1d14'; g.strokeStyle=DARK; g.lineWidth=1;
+    poly(g,[[R*.15,-R*.74],[R*1.22,-R*.5],[R*.5,-R*.3]]); g.fill(); g.stroke();
+    poly(g,[[R*.15, R*.74],[R*1.22, R*.5],[R*.5, R*.3]]); g.fill(); g.stroke();
+    g.fillStyle='#38271c';
+    rr(g,-R*1.26,-R*.5,R*.34,R*.3,1.2); g.fill(); g.strokeStyle=DARK; g.stroke();
+    rr(g,-R*1.26, R*.2,R*.34,R*.3,1.2); g.fill(); g.stroke();
+    g.fillStyle='#17100b'; g.globalAlpha=.5;                // soot streaks
+    for(let i=-1;i<=1;i++) rr(g,-R*.9,i*R*.3-1,R*.9,2,1),g.fill();
+    g.globalAlpha=1;
+    glow(g,()=>{ g.fillStyle='#ff8a3d'; g.beginPath();
+      g.arc(-R*1.2,-R*.35,1.7,0,7); g.arc(-R*1.2,R*.35,1.7,0,7); g.fill(); },'#ff8a3d',6);
+  } else if(fk==='pact'){
+    g.strokeStyle='#2c4726'; g.lineWidth=2.4; g.lineCap='round';
+    for(let i=-1;i<=1;i+=2){                                 // trailing fronds
+      g.beginPath(); g.moveTo(-R*.5,i*R*.42);
+      g.quadraticCurveTo(-R*1.2,i*R*.78,-R*1.5,i*R*.28); g.stroke();
+      g.beginPath(); g.moveTo(-R*.3,i*R*.6);
+      g.quadraticCurveTo(-R*.8,i*R*1.1,-R*1.1,i*R*.9); g.stroke();
+    }
+    g.lineCap='butt';
+    const sg=g.createRadialGradient(-R*.18,-R*.18,1,0,0,R*.55);
+    sg.addColorStop(0,'#9bba7c'); sg.addColorStop(1,'#46593a');
+    g.fillStyle=sg; g.beginPath(); g.ellipse(-R*.05,0,R*.55,R*.42,0,0,7); g.fill();
+    g.strokeStyle='#223520'; g.lineWidth=1.2; g.stroke();
+    g.strokeStyle='#2c4726'; g.lineWidth=1;                  // shell ribs
+    for(let i=-1;i<=1;i++){ g.beginPath();
+      g.moveTo(-R*.05+i*R*.2,-R*.38); g.lineTo(-R*.05+i*R*.2,R*.38); g.stroke(); }
+    glow(g,()=>{ g.fillStyle='#b6f08a'; g.beginPath();
+      g.arc(R*.22,0,R*.14,0,7); g.fill(); },'#b6f08a',6);
+  } else {
+    g.fillStyle=h.hi; g.strokeStyle=DARK; g.lineWidth=1;     // swept sensor vane
+    poly(g,[[-R*.35,-R*.12],[-R*1.1,-R*.52],[-R*1.32,-R*.3],[-R*.6,R*.02]]);
+    g.fill(); g.stroke();
+    g.fillStyle=t.c; g.globalAlpha=.9;
+    poly(g,[[R*.58,-R*.1],[R*.88,0],[R*.58,R*.1],[R*.68,0]]); g.fill(); g.globalAlpha=1;
+  }
+}
+function facMarkBld(g,hw,hh,t,fk,h){
+  if(fk==='legion'){
+    g.strokeStyle=DARK; g.lineWidth=1.2;
+    g.fillStyle='#33241a';                                   // buttress spikes
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(s=>{
+      poly(g,[[s[0]*(hw-6),s[1]*hh],[s[0]*(hw+13),s[1]*(hh+5)],[s[0]*hw,s[1]*(hh-7)]]);
+      g.fill(); g.stroke();
+      poly(g,[[s[0]*hw,s[1]*(hh-6)],[s[0]*(hw+6),s[1]*(hh+13)],[s[0]*(hw-7),s[1]*hh]]);
+      g.fill(); g.stroke();
+    });
+    g.fillStyle='#45301f';                                   // twin smoke stacks
+    rr(g,-hw+7,-hh-15,13,19,2); g.fill(); g.stroke();
+    rr(g,-hw+24,-hh-11,10,15,2); g.fill(); g.stroke();
+    g.fillStyle='#120c08'; g.globalAlpha=.5;                 // soot runs down the walls
+    for(let i=0;i<5;i++){ rr(g,-hw+9+i*(hw*.42),-hh+5,3.5,hh*1.5,1.5); g.fill(); }
+    g.globalAlpha=1;
+    g.fillStyle='#6d4a2c';                                   // riveted band
+    rr(g,-hw+3,-2.5,hw*2-6,5,1); g.fill();
+    g.fillStyle='#17100b';
+    for(let i=0;i<7;i++){ g.beginPath(); g.arc(-hw+9+i*(hw*2-18)/6,0,1.5,0,7); g.fill(); }
+    glow(g,()=>{ g.fillStyle='#ff8a3d';
+      rr(g,-hw+9,-hh-13,9,3.5,1.5); g.fill();
+      rr(g,-hw+26,-hh-9,6,3,1.5); g.fill(); },'#ff8a3d',8);
+  } else if(fk==='pact'){
+    g.strokeStyle='#243d20'; g.lineWidth=4; g.lineCap='round';
+    for(let i=-1;i<=1;i+=2){                                 // roots gripping the ground
+      g.beginPath(); g.moveTo(i*hw*.5,hh-4);
+      g.quadraticCurveTo(i*(hw+10),hh+6,i*(hw*.2),hh+13); g.stroke();
+      g.beginPath(); g.moveTo(i*hw*.9,-hh+8);
+      g.quadraticCurveTo(i*(hw+12),0,i*hw*.85,hh-6); g.stroke();
+      g.lineWidth=2.6;
+      g.beginPath(); g.moveTo(i*hw*.3,-hh+2);
+      g.quadraticCurveTo(i*hw*.5,-hh-12,i*hw*.05,-hh-15); g.stroke();
+      g.lineWidth=4;
+    }
+    g.lineCap='butt';
+    g.strokeStyle='#223520'; g.lineWidth=1.2;                // leaf tufts on every corner
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(s=>{
+      [[0,0],[6,3],[-4,6]].forEach((o,j)=>{
+        const lg=g.createLinearGradient(s[0]*(hw-8)-8,0,s[0]*(hw-8)+8,0);
+        lg.addColorStop(0,'#7e9a5e'); lg.addColorStop(1,'#42562f');
+        g.fillStyle=lg;
+        g.beginPath();
+        g.ellipse(s[0]*(hw-7)-s[0]*o[0],s[1]*(hh-7)-s[1]*o[1],9,5,s[0]*s[1]*(.5+j*.4),0,7);
+        g.fill(); g.stroke();
+      });
+    });
+    g.fillStyle='#4d6038'; g.globalAlpha=.55;                // moss along the footing
+    for(let i=0;i<6;i++){ g.beginPath();
+      g.ellipse(-hw+8+i*(hw*2-16)/5,hh-5,7,4,0,0,7); g.fill(); }
+    g.globalAlpha=1;
+    glow(g,()=>{ g.fillStyle='#b6f08a'; g.beginPath();
+      g.ellipse(0,-hh-15,7,4,0,0,7); g.fill(); },'#b6f08a',9);
+  } else {
+    g.fillStyle=h.hi; g.strokeStyle=DARK; g.lineWidth=1;     // mast and vents
+    rr(g,-2,-hh-13,4,15,1.5); g.fill(); g.stroke();
+    rr(g,hw-16,-hh-6,12,7,2); g.fill(); g.stroke();
+    rr(g,-hw+4,-hh-6,12,7,2); g.fill(); g.stroke();
+    g.strokeStyle=h.hi; g.lineWidth=1.4;                     // panel seam
+    g.beginPath(); g.moveTo(-hw+5,-hh*.2); g.lineTo(hw-5,-hh*.2); g.stroke();
+    glow(g,()=>{ g.fillStyle=t.c; g.beginPath(); g.arc(0,-hh-14,2.4,0,7); g.fill(); },t.c,9);
+  }
 }
 /* muzzle flash artwork, dropped in beside the game as flash.png */
 const FLASH=new Image(); let flashOK=false, flashAR=1.42, flashImg=[null,null];
@@ -3429,8 +3621,10 @@ const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
 function makeUnitSpr(type,owner){
   const d=UDEF[type], t=TEAM[owner], R=d.r;
   const _H=hullSet(owner), HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;
-  const S=Math.ceil(R*4.2), c=newCv(S*SS,S*SS), g=c.getContext('2d');
+  const _fk=facKeyOf(owner), _fs=FBUILD[_fk].scale;
+  const S=Math.ceil(R*4.2*Math.max(1,_fs)), c=newCv(S*SS,S*SS), g=c.getContext('2d');
   g.scale(SS,SS); g.translate(S/2,S/2); g.lineJoin='round';
+  if(_fs!==1) g.scale(_fs,_fs);
   const hullGrad=()=>{ const gr=g.createLinearGradient(0,-R,0,R);
     gr.addColorStop(0,HULL_HI); gr.addColorStop(.55,HULL); gr.addColorStop(1,HULL_LO); return gr; };
   if(type==='delver'){
@@ -3548,38 +3742,41 @@ function makeUnitSpr(type,owner){
     g.strokeStyle=DARK; g.lineWidth=1.4; g.beginPath(); g.arc(0,0,R*.48,0,7); g.stroke();
     glow(g,()=>{ g.fillStyle=t.c; g.beginPath(); g.arc(-R*.12,0,1.9,0,7); g.fill(); },t.c,5);
   }
+  facMarkUnit(g,R,t,_fk,_H);
+  if(_fs!==1) g.scale(1/_fs,1/_fs);
   g.globalCompositeOperation='source-atop';
   const rl=g.createLinearGradient(0,-S/2,0,S/2);
   rl.addColorStop(0,'rgba(255,255,255,.16)'); rl.addColorStop(.5,'rgba(255,255,255,0)');
   rl.addColorStop(1,'rgba(0,0,0,.22)');
-  g.fillStyle=rl; g.fillRect(-S/2,-S/2,S,S);
+  g.fillStyle=rl; g.fillRect(-S,-S,S*2,S*2);
   g.globalCompositeOperation='source-over';
   return c;
 }
-function unitSpr(type,owner){ const k='u'+type+owner; return SPR[k]||(SPR[k]=makeUnitSpr(type,owner)); }
+function unitSpr(type,owner){ const k='u'+type+owner+facKeyOf(owner); return SPR[k]||(SPR[k]=makeUnitSpr(type,owner)); }
 
 /* ---------- buildings ---------- */
 function makeBldSpr(type,owner){
-  const d=BDEF[type], t=TEAM[owner], PAD=12;
+  const d=BDEF[type], t=TEAM[owner], PAD=20, _fk=facKeyOf(owner);
+  const _sh=hx=>facShade(hx,_fk);
   const _H=hullSet(owner), HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;
   const W=d.w, H=d.h, hw=W/2, hh=H/2;
   const c=newCv((W+PAD*2)*SS,(H+PAD*2)*SS), g=c.getContext('2d');
   g.scale(SS,SS); g.translate(hw+PAD,hh+PAD); g.lineJoin='round';
-  const body=(i,r)=>plate(g,-hw+i,-hh+i,W-i*2,H-i*2,r,HULL,'#15202c');
+  const body=(i,r)=>plate(g,-hw+i,-hh+i,W-i*2,H-i*2,r,HULL,_sh('#15202c'));
   const trim=(i,r,lw)=>{ rr(g,-hw+i,-hh+i,W-i*2,H-i*2,r); g.strokeStyle=t.c; g.lineWidth=lw||2; g.stroke(); };
   const win=(x,y,w,h)=>glow(g,()=>{ g.fillStyle=t.c; rr(g,x,y,w,h,1.5); g.fill(); },t.c,7);
-  const bolts=i=>{ g.fillStyle='#0e1620';
+  const bolts=i=>{ g.fillStyle=_sh('#0e1620');
     [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(s=>{ g.beginPath(); g.arc(s[0]*(hw-i),s[1]*(hh-i),2,0,7); g.fill(); }); };
   if(type==='keystone'){
     poly(g,[[-hw,-hh+18],[-hw+18,-hh],[hw-18,-hh],[hw,-hh+18],[hw,hh-18],[hw-18,hh],[-hw+18,hh],[-hw,hh-18]]);
-    const gr=g.createLinearGradient(0,-hh,0,hh); gr.addColorStop(0,'#3a4c62'); gr.addColorStop(1,'#16212d');
+    const gr=g.createLinearGradient(0,-hh,0,hh); gr.addColorStop(0,_sh('#3a4c62')); gr.addColorStop(1,_sh('#16212d'));
     g.fillStyle=gr; g.fill(); g.strokeStyle=t.c; g.lineWidth=2.4; g.stroke();
     g.strokeStyle='rgba(10,16,24,.75)'; g.lineWidth=1.4;
     [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(s=>{ rr(g,s[0]*hw*.5-15,s[1]*hh*.5-15,30,30,3); g.stroke(); });
-    plate(g,-26,-26,52,52,8,'#46596f','#1d2836');
+    plate(g,-26,-26,52,52,8,_sh('#46596f'),_sh('#1d2836'));
     rr(g,-26,-26,52,52,8); g.strokeStyle=t.c; g.lineWidth=1.6; g.stroke();
     const dg=g.createRadialGradient(-5,-7,2,0,0,22);
-    dg.addColorStop(0,'#7f97b0'); dg.addColorStop(1,'#243244');
+    dg.addColorStop(0,_sh('#7f97b0')); dg.addColorStop(1,_sh('#243244'));
     g.fillStyle=dg; g.beginPath(); g.arc(0,0,20,0,7); g.fill();
     glow(g,()=>{ g.strokeStyle=t.c; g.lineWidth=3; g.beginPath(); g.arc(0,0,13,0,7); g.stroke(); },t.c,10);
     glow(g,()=>{ g.fillStyle='#e9f6ff'; g.beginPath(); g.arc(0,0,5,0,7); g.fill(); },t.c,12);
@@ -3587,38 +3784,38 @@ function makeBldSpr(type,owner){
   } else if(type==='habitat'){
     body(2,10); trim(4,9);
     for(let i=-1;i<=1;i++){
-      g.fillStyle='#0f1a25'; rr(g,-hw+9,i*15-5,W-18,10,4); g.fill();
+      g.fillStyle=_sh('#0f1a25'); rr(g,-hw+9,i*15-5,W-18,10,4); g.fill();
       g.fillStyle=HULL_HI;  rr(g,-hw+9,i*15-5,W-18,4,2);  g.fill();
     }
     win(-hw+12,hh-14,10,5); win(hw-22,hh-14,10,5); bolts(8);
   } else if(type==='musterhall'){
     body(2,6); trim(5,4);
-    plate(g,-hw+9,-hh+8,W-18,H*.34,3,'#3b4d63','#1a2532');
-    g.fillStyle='#0d161f'; rr(g,-hw+14,hh-26,W-28,20,3); g.fill();
+    plate(g,-hw+9,-hh+8,W-18,H*.34,3,_sh('#3b4d63'),_sh('#1a2532'));
+    g.fillStyle=_sh('#0d161f'); rr(g,-hw+14,hh-26,W-28,20,3); g.fill();
     g.fillStyle=t.c; g.globalAlpha=.9;
     for(let i=0;i<4;i++){ poly(g,[[-hw+20+i*16,hh-22],[-hw+27+i*16,hh-22],[-hw+22+i*16,hh-10],[-hw+15+i*16,hh-10]]); g.fill(); }
     g.globalAlpha=1;
     win(-hw+13,-hh+14,W*.2,5); win(hw-13-W*.2,-hh+14,W*.2,5);
-    g.strokeStyle='#55697f'; g.lineWidth=2; g.beginPath(); g.moveTo(hw-12,-hh+6); g.lineTo(hw-6,-hh-6); g.stroke();
+    g.strokeStyle=_sh('#55697f'); g.lineWidth=2; g.beginPath(); g.moveTo(hw-12,-hh+6); g.lineTo(hw-6,-hh-6); g.stroke();
     glow(g,()=>{ g.fillStyle='#ff6b52'; g.beginPath(); g.arc(hw-6,-hh-7,2,0,7); g.fill(); },'#ff6b52',7);
     bolts(7);
   } else if(type==='siphon'){
     body(2,5); trim(4,4);
     for(let i=-1;i<=1;i++){
       const x=i*24;
-      plate(g,x-10,-hh+10,20,H-24,9,'#40556b','#1a2531');
-      g.strokeStyle='#0f1922'; g.lineWidth=1.2; rr(g,x-10,-hh+10,20,H-24,9); g.stroke();
+      plate(g,x-10,-hh+10,20,H-24,9,_sh('#40556b'),_sh('#1a2531'));
+      g.strokeStyle=_sh('#0f1922'); g.lineWidth=1.2; rr(g,x-10,-hh+10,20,H-24,9); g.stroke();
       glow(g,()=>{ g.fillStyle='#35d18a'; rr(g,x-6,-4,12,10,3); g.fill(); },'#35d18a',8);
     }
-    g.strokeStyle='#4a5f76'; g.lineWidth=4;
+    g.strokeStyle=_sh('#4a5f76'); g.lineWidth=4;
     g.beginPath(); g.moveTo(-24,hh-9); g.lineTo(24,hh-9); g.stroke();
     bolts(6);
   } else if(type==='forgeworks'){
     body(2,5); trim(4,4);
-    plate(g,-hw+8,-hh+8,W*.52,H*.5,4,'#3d5067','#1b2634');
+    plate(g,-hw+8,-hh+8,W*.52,H*.5,4,_sh('#3d5067'),_sh('#1b2634'));
     for(let i=0;i<3;i++){
-      g.fillStyle='#0e1721'; g.beginPath(); g.arc(hw-20,-hh+20+i*18,7,0,7); g.fill();
-      g.fillStyle='#54687f'; g.beginPath(); g.arc(hw-20,-hh+20+i*18,4,0,7); g.fill();
+      g.fillStyle=_sh('#0e1721'); g.beginPath(); g.arc(hw-20,-hh+20+i*18,7,0,7); g.fill();
+      g.fillStyle=_sh('#54687f'); g.beginPath(); g.arc(hw-20,-hh+20+i*18,4,0,7); g.fill();
     }
     glow(g,()=>{ g.fillStyle='#ffa640'; rr(g,-hw+14,hh-26,W*.44,12,3); g.fill(); },'#ff9b3d',9);
     const gx=-hw+W*.34, gy=-hh+H*.31;
@@ -3630,21 +3827,24 @@ function makeBldSpr(type,owner){
     bolts(7);
   } else {
     poly(g,[[-hw,-hh+9],[-hw+9,-hh],[hw-9,-hh],[hw,-hh+9],[hw,hh-9],[hw-9,hh],[-hw+9,hh],[-hw,hh-9]]);
-    const gr=g.createLinearGradient(0,-hh,0,hh); gr.addColorStop(0,'#3a4c62'); gr.addColorStop(1,'#16212d');
+    const gr=g.createLinearGradient(0,-hh,0,hh); gr.addColorStop(0,_sh('#3a4c62')); gr.addColorStop(1,_sh('#16212d'));
     g.fillStyle=gr; g.fill(); g.strokeStyle=t.c; g.lineWidth=2; g.stroke();
-    g.fillStyle='#0f1a25'; g.beginPath(); g.arc(0,0,hw*.62,0,7); g.fill();
+    g.fillStyle=_sh('#0f1a25'); g.beginPath(); g.arc(0,0,hw*.62,0,7); g.fill();
   }
   // Building art is drawn from fixed grey-blue literals, so a faction wash over
   // the finished pixels is what actually separates the four sides on screen.
   g.setTransform(SS,0,0,SS,0,0);
+  facMarkBld(g,hw,hh,t,_fk,_H);
   g.globalCompositeOperation='source-atop';
-  g.globalAlpha=.22; g.fillStyle=t.c;
+  g.globalAlpha=_fk==='concord'?.22:.12; g.fillStyle=t.c;
   g.fillRect(0,0,(W+PAD*2),(H+PAD*2));
+  if(_fk!=='concord'){ g.globalAlpha=.1; g.fillStyle=FBUILD[_fk].acc;
+    g.fillRect(0,0,(W+PAD*2),(H+PAD*2)); }
   g.globalAlpha=1; g.globalCompositeOperation='source-over';
   c.pad=PAD;
   return c;
 }
-function bldSpr(type,owner){ const k='b'+type+owner; return SPR[k]||(SPR[k]=makeBldSpr(type,owner)); }
+function bldSpr(type,owner){ const k='b'+type+owner+facKeyOf(owner); return SPR[k]||(SPR[k]=makeBldSpr(type,owner)); }
 
 /* ---------- watchspire turret head (rotates at runtime) ---------- */
 function makeHeadSpr(owner){
@@ -3951,8 +4151,8 @@ function drawBuilding(b){
   ctx.restore();
   if(b.done&&OPT.hpBars!=='never'&&(OPT.hpBars==='always'||b.hp<b.maxHp)) hpBar(b.x,b.y-hh-9,b.w*.8,b.hp/b.maxHp);
   if(b.done&&isAlly(b.owner)&&(b.type==='keystone'||b.type==='siphon')){
-    const c=workerCounts().get(b.id)||0;
-    const txt=b.type==='siphon'?(c+'/3'):String(c);
+    const c=workerCounts().get(b.id)||0, cap=mineCap(b);
+    const txt=c+'/'+cap;
     const y=b.y-hh-21;
     ctx.font='600 12px Consolas,monospace';
     ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -3961,7 +4161,7 @@ function drawBuilding(b){
     rr(ctx,b.x-w/2,y-8,w,16,4); ctx.fill();
     ctx.strokeStyle='rgba(75,214,255,.35)'; ctx.lineWidth=1;
     rr(ctx,b.x-w/2,y-8,w,16,4); ctx.stroke();
-    ctx.fillStyle=(b.type==='siphon'&&c>=3)?'#8fb0c8':(c?'#cfe3f2':'#ff9b7f');
+    ctx.fillStyle=c>=cap?'#8fb0c8':(c?'#cfe3f2':'#ff9b7f');
     ctx.fillText(txt,b.x,y);
     ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   }
@@ -4497,9 +4697,12 @@ function startSimWorker(){
   }catch(e){ simWorker=null; }
 }
 function stopSimWorker(){ if(simWorker){ try{ simWorker.postMessage('stop'); simWorker.terminate(); }catch(e){} simWorker=null; } }
+/* A side is beaten once its last structure falls - you never have to hunt
+   down the final stray Delver to close out a match. Half-built sites count,
+   so a player who still has something going up is still in it. */
 function teamAlive(t){
-  return ents.some(e=>!e.dead&&e.owner>=0&&e.owner<NPLAY&&TEAMOF[e.owner]===t&&
-    (e.kind==='building'||e.kind==='unit'));
+  return ents.some(e=>!e.dead&&e.kind==='building'&&e.owner>=0&&e.owner<NPLAY&&
+    TEAMOF[e.owner]===t);
 }
 function aliveTeams(){
   const out=[];
@@ -4629,7 +4832,7 @@ function init(){
       const a=-Math.PI/2+(i-(crew-1)/2)*.38;
       const u=mkUnit('delver',o,cc.x+Math.cos(a)*84,cc.y+Math.sin(a)*84);
       const n=nearest(ents,u.x,u.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
-      if(n) u.cmd={t:'gather',node:n,dep:null};
+      if(n) setGather(u,n);
     }
   }
   renderTerrain();
