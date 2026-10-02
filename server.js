@@ -147,9 +147,10 @@ function newCode(){
   do{ code=String(Math.floor(1000+Math.random()*9000)); }while(rooms.has(code));
   return code;
 }
-function openRoom(c,quick,mode){
+function openRoom(c,quick,mode,pub){
   const code=newCode();
   const room={code,players:[c],quick:!!quick,born:Date.now(),started:false,
+              pub:!!pub,                      // listed in the browser, or code-only
               mode:(typeof mode==='string'?mode:'duel')};
   rooms.set(code,room); c.room=room;
   send(c,{t:'hosted',code,quick:!!quick});
@@ -181,7 +182,7 @@ function begin(room,mode,grand,seed,terrain){
 }
 function handle(c,text){
   let m; try{ m=JSON.parse(text); }catch(e){ return; }
-  if(m.t==='host'){ if(c.room) return; c.fac=m.fac; openRoom(c,false,m.mode); return; }
+  if(m.t==='host'){ if(c.room) return; c.fac=m.fac; openRoom(c,false,m.mode,m.pub); return; }
   if(m.t==='quick'){
     if(c.room) return;
     for(const room of rooms.values()){
@@ -190,7 +191,7 @@ function handle(c,text){
       }
     }
     c.fac=m.fac;
-    openRoom(c,true,m.mode);
+    openRoom(c,true,m.mode,true);   // quick play is public by nature
     send(c,{t:'searching'});
     return;
   }
@@ -226,6 +227,7 @@ function handle(c,text){
     const out=[];
     for(const room of rooms.values()){
       if(room.started) continue;
+      if(!room.pub) continue;                 // a code-only room stays unlisted
       const n=room.players.filter(Boolean).length;
       if(!n||n>=MAXP) continue;
       if(room.players.indexOf(c)>=0) continue;

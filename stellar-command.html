@@ -421,6 +421,7 @@ body.touch .mouse-only{display:none}
       <span>ONLINE</span>
       <button id="btnQuick">QUICK PLAY</button>
       <button id="btnHost">HOST</button>
+      <button id="btnHostPub">HOST PUBLIC</button>
       <button id="btnBrowse">PUBLIC ROOMS</button>
       <button id="btnJoin">JOIN</button>
       <button id="btnSettings">AUDIO</button>
@@ -1091,7 +1092,7 @@ function damage(t,amt,by){
     lastAlert={x:t.x,y:t.y};
     if(t.kind==='building'){
       const first=!ALERT.until||gameTime>ALERT.until;
-      ALERT.x=t.x; ALERT.y=t.y; ALERT.name=BDEF[t.type].n; ALERT.until=gameTime+11;
+      ALERT.x=t.x; ALERT.y=t.y; ALERT.name=nameOf(t.type,0); ALERT.until=gameTime+11;
       if(first&&gameTime-ALERT.spoke>16){ ALERT.spoke=gameTime; SFX.play('deny'); }
     }
   }
@@ -1113,7 +1114,7 @@ function damage(t,amt,by){
     if(NET.role==='host') netEvent([2,Math.round(t.x),Math.round(t.y),t.kind==='building'?1:0]);
     fx.push({x:t.x,y:t.y,t:0,dur:t.kind==='building'?.7:.35,r:t.kind==='building'?Math.max(t.w,t.h)*.7:22,k:'boom'});
     if(t.kind==='building'){ markNavDirty(); if(t.type==='siphon'&&t.geyser) t.geyser.taken=null; }
-    if(t.owner===0&&t.kind==='building') say(BDEF[t.type].n+' lost!');
+    if(t.owner===0&&t.kind==='building') say(nameOf(t.type,0)+' lost!');
     recalcSupply(t.owner);
     // retarget anyone attacking it
     for(const e of ents) if(e.target===t) e.target=null;
@@ -1606,7 +1607,7 @@ function buildStep(u,dt){
     b.hp=Math.min(b.maxHp, b.maxHp*(.12+.88*b.prog));
     if(b.prog>=1){ b.done=true; b.hp=b.maxHp; recalcSupply(b.owner);
       if(b.owner===0) STATS.bBuilt++;
-      if(b.owner===0){ say(BDEF[b.type].n+' complete'); SFX.play('complete'); }
+      if(b.owner===0){ say(nameOf(b.type,0)+' complete'); SFX.play('complete'); }
       if(b.type==='siphon') u.cmd={t:'gather',node:b,dep:null};
       else { const n=findMineralNear(u,u); u.cmd=n?{t:'gather',node:n,dep:null}:{t:'idle'}; }
     }
@@ -1868,7 +1869,8 @@ function selectKind(e2){
   if(e2.kind==='building'){
     const all=ents.filter(x=>!x.dead&&x.owner===0&&x.kind==='building'&&x.type===e2.type);
     setSel(all);
-    if(all.length>1) say(all.length+' '+BDEF[e2.type].n+(BDEF[e2.type].n.slice(-1)==='s'?'':'s')+' selected');
+    if(all.length>1){ const nm=nameOf(e2.type,0);
+      say(all.length+' '+nm+(nm.slice(-1)==='s'?'':'s')+' selected'); }
   } else setSel(unitsOf(0).filter(u=>u.type===e2.type&&onScreen(u)));
 }
 /* A drag box over buildings takes the most common kind inside it, preferring
@@ -2773,8 +2775,8 @@ function buildCard(){
     if(cardMode==='build'){
       for(const t of ['keystone','habitat','musterhall','siphon','forgeworks','watchspire']){
         const d=BDEF[t], locked=d.req&&!hasBuilding(0,d.req);
-        cardButtons.push({img:iconOf('bld',t,0),name:d.n,cost:{m:d.m,g:d.g},hk:d.hk,dis:locked,
-          tip:locked?'Requires '+BDEF[d.req].n:'',
+        cardButtons.push({img:iconOf('bld',t,0),name:nameOf(t,0),cost:{m:d.m,g:d.g},hk:d.hk,dis:locked,
+          tip:locked?'Requires '+nameOf(d.req,0):'',
           act:function(){ if(!canAfford(0,d)){ say('Not enough resources'); SFX.play('deny'); return; } placing=t; cardMode='main'; }});
       }
       cardButtons.push({empty:true});
@@ -2814,10 +2816,10 @@ function buildCard(){
     } else if(d.trains){
       for(const t of d.trains){
         const ud=UDEF[t];
-        const uc=unitCost(t,0);
+        const uc=unitCost(t,0), un=nameOf(t,0);
         cardButtons.push({img:iconOf('unit',t,0),
-          name:ud.n+(bGroup.length>1?' ×'+bGroup.length:''),
-          cost:{m:uc.m,g:uc.g},hk:ud.n.charAt(0),
+          name:un+(bGroup.length>1?' ×'+bGroup.length:''),
+          cost:{m:uc.m,g:uc.g},hk:HK[t]||un.charAt(0),
           act:function(){ trainGroup(bGroup,t); }});
       }
       if(b.type==='forgeworks'){
@@ -2872,7 +2874,7 @@ function buildInfo(){
   if(sel.length===1){
     const e=sel[0], d=DEF(e)||{};
     const dispName=e.kind==='res'?(e.type==='vent'?'ICHOR VENT':'AURITE SEAM')
-      :(e.kind==='unit'?unitName(e.type,e.owner):d.n).toUpperCase();
+      :nameOf(e.type,e.owner).toUpperCase();
     infoT.textContent=(isFoe(e.owner,0)?'LEGION · ':(e.owner>0&&isAlly(e.owner)?'ALLY · ':''))+dispName;
     const col=TEAM[e.owner]?TEAM[e.owner].c:(e.type==='vent'?'#35d18a':'#7fd0ff');
     let s='<div id="single"><div class="big" style="color:'+col+'">'+
@@ -4687,8 +4689,26 @@ const SCALES={
   standard:{n:'STANDARD',d:'112 x 112 · normal pace'},
   grand:{n:'GRAND WAR',d:'10x map · 7x income & build · huge armies'}
 };
-const ENAME={delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',harrower:'Devourer',talon:'Shrike'};
-function unitName(type,owner){ return owner===1?(ENAME[type]||UDEF[type].n):UDEF[type].n; }
+/* Each doctrine calls the same roster by its own names. Hotkeys stay pinned to
+   the underlying type so a rename can never shuffle or collide with them. */
+const HK={delver:'D',warden:'W',bulwark:'B',sunderer:'S',harrower:'H',talon:'T'};
+const FNAMES={
+  concord:{delver:'Delver',warden:'Warden',bulwark:'Bulwark',sunderer:'Sunderer',
+           harrower:'Harrower',talon:'Talon',keystone:'Keystone',habitat:'Habitat',
+           musterhall:'Barracks',siphon:'Siphon',forgeworks:'Forgeworks',watchspire:'Watchspire'},
+  legion: {delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',
+           harrower:'Devourer',talon:'Shrike',keystone:'Spire Core',habitat:'Warren',
+           musterhall:'Blood Pit',siphon:'Leech',forgeworks:'Furnace',watchspire:'Impaler'},
+  pact:   {delver:'Tiller',warden:'Thornling',bulwark:'Bramble',sunderer:'Lobber',
+           harrower:'Gorger',talon:'Driftwing',keystone:'Heartroot',habitat:'Bower',
+           musterhall:'Grove',siphon:'Taproot',forgeworks:'Kiln',watchspire:'Bristle'}
+};
+const ENAME=FNAMES.legion;
+function nameOf(type,owner){
+  const f=FNAMES[FACOF[(owner>=0&&owner<4)?owner:0]]||FNAMES.concord;
+  return f[type]||(UDEF[type]&&UDEF[type].n)||(BDEF[type]&&BDEF[type].n)||type;
+}
+function unitName(type,owner){ return nameOf(type,owner); }
 function dmgOf(e){
   const d=DEF(e);
   const up=(e.kind==='unit'&&UP[e.owner])?1+UP[e.owner].wep*UPG.wep.step:1;
@@ -4933,9 +4953,10 @@ function lobbyRoster(m){
   const cap=(typeof MODES!=='undefined'&&MODES[key])?MODES[key].players:(m.max||4);
   const n=m.n|0;
   lobbySetState(NET.isHost?'hosting':'waiting');
+  const pubNote=NET.pub?'Listed in Public Rooms - anyone can drop in. ':'Code only - share it to let people in. ';
   document.getElementById('lobMsg').textContent=NET.isHost
-    ? (cap>2 ? 'Share the code. Wait for more commanders, or start now and let bots take the empty seats.'
-             : 'Share this code with your opponent.')
+    ? (pubNote+(cap>2 ? 'Wait for more commanders, or start now and let bots take the empty seats.'
+                      : 'Waiting for an opponent.'))
     : 'You are in. Waiting for the host to start.';
   let html='';
   for(let i=0;i<cap;i++){
@@ -5064,12 +5085,15 @@ function lobbyInit(){
     lobbySetState('searching');
     netConnect(()=>netSend({t:'quick',mode:modeKey,fac:facKey}));
   };
-  document.getElementById('btnHost').onclick=()=>{
+  const doHost=pub=>{
     SFX.unlock(); SFX.play('click'); musicSync();
+    NET.pub=pub;
     lobbySetState('hosting');
     document.getElementById('lobCode').textContent='----';
-    netConnect(()=>netSend({t:'host',mode:modeKey,fac:facKey}));
+    netConnect(()=>netSend({t:'host',mode:modeKey,fac:facKey,pub:pub}));
   };
+  document.getElementById('btnHost').onclick=()=>doHost(false);
+  document.getElementById('btnHostPub').onclick=()=>doHost(true);
   document.getElementById('btnBrowse').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
     lobbyBrowse();
