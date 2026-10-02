@@ -320,6 +320,14 @@ body.touch .mouse-only{display:none}
 #lobSrvReset{font-family:inherit;font-size:11px;letter-spacing:1px;padding:0 11px;cursor:pointer;
   color:#9fc4dd;background:#0d1d2a;border:1px solid #2d5a80;border-radius:6px}
 #lobSrvReset:hover{border-color:#4bd6ff;color:#dff1ff}
+#lobRooms{display:none;margin:10px 0 2px;max-height:46vh;overflow:auto;text-align:left}
+#lobRooms .room{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  font-size:11px;letter-spacing:1px;padding:7px 10px;margin:4px 0;border-radius:6px;
+  border:1px solid #21405e;background:#08121c;color:#9fc4dd;cursor:pointer}
+#lobRooms .room:hover{border-color:#4bd6ff;color:#dff1ff}
+#lobRooms .room b{font-weight:400;letter-spacing:3px;color:#4bd6ff}
+#lobRooms .room i{font-style:normal;font-size:9.5px;color:#7c9cb4}
+#lobRooms .none{font-size:11px;color:#7c9cb4;letter-spacing:1px;padding:10px 2px}
 #lobSeats{display:none;margin:10px 0 2px}
 #lobSeats .seat{display:flex;justify-content:space-between;align-items:center;
   font-size:11px;letter-spacing:1px;padding:5px 9px;margin:4px 0;border-radius:6px;
@@ -413,6 +421,7 @@ body.touch .mouse-only{display:none}
       <span>ONLINE</span>
       <button id="btnQuick">QUICK PLAY</button>
       <button id="btnHost">HOST</button>
+      <button id="btnBrowse">PUBLIC ROOMS</button>
       <button id="btnJoin">JOIN</button>
       <button id="btnSettings">AUDIO</button>
       <button id="btnTutorial">TUTORIAL</button>
@@ -453,6 +462,7 @@ body.touch .mouse-only{display:none}
     <p id="lobMsg"></p>
     <div id="lobEntry"><input id="lobInput" inputmode="numeric" maxlength="4" placeholder="0000"><button id="lobGo">JOIN</button></div>
     <div id="lobSrv"><input id="lobSrvIn" placeholder="your-server.onrender.com" autocapitalize="off" autocorrect="off" spellcheck="false"><button id="lobSrvGo">SAVE</button><button id="lobSrvReset">RESET</button></div>
+    <div id="lobRooms"></div>
     <div id="lobSeats"></div>
     <button id="lobStart">START NOW</button>
     <div id="lobSpin"><i></i><i></i><i></i></div>
@@ -1186,12 +1196,18 @@ function navBlocked(tx,ty,wide){
   if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) return true;
   return (wide?navW:nav)[ti(tx,ty)]===1;
 }
-function losClear(x0,y0,x1,y1,wide){
-  const dx=x1-x0, dy=y1-y0, d=Math.hypot(dx,dy);
+function losClear(x0,y0,x1,y1,wide,rad){
+  const dx=x1-x0, dy=y1-y0, d=Math.hypot(dx,dy)||1;
   const steps=Math.min(72,Math.ceil(d/(TILE*.45)));
+  const off=rad?Math.min(rad*.8,TILE*.45):0;       // how far the body sticks out
+  const nx=-dy/d*off, ny=dx/d*off;
   for(let i=1;i<=steps;i++){
-    const t=i/steps;
-    if(navBlocked(((x0+dx*t)/TILE)|0,((y0+dy*t)/TILE)|0,wide)) return false;
+    const t=i/steps, px=x0+dx*t, py=y0+dy*t;
+    if(navBlocked((px/TILE)|0,(py/TILE)|0,wide)) return false;
+    if(off>0){
+      if(navBlocked(((px+nx)/TILE)|0,((py+ny)/TILE)|0,wide)) return false;
+      if(navBlocked(((px-nx)/TILE)|0,((py-ny)/TILE)|0,wide)) return false;
+    }
   }
   return true;
 }
@@ -1322,14 +1338,14 @@ function navigate(u,tx,ty,dt,stopAt){
     if(steer(u,u.yx,u.yy,dt,8)||u.yield<=0){ u.yield=0; u.stuck=0; u.cx0=u.x; u.cy0=u.y; u.chk=0; }
     return false;
   }
-  if(u.stuck>1.2&&!u.pendPath&&u.repathT<=0){ u.goal=null; u.path=null; u.repathT=.5; requestPath(u,tx,ty); }
-  if(u.stuck>3){                                  // step aside so the queue can drain
+  if(u.stuck>.7&&!u.pendPath&&u.repathT<=0){ u.goal=null; u.path=null; u.repathT=.4; requestPath(u,tx,ty); }
+  if(u.stuck>1.8){                                // step aside so the queue can drain
     u.yield=.6+Math.random()*.5;
     const reach=46+Math.min(120,(u.jam||0)*10);   // try harder the longer it has been jammed
     const a=Math.atan2(ty-u.y,tx-u.x)+(Math.random()<.5?1:-1)*(1.1+Math.random()*1.4);
     u.yx=u.x+Math.cos(a)*reach; u.yy=u.y+Math.sin(a)*reach;
   }
-  if((u.jam||0)>=6&&(u.jam*2|0)%4===0){           // wedged: shove back toward open ground
+  if((u.jam||0)>=3.5&&(u.jam*2|0)%3===0){         // wedged: shove back toward open ground
     const open=nearestOpen((u.x/TILE)|0,(u.y/TILE)|0,wide);
     if(open){
       const ox=open[0]*TILE+TILE/2, oy=open[1]*TILE+TILE/2;
@@ -1337,13 +1353,13 @@ function navigate(u,tx,ty,dt,stopAt){
       if(dd>2){ const st=Math.min(18,dd); u.x+=(ox-u.x)/dd*st; u.y+=(oy-u.y)/dd*st; }
     }
   }
-  if((u.jam||0)>=9){                              // long jam: full replan from scratch
+  if((u.jam||0)>=6){                              // long jam: full replan from scratch
     u.jam=0; u.goal=null; u.path=null; u.pi=0; u.repathT=0; u.pendPath=false;
     const open=nearestOpen((tx/TILE)|0,(ty/TILE)|0,wide);
     if(open) requestPath(u,open[0]*TILE+TILE/2,open[1]*TILE+TILE/2);
   }
 
-  const direct=losClear(u.x,u.y,tx,ty,wide);
+  const direct=losClear(u.x,u.y,tx,ty,wide,UDEF[u.type].r);
   if(direct){ u.path=null; u.goal=null; return steer(u,tx,ty,dt,stopAt); }
   const moved=!u.goal||Math.hypot(u.goal.x-tx,u.goal.y-ty)>TILE*1.5;
   if((moved||!u.path)&&u.repathT<=0&&!u.pendPath){
@@ -2250,6 +2266,7 @@ function netRelay(d,to){ netSend(to===undefined?{t:'relay',d}:{t:'relay',d,to});
 function netRecv(m){
   if(m.t==='hosted'){ NET.code=m.code; lobbySetState(m.quick?'searching':'hosting'); return; }
   if(m.t==='searching'){ lobbySetState('searching'); return; }
+  if(m.t==='rooms'){ lobbyRooms(m.rooms); return; }
   if(m.t==='error'){ lobbyError(m.msg||'Error'); return; }
   if(m.t==='peerleft'){ netDropped(); return; }
   if(m.t==='peergone'){ say('Commander '+((m.slot|0)+1)+' dropped - their forces fight on'); return; }
@@ -4936,6 +4953,32 @@ function lobbyRoster(m){
   // a full room needs no decision, so a duel still starts the moment two connect
   if(NET.isHost&&n>=cap) netBegin();
 }
+/* Any room that has not started and is not full is joinable - no code needed. */
+function lobbyBrowse(){
+  lobbySetState('browse');
+  document.getElementById('lobRooms').innerHTML='<div class="none">Looking for games...</div>';
+  netConnect(()=>netSend({t:'list'}));
+}
+function lobbyRooms(list){
+  const el=document.getElementById('lobRooms'); if(!el) return;
+  if(NET.state!=='browse') return;
+  if(!list||!list.length){
+    el.innerHTML='<div class="none">No open games right now. Host one and others can join it here.</div>';
+    return;
+  }
+  const label={duel:'1v1',team:'2v2',ffa:'Free for all'};
+  el.innerHTML=list.map(r=>'<div class="room" data-code="'+r.code+'">'+
+    '<span><b>'+r.code+'</b> &nbsp;<i>'+(label[r.mode]||r.mode)+'</i></span>'+
+    '<i>'+r.n+' / '+r.max+' waiting'+(r.quick?' - quick play':'')+'</i></div>').join('');
+  el.querySelectorAll('.room').forEach(row=>{
+    row.onclick=()=>{
+      SFX.play('click');
+      lobbySetState('linking');
+      document.getElementById('lobMsg').textContent='Joining '+row.dataset.code+'...';
+      netSend({t:'join',code:row.dataset.code,fac:facKey});
+    };
+  });
+}
 function lobbyShowServer(){
   const row=document.getElementById('lobSrv');
   row.style.display='flex';
@@ -4961,6 +5004,7 @@ function lobbySetState(st){
   codeBox.style.display='none'; entry.style.display='none'; spin.style.display='none';
   const srv=document.getElementById('lobSrv'); if(srv) srv.style.display='none';
   const seats=document.getElementById('lobSeats'); if(seats) seats.style.display='none';
+  const rl=document.getElementById('lobRooms'); if(rl) rl.style.display='none';
   const startBtn=document.getElementById('lobStart'); if(startBtn) startBtn.style.display='none';
   if(st==='searching'){
     title.textContent='QUICK PLAY';
@@ -4977,6 +5021,10 @@ function lobbySetState(st){
     msg.textContent='Type the four-digit code you were given.';
     entry.style.display='flex';
     setTimeout(()=>{ const i=document.getElementById('lobInput'); if(i){ i.value=''; i.focus(); } },30);
+  } else if(st==='browse'){
+    title.textContent='PUBLIC ROOMS';
+    msg.textContent='Open games anyone can drop into. Pick one to join.';
+    document.getElementById('lobRooms').style.display='block';
   } else if(st==='waiting'){
     title.textContent='LOBBY';
     codeBox.textContent=NET.code||'----';
@@ -5021,6 +5069,10 @@ function lobbyInit(){
     lobbySetState('hosting');
     document.getElementById('lobCode').textContent='----';
     netConnect(()=>netSend({t:'host',mode:modeKey,fac:facKey}));
+  };
+  document.getElementById('btnBrowse').onclick=()=>{
+    SFX.unlock(); SFX.play('click'); musicSync();
+    lobbyBrowse();
   };
   document.getElementById('btnJoin').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
