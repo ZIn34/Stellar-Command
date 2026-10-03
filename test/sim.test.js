@@ -201,9 +201,29 @@ test('each doctrine keeps its own names, prices and look', () => {
      seen.legion.warden !== seen.pact.warden, 'unit names differ');
   ok(seen.concord.keystone !== seen.legion.keystone &&
      seen.legion.keystone !== seen.pact.keystone, 'structure names differ');
-  ok(seen.concord.accent !== seen.legion.accent &&
-     seen.legion.accent !== seen.pact.accent &&
-     seen.concord.accent !== seen.pact.accent, 'accent colours differ');
+  setFactions('concord');
+});
+
+test('your colour is yours, whatever doctrine you run', () => {
+  /* The accent used to be pulled toward the doctrine, which made two players
+     running the same legion indistinguishable and your own army hard to pick
+     out. Ownership owns that channel now. */
+  newMatch({ mode: 'ffa' });
+  for (const f of ['concord', 'legion', 'pact']) {
+    setFactions(f);
+    eq(run('facAcc(0)'), run('TEAM[0].c'), f + ': slot 0 wears its own colour');
+    eq(run('facAcc(1)'), run('TEAM[1].c'), f + ': slot 1 wears its own colour');
+    ok(run('facAcc(0)') !== run('facAcc(1)'),
+       f + ': two players on the same doctrine are still told apart');
+  }
+  // and the doctrine is still visible, just not in the ownership channel
+  const hulls = {};
+  for (const f of ['concord', 'legion', 'pact']) {
+    setFactions(f);
+    hulls[f] = JSON.stringify(run('hullSet(0)'));
+  }
+  ok(hulls.concord !== hulls.legion && hulls.legion !== hulls.pact,
+     'the hull material still differs per doctrine');
   setFactions('concord');
 });
 
@@ -513,8 +533,8 @@ test('every doctrine fields a different capital ship at the same flat price', ()
                 cost: run('priceOf("unit","titan",0)'), def: run('defFor("unit","titan",0)') };
   }
   for (const f of ['concord', 'legion', 'pact']) {
-    eq(seen[f].cost.m, 500, f + ' titan aurite');
-    eq(seen[f].cost.g, 500, f + ' titan ichor');
+    eq(seen[f].cost.m, 1500, f + ' titan aurite');
+    eq(seen[f].cost.g, 1500, f + ' titan ichor');
     eq(seen[f].def.sup, 10, f + ' titan population');
   }
   ok(seen.concord.name !== seen.legion.name && seen.legion.name !== seen.pact.name,

@@ -775,9 +775,11 @@ const UDEF={
   harrower:{n:'Harrower', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
   talon:   {n:'Talon',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
   /* The capital ship. One statline, three completely different machines built
-     on it - see FSTYLE for what each doctrine actually fields. Expensive in
-     both resources and in population, and nothing caps how many you own. */
-  titan:   {n:'Titan',    hp:1500,sp:56,  dmg:52, rng:150, cd:1.6, sight:12,m:500, g:500,sup:10,bt:92, r:27, aa:true, flatCost:true}
+     on it - see FSTYLE for what each doctrine actually fields. Three times the
+     price of the old one and three times the machine: it is meant to be a
+     decision you commit to, not a unit you add. Still 10 population, and
+     nothing caps how many you own. */
+  titan:   {n:'Titan',    hp:4500,sp:54,  dmg:156,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true}
 };
 const BDEF={
   keystone:  {n:'Keystone',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
@@ -812,8 +814,8 @@ const FSTYLE={
     watchspire:{entrench:true},
     /* AEGIS BASTION - a flying command ship. It barely fights; what it does is
        keep everything under it alive, and mend the buildings it hangs over. */
-    titan:{air:true, rng:170, dmgMul:.72, cd:1.5,
-           ward:{range:250, cut:.32}, mends:{range:230, rate:26}}
+    titan:{air:true, rng:184, dmgMul:.72, cd:1.5,
+           ward:{range:300, cut:.5}, mends:{range:270, rate:78}}
   },
   legion:{
     /* Brawlers. They close the distance and they hit like a truck when they
@@ -823,8 +825,8 @@ const FSTYLE={
     harrower:{rng:28,  dmgMul:1.65, cd:.78, spMul:1.1,  charge:true},
     /* CATACLYSM ENGINE - a walking siege furnace. Enormous area damage, and
        when it finally goes down it takes the neighbourhood with it. */
-    titan:{rng:196, dmgMul:1.35, cd:2.3, spMul:.82, splash:104,
-           boom:{dmg:210, range:190}}
+    titan:{rng:210, dmgMul:1.35, cd:2.3, spMul:.82, splash:152,
+           boom:{dmg:630, range:250}}
   },
   pact:{
     /* Attrition. Nothing the Pact touches stops bleeding, so a fight it
@@ -836,8 +838,8 @@ const FSTYLE={
     talon:   {venom:true},
     /* HOLLOW MOTHER - a walking grove. It keeps birthing Thornlings for free
        and knits itself back together, so it wins by never running out. */
-    titan:{venom:true, rng:132, dmgMul:.9, cd:1.5,
-           brood:{type:'warden', every:6.5, cap:6}, mend:.035}
+    titan:{venom:true, rng:142, dmgMul:.9, cd:1.5,
+           brood:{type:'warden', every:4.2, cap:14}, mend:.105}
   }
 };
 const CHARGE_RANGE=250, CHARGE_WIND=.7, CHARGE_RUN=1.25,
@@ -4316,15 +4318,20 @@ const FBUILD={
    the same cyan over the top and still read as the original art. Pull the
    accent most of the way to the doctrine's own and leave enough of the team
    colour in it to tell two Legion players apart. */
-function facAcc(owner){
-  const base=(TEAM[owner]||TEAM[0]).c, f=FBUILD[facKeyOf(owner)];
-  // .72 left too much of the team colour in it to read as the doctrine's own
-  return (!f||f===FBUILD.concord)?base:mixHex(base,f.acc,.85);
-}
+/* Your colour, not your doctrine's. Pulling the accent toward the doctrine
+   made all three legions look distinct but cost the one thing the accent is
+   for - telling your army from somebody else's, especially when two players
+   run the same doctrine. The glowing panels, lamps and core stay the team
+   colour; the doctrine speaks through the hull grading, the rebuilt shapes
+   and its own ornaments, none of which touch the ownership channel. */
+function facAcc(owner){ return (TEAM[owner]||TEAM[0]).c; }
 /* The same for the few hard-coded highlights - the glints and lamp cores. */
+/* The small specular glints follow the accent for the same reason - a faint
+   warm nudge so they sit on a rusted hull, nowhere near enough to be mistaken
+   for another player's colour. */
 function facLight(hx,fk){
   const f=FBUILD[fk]; if(!f||fk==='concord') return hx;
-  return mixHex(hx,f.acc,.78);
+  return mixHex(hx,f.acc,.22);
 }
 function facShade(hx,fk){
   const f=FBUILD[fk]; if(!f||fk==='concord') return hx;
