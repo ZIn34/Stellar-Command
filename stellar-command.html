@@ -4997,70 +4997,73 @@ function makeUnitSpr(type,owner){
      is one figure that fills its footprint, with at most a small second man
      behind it for the squad. Flat fill, a hard dark outline and one gloss spot
      on the helmet is the whole trick. */
-  /* Toy-soldier palette: one light plastic tone with a hard dark line round
-     it. Drawn well clear of the hull colours, because a figure in the same
-     olive as the vehicles has no internal contrast and comes out a blob. */
-  const MAN_HI=mixHex(HULL_HI,'#eef4e0',.5), MAN=mixHex(HULL_HI,'#dde5c9',.28),
-        MAN_LO=mixHex(HULL,'#b9c4a4',.3), KIT=mixHex(HULL_LO,'#1b2217',.4);
+  /* An army man seen from above. Every version of this that drew the body and
+     the head in the same light plastic tone came out as one pale lump, because
+     a stack of concentric rounded rects in one colour has no silhouette. What
+     actually reads is contrast between the parts: the uniform stays the army's
+     own mid tone, the helmet is much lighter so it pops as a head, and the
+     weapon is a dark bar with a light edge that reaches out past the helmet so
+     the figure has a front. */
+  const MAN_HI=mixHex(HULL_HI,'#f2f6e6',.55), KIT=mixHex(HULL_LO,'#141a12',.55);
   const man=(x,y,sc,kit,turn)=>{
     const u=R*sc;
     g.save(); g.translate(x,y); g.rotate(turn||0);
-    g.fillStyle='rgba(0,0,0,.42)';
-    g.beginPath(); g.ellipse(-u*.05,u*.1,u*.62,u*.46,0,0,7); g.fill();
-    g.strokeStyle=DARK;
-    /* Boots out behind, then the body, then the kit, then the head - in that
-       order so each layer overlaps the one before it the way a figure does. */
-    g.fillStyle=MAN_LO; g.lineWidth=1.3;
+    g.fillStyle='rgba(0,0,0,.45)';
+    g.beginPath(); g.ellipse(-u*.06,u*.12,u*.6,u*.44,0,0,7); g.fill();
+    /* Body: one oval, widest across the shoulders, in the uniform colour. */
+    const bg=g.createLinearGradient(0,-u*.55,0,u*.55);
+    bg.addColorStop(0,HULL_HI); bg.addColorStop(.6,HULL); bg.addColorStop(1,HULL_LO);
+    g.fillStyle=bg; g.strokeStyle=DARK; g.lineWidth=1.7;
+    g.beginPath(); g.ellipse(-u*.1,0,u*.5,u*.56,0,0,7); g.fill(); g.stroke();
+    g.fillStyle=HULL_LO; g.lineWidth=1.2;                  // boots out behind
     for(const sy of [-1,1]){
-      g.save(); g.translate(-u*.46,sy*u*.3); g.rotate(sy*.34);
-      rr(g,-u*.26,-u*.15,u*.52,u*.3,u*.12); g.fill(); g.stroke(); g.restore();
+      g.save(); g.translate(-u*.52,sy*u*.26); g.rotate(sy*.4);
+      g.beginPath(); g.ellipse(0,0,u*.2,u*.13,0,0,7); g.fill(); g.stroke(); g.restore();
     }
-    g.fillStyle=MAN; g.lineWidth=1.5;                      // shoulders, wide
-    rr(g,-u*.34,-u*.62,u*.66,u*1.24,u*.26); g.fill(); g.stroke();
-    const tg=g.createLinearGradient(0,-u*.6,0,u*.6);       // chest
-    tg.addColorStop(0,MAN_HI); tg.addColorStop(1,MAN);
-    g.fillStyle=tg; g.lineWidth=1.2;
-    rr(g,-u*.24,-u*.46,u*.5,u*.92,u*.2); g.fill(); g.stroke();
-    g.fillStyle='rgba(22,28,18,.42)';                      // webbing
-    rr(g,-u*.14,-u*.44,u*.12,u*.88,1); g.fill();
-    g.fillStyle=t.c;                                       // shoulder flash
-    rr(g,-u*.3,-u*.58,u*.16,u*.26,1.4); g.fill();
-    rr(g,-u*.3, u*.32,u*.16,u*.26,1.4); g.fill();
-    g.fillStyle=MAN_LO; g.lineWidth=1.2;                   // arms forward
-    rr(g,u*.08,-u*.46,u*.4,u*.2,u*.08); g.fill(); g.stroke();
-    rr(g,u*.08, u*.26,u*.4,u*.2,u*.08); g.fill(); g.stroke();
-    /* The weapon has to be lighter than the ground or it disappears, and it
-       has to reach past the helmet or the figure reads as a disc. */
+    g.fillStyle='rgba(18,24,14,.45)';                      // webbing across the chest
+    rr(g,-u*.26,-u*.4,u*.11,u*.8,1); g.fill();
+    g.fillStyle=t.c;                                       // shoulder flashes
+    for(const sy of [-1,1]) { rr(g,-u*.32,sy*u*.4-u*.08,u*.14,u*.16,1.2); g.fill(); }
+    g.fillStyle=HULL; g.strokeStyle=DARK; g.lineWidth=1.2; // arms to the weapon
+    for(const sy of [-1,1]){
+      rr(g,u*.02,sy*u*.3-u*.09,u*.42,u*.18,u*.08); g.fill(); g.stroke();
+    }
+    /* The weapon. Dark body, light upper edge so it does not vanish into the
+       ground, and long enough to clear the helmet. */
+    const gun=(len,thick)=>{
+      g.fillStyle=KIT; g.strokeStyle=DARK; g.lineWidth=1.1;
+      rr(g,u*.16,-thick/2,len,thick,1.3); g.fill(); g.stroke();
+      g.fillStyle='rgba(240,246,228,.3)';
+      rr(g,u*.2,-thick/2+.6,len-u*.1,thick*.3,1); g.fill();
+    };
     if(kit==='rifle'){
-      g.fillStyle=KIT; g.lineWidth=1.1;
-      rr(g,u*.2,-u*.09,u*1.2,u*.18,1.4); g.fill(); g.stroke();
-      g.fillStyle=MAN_LO; rr(g,u*.3,-u*.2,u*.22,u*.4,1.5); g.fill(); g.stroke();
-      g.fillStyle=t.c; rr(g,u*1.24,-u*.06,u*.14,u*.12,1); g.fill();
+      gun(u*1.15,u*.19);
+      g.fillStyle=HULL_LO; g.strokeStyle=DARK; g.lineWidth=1.1;   // magazine
+      rr(g,u*.3,-u*.21,u*.2,u*.42,1.5); g.fill(); g.stroke();
+      g.fillStyle=t.c; rr(g,u*1.2,-u*.06,u*.13,u*.12,1); g.fill();
     } else if(kit==='flame'){
-      g.fillStyle=MAN_LO; g.lineWidth=1.2;                 // twin fuel bottles
+      g.fillStyle=HULL_LO; g.strokeStyle=DARK; g.lineWidth=1.2;   // fuel bottles
       for(const sy of [-1,1]){
-        rr(g,-u*.84,sy*u*.3-u*.17,u*.3,u*.34,u*.12); g.fill(); g.stroke();
+        rr(g,-u*.88,sy*u*.28-u*.18,u*.32,u*.36,u*.13); g.fill(); g.stroke();
       }
-      g.fillStyle=KIT; g.lineWidth=1.1;                    // nozzle
-      rr(g,u*.2,-u*.12,u*1.0,u*.24,2); g.fill(); g.stroke();
+      gun(u*.95,u*.25);
       glow(g,()=>{ g.fillStyle='#ffb347'; g.beginPath();
-        g.arc(u*1.22,0,u*.12,0,7); g.fill(); },'#ff8a3d',5);
+        g.arc(u*1.14,0,u*.09,0,7); g.fill(); },'#ff8a3d',4);
     } else if(kit==='mg'){
-      g.fillStyle=KIT; g.lineWidth=1.1;                    // long barrel
-      rr(g,u*.22,-u*.1,u*1.5,u*.2,1.4); g.fill(); g.stroke();
-      g.fillStyle=MAN_LO;                                  // bipod, splayed
+      gun(u*1.5,u*.21);
+      g.fillStyle=HULL_LO; g.strokeStyle=DARK; g.lineWidth=1.1;   // bipod, splayed
       for(const sy of [-1,1]){
-        g.save(); g.translate(u*.95,sy*u*.28); g.rotate(sy*.5);
-        rr(g,-u*.05,-u*.3,u*.11,u*.6,1.2); g.fill(); g.stroke(); g.restore();
+        g.save(); g.translate(u*1.0,sy*u*.26); g.rotate(sy*.55);
+        rr(g,-u*.05,-u*.28,u*.1,u*.56,1.2); g.fill(); g.stroke(); g.restore();
       }
-      g.fillStyle=t.c; rr(g,u*1.56,-u*.07,u*.16,u*.14,1); g.fill();
+      g.fillStyle=t.c; rr(g,u*1.58,-u*.07,u*.15,u*.14,1); g.fill();
     }
-    g.fillStyle=MAN_HI; g.lineWidth=1.5;                   // helmet, forward and small
-    g.beginPath(); g.ellipse(u*.14,0,u*.33,u*.3,0,0,7); g.fill(); g.stroke();
-    g.strokeStyle='rgba(22,28,18,.45)'; g.lineWidth=1.1;   // brim
-    g.beginPath(); g.ellipse(u*.14,0,u*.2,u*.18,0,0,7); g.stroke();
-    g.fillStyle='rgba(255,255,255,.48)';                   // the gloss spot
-    g.beginPath(); g.ellipse(u*.06,-u*.1,u*.12,u*.09,0,0,7); g.fill();
+    /* Helmet last, and much lighter than the uniform - this is the one thing
+       that makes the whole shape read as a man rather than a lump. */
+    g.fillStyle=MAN_HI; g.strokeStyle=DARK; g.lineWidth=1.6;
+    g.beginPath(); g.ellipse(u*.1,0,u*.3,u*.28,0,0,7); g.fill(); g.stroke();
+    g.fillStyle='rgba(255,255,255,.5)';
+    g.beginPath(); g.ellipse(u*.03,-u*.09,u*.11,u*.08,0,0,7); g.fill();
     g.restore();
   };
   if(type==='breaker'){
@@ -8053,7 +8056,7 @@ window.addEventListener('resize',()=>{ if(menuOn) menuSize(); });
 resize();
 settingsInit();
 menuInit();
-window.__art={unitSpr,bldSpr,UDEF,BDEF,FNAMES,FACOF,SPR,SS,TEAM};  /* DEBUG HOOK */
+window.__art={unitSpr,bldSpr,UDEF,BDEF,FNAMES,FACOF,SPR,SS,TEAM,mkUnit,getEnts:()=>ents};  /* DEBUG HOOK */
 </script>
 </body>
 </html>
