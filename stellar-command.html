@@ -1035,11 +1035,19 @@ function alive(){ return ents.filter(e=>!e.dead) }
 function unitsOf(o){ return ents.filter(e=>!e.dead&&e.kind==='unit'&&e.owner===o) }
 function bldOf(o){ return ents.filter(e=>!e.dead&&e.kind==='building'&&e.owner===o) }
 function hasBuilding(o,t){ return ents.some(e=>!e.dead&&e.kind==='building'&&e.owner===o&&e.type===t&&e.done) }
+/* Grand War lifts the ceiling to 420 but housing stayed at 8 a Habitat, so
+   reaching it meant forty of them. Each one is worth two and a half times as
+   much up there, on top of whatever the doctrine adds. */
+function supplyOf(type,o){
+  const base=(BDEF[type]&&BDEF[type].supply)||0;
+  if(!base) return 0;
+  return Math.round(base*(GRAND?2.5:1))+(facOf(o).supplyBonus||0);
+}
 function recalcSupply(o){
   let cap=0,used=0;
   for(const e of ents){ if(e.dead||e.owner!==o) continue;
     if(e.kind==='building'&&e.done&&BDEF[e.type].supply)
-      cap+=BDEF[e.type].supply+(facOf(o).supplyBonus||0);
+      cap+=supplyOf(e.type,o);
     if(e.kind==='unit') used+=UDEF[e.type].sup;
     if(e.kind==='building'&&e.queue) for(const q of e.queue) used+=UDEF[q].sup; }
   P[o].cap=Math.min(cap,GRAND?420:200); P[o].sup=used;
@@ -3451,8 +3459,17 @@ function aiRun(AI,ME,dt){
   /* ---- economy ---- */
   if(P[ME].cap-P[ME].sup<=(P[ME].cap>40?8:4)&&P[ME].cap<190&&count('habitat')-bs.filter(b=>b.type==='habitat'&&b.done).length<2)
     put('habitat',home);
-  if(workers.length<aiWorkerTarget(ME)&&(!has('musterhall')||P[ME].m>=115))
-    for(const cc of bs.filter(b=>b.type==='keystone'&&b.done)) if(cc.queue.length<2){ tryTrain(cc,'delver'); break; }
+  if(workers.length<aiWorkerTarget(ME)&&(!has('musterhall')||P[ME].m>=115)){
+    /* This took the first Keystone with a short queue, which was almost always
+       the main base - so a bot would raise an expansion and then never crew
+       it, because every Delver it trained popped out at home. Train from
+       whichever line is thinnest, and the new harvester walks straight onto
+       the patches beside it. */
+    const cores=bs.filter(b=>b.type==='keystone'&&b.done&&b.queue.length<2)
+      .sort((a,b2)=>(lineLoad(a)/Math.max(1,mineCap(a)))-(lineLoad(b2)/Math.max(1,mineCap(b2))));
+    const pick=cores.find(c=>!lineFull(c))||cores[0];
+    if(pick) tryTrain(pick,'delver');
+  }
 
   /* ---- tech and production capacity ---- */
   if(!has('musterhall')&&!building('musterhall')) put('musterhall',home,enemyDir);
@@ -3473,8 +3490,22 @@ function aiRun(AI,ME,dt){
       .sort((a,b)=>dist(a,home)-dist(b,home));
     for(const e of spots){
       if(canPlace('keystone',snap(e.x),snap(e.y),ME)&&startBuild('keystone',snap(e.x),snap(e.y),ME,[freeWorker()])){
-        AI.expo++; break;
+        AI.expo++; AI.lastExpo={x:snap(e.x),y:snap(e.y)}; break;
       }
+    }
+  }
+  /* An expansion that is only a drop-off is half a base. Once it is standing,
+     put a hall and some housing beside it so it pulls its weight and the army
+     has somewhere forward to come out of. */
+  if(AI.lastExpo){
+    const exp=bldOf(ME).find(b=>b.type==='keystone'&&b.done&&dist(b,AI.lastExpo)<140);
+    if(!exp) { if(!bldOf(ME).some(b=>b.type==='keystone'&&dist(b,AI.lastExpo)<140)) AI.lastExpo=null; }
+    else {
+      const near=t=>bldOf(ME).some(b=>b.type===t&&dist(b,exp)<340);
+      if(!near('habitat')&&P[ME].m>=140&&canBuild()) put('habitat',exp);
+      else if(!near('musterhall')&&P[ME].m>=260&&canBuild()) put('musterhall',exp,enemyDir);
+      else if(!near('watchspire')&&P[ME].m>=360&&canBuild()) put('watchspire',exp,enemyDir);
+      else AI.lastExpo=null;                 // built out; the next expansion is next
     }
   }
   /* rebuild what was lost */
@@ -5337,7 +5368,10 @@ function menuInit(){
       const cg=r[0]==='unit'?Math.round((d.g||0)*f.cost):(d.g||0);
       const cost=cm+(cg?' + <u>'+cg+'</u>':'');
       let desc=facText(r[2]);
-      if(sb&&d.supply) desc=desc.replace(/\+\d+ pop/,'+'+(d.supply+sb)+' pop');
+      if(d.supply){
+        const per=Math.round(d.supply*(scaleKey==='grand'?2.5:1))+sb;
+        desc=desc.replace(/\+\d+ pop/,'+'+per+' pop');
+      }
       return '<div class="mrow">'+iconTag(r[0],r[1],0)+
         '<div><div class="mn">'+nameOf(r[1],0)+'</div><div class="md">'+desc+'</div></div>'+
         '<div class="mc">'+cost+'</div></div>';
