@@ -3046,11 +3046,21 @@ function netTypeIdx(e){
   return i<0?-1:NET_U.length+NET_B.length+i;
 }
 function netTypeOf(i){
+  if(i<0) return null;
   if(i<NET_U.length) return {kind:'unit',type:NET_U[i]};
   if(i<NET_U.length+NET_B.length) return {kind:'building',type:NET_B[i-NET_U.length]};
   if(i<NET_X) return {kind:'res',type:NET_R[i-NET_U.length-NET_B.length]};
-  return {kind:'unit',type:NET_U2[i-NET_X]};
+  const t=NET_U2[i-NET_X];
+  /* An index this build has no name for means the other player is running
+     a different version. Returning a type of undefined used to be far
+     worse than dropping the row: UDEF[undefined] has no sight, so the fog
+     never lit and nothing was ever visible, and no worker flag, so no base
+     could find a worker. */
+  return t?{kind:'unit',type:t}:null;
 }
+/* Bumped whenever the wire format changes meaning. Both sides compare it
+   and say so, rather than quietly building a broken world. */
+const NET_PROTO=2;
 function netOnline(){ return NET.role==='host'||NET.role==='guest'; }
 let SEED=1, SEED0=1;
 /* SEED is the live generator state and every srand() call moves it on, so by
@@ -3270,13 +3280,24 @@ function netSnapshot(){
   }
   // every slot's bank travels; each client reads its own out of the list
   const r=[0,1,2,3].map(i=>[Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap]);
-  netRelay({k:'S',e,r,ev:NET.evOut.splice(0,80)});
+  netRelay({k:'S',v:NET_PROTO,e,r,ev:NET.evOut.splice(0,80)});
+}
+/* A version mismatch is silent otherwise: rows get dropped and the world
+   is simply wrong. Say it once, plainly, because the fix is a reload. */
+let protoWarned=false;
+function netProtoWarn(){
+  if(protoWarned) return;
+  protoWarned=true;
+  say('The other player is on a different version of the game - both of you reload the page');
+  SFX.play('deny');
 }
 /* ---------- guest consumes it ---------- */
 function netApplySnapshot(d){
+  if(d.v!==undefined&&d.v!==NET_PROTO) netProtoWarn();
   const seen=new Set();
   for(const a of d.e){
     const id=a[0], info=netTypeOf(a[1]);
+    if(!info||!info.type){ netProtoWarn(); continue; }   // not a row this build understands
     seen.add(id);
     let o=NET.byId.get(id);
     if(!o){
