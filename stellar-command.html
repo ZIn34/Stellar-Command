@@ -28,7 +28,12 @@ html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#0a090
 #snd:hover{opacity:1}
 #panel{position:absolute;bottom:0;left:0;right:0;height:var(--panel);display:flex;gap:8px;padding:7px;
   background:linear-gradient(180deg,#1c1912,#12100b);border-top:2px solid #453e2d}
-#mmWrap{width:min(clamp(120px,23vw,200px),calc(var(--panel) - 16px));aspect-ratio:1;flex:0 0 auto;border:2px solid #564e39;border-radius:4px;
+/* align-self stops the flex row stretching it: the panel is a flex container
+   with the default align-items:stretch, which forced the wrapper to the full
+   panel height while its width stayed capped - so the square minimap canvas
+   inside was drawn tall. It only looked right before because the old fixed
+   panel height happened to match the width. */
+#mmWrap{width:min(clamp(120px,23vw,200px),calc(var(--panel) - 16px));aspect-ratio:1;align-self:center;flex:0 0 auto;border:2px solid #564e39;border-radius:4px;
   background:#0b0a07;overflow:hidden;position:relative}
 #mm{width:100%;height:100%;display:block;cursor:pointer;touch-action:none}
 #alert{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:7;display:none;
@@ -495,7 +500,7 @@ body.touch .mouse-only{display:none}
       <button id="btnHostPub">HOST PUBLIC</button>
       <button id="btnBrowse">PUBLIC ROOMS</button>
       <button id="btnJoin">JOIN</button>
-      <button id="btnSettings">AUDIO</button>
+      <button id="btnSettings">SETTINGS</button>
       <button id="btnTutorial">TUTORIAL</button>
       <button id="btnShop">SHOP</button>
       <button id="btnReplay">WATCH REPLAY</button>
@@ -6676,10 +6681,24 @@ function endGame(t,c,opts){
   o.style.display='flex';
 }
 function spectate(){
-  SPECTATING=true;
   document.getElementById('over').style.display='none';
-  explored.fill(1); visible.fill(1); paintFog();
-  say('Spectating - your forces are gone.');
+  /* If your side is still fighting, this is not a dead match to wander round
+     - it is your ally's battle. Leaving SPECTATING off keeps the fog, and the
+     fog already lights around everyone on your team, so you get their vision
+     and nothing more. Revealing the whole map here would also have handed a
+     knocked-out player every enemy position to pass on. */
+  const mineLeft=aliveTeams().indexOf(TEAMOF[0])>=0;
+  if(mineLeft){
+    SPECTATING=false;
+    updateFog(); paintFog();
+    const ally=ents.find(e=>!e.dead&&e.owner!==0&&isAlly(e.owner)&&e.kind==='building');
+    if(ally) centerOn(ally.x,ally.y);
+    say('Your forces are gone - you see what your ally sees.');
+  } else {
+    SPECTATING=true;
+    explored.fill(1); visible.fill(1); paintFog();
+    say('Spectating - your forces are gone.');
+  }
 }
 
 /* ===================== INIT ===================== */
