@@ -4723,12 +4723,12 @@ function mixHex(a,b,k){
    alloy, the Legion pours rough iron, the Pact grows pale resin shell. The
    team colour is still mixed in on top so you can tell players apart. */
 const FBUILD={
-  concord:{hi:'#61788f', mid:'#42566c', lo:'#2a3847', mix:.38, scale:1,   acc:'#9fd9ff'},
+  concord:{hi:'#7d854f', mid:'#545930', lo:'#2e3218', mix:.26, scale:1,   acc:'#d6e4a8'},
   /* These were light enough that mixing them with a cyan team colour landed on
      beige rather than ember, and on a washed mint rather than green. Deepen
      and saturate them so the doctrine survives the mix. */
-  legion: {hi:'#8a6b4e', mid:'#56402c', lo:'#2b1d13', mix:.17, scale:1.1, acc:'#ff7a2e'},
-  pact:   {hi:'#9aae76', mid:'#5f7444', lo:'#333f27', mix:.15, scale:.92, acc:'#86ee46'}
+  legion: {hi:'#8d99a2', mid:'#5c666e', lo:'#2f363b', mix:.17, scale:1.1, acc:'#cfe0ea'},
+  pact:   {hi:'#c2a877', mid:'#8d7446', lo:'#4f3f22', mix:.15, scale:.92, acc:'#ffcf8a'}
 };
 /* The structures were all drawn in one grey-blue, so tinting the trim alone
    left every doctrine looking like the Concord. Re-grade the plate greys
@@ -4752,11 +4752,11 @@ function facAcc(owner){ return (TEAM[owner]||TEAM[0]).c; }
    warm nudge so they sit on a rusted hull, nowhere near enough to be mistaken
    for another player's colour. */
 function facLight(hx,fk){
-  const f=FBUILD[fk]; if(!f||fk==='concord') return hx;
+  const f=FBUILD[fk]; if(!f) return hx;
   return mixHex(hx,f.acc,.22);
 }
 function facShade(hx,fk){
-  const f=FBUILD[fk]; if(!f||fk==='concord') return hx;
+  const f=FBUILD[fk]; if(!f) return hx;
   const p=parseInt(hx.slice(1),16);
   const L=((p>>16&255)*.299+(p>>8&255)*.587+(p&255)*.114)/255;
   const k=Math.min(1,Math.pow(L,.82)*1.45);
@@ -5210,68 +5210,200 @@ function makeBldSpr(type,owner){
   const win=(x,y,w,h)=>glow(g,()=>{ g.fillStyle=t.c; rr(g,x,y,w,h,1.5); g.fill(); },t.c,7);
   const bolts=i=>{ g.fillStyle=_sh('#0e1620');
     [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(s=>{ g.beginPath(); g.arc(s[0]*(hw-i),s[1]*(hh-i),2,0,7); g.fill(); }); };
+  /* Field fortification vocabulary, shared by every structure: a sandbag
+     revetment, a corrugated roof, a vehicle door and a floodlight. Each is
+     drawn through plate/rr/poly, so the army's own corner language and colour
+     ramp come along for free. */
+  const sand=(x,y,w,h)=>{                       // a sandbag run
+    g.fillStyle=_sh('#4a5a6e'); rr(g,x,y,w,h,h*.45); g.fill();
+    g.strokeStyle=_sh('#16202b'); g.lineWidth=1;
+    const n=Math.max(2,Math.round(w/(h*1.15)));
+    for(let k=1;k<n;k++){ const px=x+w*k/n;
+      g.beginPath(); g.moveTo(px,y+1); g.lineTo(px,y+h-1); g.stroke(); }
+    g.fillStyle='rgba(235,245,220,.10)'; rr(g,x,y,w,h*.34,h*.3); g.fill();
+  };
+  const corr=(x,y,w,h,step)=>{                  // corrugated roof panel
+    g.fillStyle=_sh('#2c3a4b'); rr(g,x,y,w,h,2); g.fill();
+    g.strokeStyle='rgba(235,245,220,.09)'; g.lineWidth=1.2;
+    for(let px=x+(step||7);px<x+w-1;px+=(step||7)){
+      g.beginPath(); g.moveTo(px,y+1.5); g.lineTo(px,y+h-1.5); g.stroke(); }
+    g.strokeStyle=_sh('#121b25'); g.lineWidth=1.2; rr(g,x,y,w,h,2); g.stroke();
+  };
+  const door=(x,y,w,h)=>{                       // roller shutter
+    g.fillStyle=_sh('#0d161f'); rr(g,x,y,w,h,2); g.fill();
+    g.strokeStyle=_sh('#38485c'); g.lineWidth=1;
+    for(let py=y+3;py<y+h-1;py+=3.4){
+      g.beginPath(); g.moveTo(x+1.5,py); g.lineTo(x+w-1.5,py); g.stroke(); }
+  };
+  const lamp=(x,y)=>{                           // floodlight on a short mast
+    g.fillStyle=_sh('#1b2634'); rr(g,x-1.6,y-7,3.2,9,1); g.fill();
+    g.fillStyle=_sh('#50647b'); rr(g,x-4,y-11,8,5,1.5); g.fill();
+    glow(g,()=>{ g.fillStyle=_lt('#fff3cf'); rr(g,x-3,y-10,6,3,1); g.fill(); },'#ffe6a8',7);
+  };
   if(type==='keystone'){
-    poly(g,[[-hw,-hh+18],[-hw+18,-hh],[hw-18,-hh],[hw,-hh+18],[hw,hh-18],[hw-18,hh],[-hw+18,hh],[-hw,hh-18]]);
-    const gr=g.createLinearGradient(0,-hh,0,hh); gr.addColorStop(0,_sh('#3a4c62')); gr.addColorStop(1,_sh('#16212d'));
-    g.fillStyle=gr; g.fill(); g.strokeStyle=t.c; g.lineWidth=2.4; g.stroke();
-    g.strokeStyle='rgba(10,16,24,.75)'; g.lineWidth=1.4;
-    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(s=>{ rr(g,s[0]*hw*.5-15,s[1]*hh*.5-15,30,30,3); g.stroke(); });
-    plate(g,-26,-26,52,52,8,_sh('#46596f'),_sh('#1d2836'));
-    rr(g,-26,-26,52,52,8); g.strokeStyle=t.c; g.lineWidth=1.6; g.stroke();
-    const dg=g.createRadialGradient(-5,-7,2,0,0,22);
-    dg.addColorStop(0,_sh('#7f97b0')); dg.addColorStop(1,_sh('#243244'));
-    g.fillStyle=dg; g.beginPath(); g.arc(0,0,20,0,7); g.fill();
-    glow(g,()=>{ g.strokeStyle=t.c; g.lineWidth=3; g.beginPath(); g.arc(0,0,13,0,7); g.stroke(); },t.c,10);
-    glow(g,()=>{ g.fillStyle=_lt('#e9f6ff'); g.beginPath(); g.arc(0,0,5,0,7); g.fill(); },t.c,12);
-    win(-hw+8,-6,5,12); win(hw-13,-6,5,12);
+    /* Headquarters: a walled compound. Revetment wall, four sandbagged corner
+       bastions, a flat-roofed command block with a radio mast, and a vehicle
+       gate on the south wall. */
+    plate(g,-hw,-hh,W,H,6,_sh('#36475c'),_sh('#141e29'));
+    g.strokeStyle=_sh('#0e1620'); g.lineWidth=2; rr(g,-hw,-hh,W,H,6); g.stroke();
+    g.fillStyle=_sh('#2a3747');                                  // yard
+    rr(g,-hw+11,-hh+11,W-22,H-22,4); g.fill();
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{                  // corner bastions
+      sand(sg[0]*(hw-16)-9,sg[1]*(hh-16)-5,18,10);
+    });
+    door(-16,hh-10,32,9);                                        // vehicle gate
+    corr(-27,-26,54,52,8);                                       // command block
+    plate(g,-20,-19,40,38,4,_sh('#4b5f76'),_sh('#1e2937'));
+    rr(g,-20,-19,40,38,4); g.strokeStyle=t.c; g.lineWidth=1.6; g.stroke();
+    g.fillStyle=_sh('#0f1a25');                                  // map table slab
+    rr(g,-12,-11,24,22,3); g.fill();
+    glow(g,()=>{ g.fillStyle=t.c; rr(g,-9,-8,18,16,2); g.fill(); },t.c,9);
+    g.strokeStyle=_sh('#5c7189'); g.lineWidth=2;                 // radio mast
+    g.beginPath(); g.moveTo(hw-20,-hh+18); g.lineTo(hw-20,-hh-10); g.stroke();
+    g.strokeStyle=_sh('#5c7189'); g.lineWidth=1.2;
+    g.beginPath(); g.moveTo(hw-26,-hh-4); g.lineTo(hw-14,-hh-4); g.stroke();
+    glow(g,()=>{ g.fillStyle='#ff6b52'; g.beginPath();
+      g.arc(hw-20,-hh-11,2.2,0,7); g.fill(); },'#ff6b52',7);
+    g.strokeStyle=_sh('#5c7189'); g.lineWidth=1.8;               // flag mast
+    g.beginPath(); g.moveTo(-hw+18,hh-16); g.lineTo(-hw+18,hh-40); g.stroke();
+    g.fillStyle=t.c;
+    poly(g,[[-hw+19,hh-40],[-hw+36,hh-35],[-hw+19,hh-30]]); g.fill();
+    lamp(hw-16,hh-14); lamp(-hw+16,-hh+22);
+    win(-hw+7,-6,5,12); win(hw-12,-6,5,12);
   } else if(type==='habitat'){
-    body(2,10); trim(4,9);
+    /* Billet: three ridge tents on a gravel pad with a water bowser. Tents
+       are the one roofline nothing else in the base uses, so a camp reads at
+       a glance even zoomed out. */
+    plate(g,-hw,-hh,W,H,4,_sh('#334254'),_sh('#141d27'));
+    g.strokeStyle=_sh('#0e1620'); g.lineWidth=1.6; rr(g,-hw,-hh,W,H,4); g.stroke();
     for(let i=-1;i<=1;i++){
-      g.fillStyle=_sh('#0f1a25'); rr(g,-hw+9,i*15-5,W-18,10,4); g.fill();
-      g.fillStyle=HULL_HI;  rr(g,-hw+9,i*15-5,W-18,4,2);  g.fill();
+      const y=i*17;
+      g.fillStyle=_sh('#1b2634');                                // tent shadow
+      rr(g,-hw+7,y-7,W-14,15,2); g.fill();
+      poly(g,[[-hw+8,y+7],[0,y-8],[hw-8,y+7]]);                  // ridge
+      const tg=g.createLinearGradient(0,y-8,0,y+7);
+      tg.addColorStop(0,_sh('#536781')); tg.addColorStop(1,_sh('#26323f'));
+      g.fillStyle=tg; g.fill();
+      g.strokeStyle=_sh('#101922'); g.lineWidth=1.1; g.stroke();
+      g.strokeStyle='rgba(235,245,220,.10)'; g.lineWidth=1;      // guy lines
+      g.beginPath(); g.moveTo(0,y-8); g.lineTo(0,y+7); g.stroke();
     }
-    win(-hw+12,hh-14,10,5); win(hw-22,hh-14,10,5); bolts(8);
+    g.fillStyle=_sh('#3d4e63');                                  // water bowser
+    rr(g,hw-19,hh-16,15,11,5); g.fill();
+    g.strokeStyle=_sh('#101922'); g.lineWidth=1.1; g.stroke();
+    win(-hw+9,hh-11,9,4); bolts(6);
   } else if(type==='musterhall'){
-    body(2,6); trim(5,4);
-    plate(g,-hw+9,-hh+8,W-18,H*.34,3,_sh('#3b4d63'),_sh('#1a2532'));
-    g.fillStyle=_sh('#0d161f'); rr(g,-hw+14,hh-26,W-28,20,3); g.fill();
-    g.fillStyle=t.c; g.globalAlpha=.9;
-    for(let i=0;i<4;i++){ poly(g,[[-hw+20+i*16,hh-22],[-hw+27+i*16,hh-22],[-hw+22+i*16,hh-10],[-hw+15+i*16,hh-10]]); g.fill(); }
+    /* Barracks: a long shed with three roller doors facing out and a parade
+       square scuffed into the dirt in front of them. */
+    plate(g,-hw,-hh,W,H,4,_sh('#36475c'),_sh('#141e29'));
+    g.strokeStyle=_sh('#0e1620'); g.lineWidth=2; rr(g,-hw,-hh,W,H,4); g.stroke();
+    corr(-hw+7,-hh+7,W-14,H*.52,9);                              // shed roof
+    g.fillStyle=_sh('#46596f');                                  // ridge vents
+    for(let i=0;i<3;i++){ rr(g,-hw+16+i*26,-hh+12,18,5,2); g.fill(); }
+    g.fillStyle=_sh('#232f3d');                                  // parade square
+    rr(g,-hw+10,hh-27,W-20,21,2); g.fill();
+    g.strokeStyle='rgba(235,245,220,.10)'; g.lineWidth=1;
+    g.beginPath(); g.moveTo(-hw+14,hh-17); g.lineTo(hw-14,hh-17); g.stroke();
+    for(let i=0;i<3;i++) door(-hw+17+i*26,hh-25,19,16);
+    g.fillStyle=t.c; g.globalAlpha=.85;                          // lane markings
+    for(let i=0;i<3;i++){ rr(g,-hw+24+i*26,hh-8,5,6,1); g.fill(); }
     g.globalAlpha=1;
-    win(-hw+13,-hh+14,W*.2,5); win(hw-13-W*.2,-hh+14,W*.2,5);
-    g.strokeStyle=_sh('#55697f'); g.lineWidth=2; g.beginPath(); g.moveTo(hw-12,-hh+6); g.lineTo(hw-6,-hh-6); g.stroke();
-    glow(g,()=>{ g.fillStyle='#ff6b52'; g.beginPath(); g.arc(hw-6,-hh-7,2,0,7); g.fill(); },'#ff6b52',7);
-    bolts(7);
+    lamp(hw-13,-hh+30);
+    win(-hw+12,-hh+H*.58,W*.16,4); bolts(7);
   } else if(type==='siphon'){
-    body(2,5); trim(4,4);
-    for(let i=-1;i<=1;i++){
-      const x=i*24;
-      plate(g,x-10,-hh+10,20,H-24,9,_sh('#40556b'),_sh('#1a2531'));
-      g.strokeStyle=_sh('#0f1922'); g.lineWidth=1.2; rr(g,x-10,-hh+10,20,H-24,9); g.stroke();
-      glow(g,()=>{ g.fillStyle='#35d18a'; rr(g,x-6,-4,12,10,3); g.fill(); },'#35d18a',8);
+    /* Refinery: two fuel cylinders on a bund, a pump house between them and
+       pipework running out to the edge of the pad. */
+    plate(g,-hw,-hh,W,H,4,_sh('#334254'),_sh('#141d27'));
+    g.strokeStyle=_sh('#0e1620'); g.lineWidth=1.8; rr(g,-hw,-hh,W,H,4); g.stroke();
+    for(let i=-1;i<=1;i+=2){
+      const x=i*20;
+      g.fillStyle=_sh('#0f1922');                                // tank shadow
+      g.beginPath(); g.ellipse(x+2,4,15,15,0,0,7); g.fill();
+      const cg=g.createRadialGradient(x-5,-6,2,x,0,17);
+      cg.addColorStop(0,_sh('#60748c')); cg.addColorStop(1,_sh('#1d2835'));
+      g.fillStyle=cg; g.beginPath(); g.arc(x,0,14.5,0,7); g.fill();
+      g.strokeStyle=_sh('#101922'); g.lineWidth=1.6; g.stroke();
+      g.strokeStyle='rgba(235,245,220,.12)'; g.lineWidth=1;      // hoop bands
+      for(const r of [5.5,9.5]){ g.beginPath(); g.arc(x,0,r,0,7); g.stroke(); }
+      g.fillStyle=_sh('#46596f'); rr(g,x-4,-18,8,5,1.5); g.fill();   // filler cap
     }
-    g.strokeStyle=_sh('#4a5f76'); g.lineWidth=4;
-    g.beginPath(); g.moveTo(-24,hh-9); g.lineTo(24,hh-9); g.stroke();
+    plate(g,-9,-hh+9,18,H-18,3,_sh('#45586e'),_sh('#1a2531'));   // pump house
+    rr(g,-9,-hh+9,18,H-18,3); g.strokeStyle=_sh('#101922'); g.lineWidth=1.2; g.stroke();
+    glow(g,()=>{ g.fillStyle='#e07a34'; rr(g,-5,-5,10,11,2); g.fill(); },'#e07a34',8);
+    g.strokeStyle=_sh('#4a5f76'); g.lineWidth=4;                 // pipe run
+    g.beginPath(); g.moveTo(-26,hh-8); g.lineTo(26,hh-8); g.stroke();
     bolts(6);
   } else if(type==='forgeworks'){
-    body(2,5); trim(4,4);
-    plate(g,-hw+8,-hh+8,W*.52,H*.5,4,_sh('#3d5067'),_sh('#1b2634'));
-    for(let i=0;i<3;i++){
-      g.fillStyle=_sh('#0e1721'); g.beginPath(); g.arc(hw-20,-hh+20+i*18,7,0,7); g.fill();
-      g.fillStyle=_sh('#54687f'); g.beginPath(); g.arc(hw-20,-hh+20+i*18,4,0,7); g.fill();
+    /* Workshop: a hangar with a sawtooth roof, a gantry crane on rails over
+       the open bay, and one lit work pit. */
+    plate(g,-hw,-hh,W,H,4,_sh('#36475c'),_sh('#141e29'));
+    g.strokeStyle=_sh('#0e1620'); g.lineWidth=2; rr(g,-hw,-hh,W,H,4); g.stroke();
+    for(let i=0;i<4;i++){                                        // sawtooth roof
+      const x=-hw+9+i*20;
+      poly(g,[[x,-hh+30],[x,-hh+10],[x+13,-hh+22],[x+13,-hh+30]]);
+      g.fillStyle=_sh(i%2?'#44576d':'#3a4b60'); g.fill();
+      g.strokeStyle=_sh('#101922'); g.lineWidth=1; g.stroke();
+      g.fillStyle='rgba(235,245,220,.10)';
+      poly(g,[[x,-hh+10],[x+13,-hh+22],[x+13,-hh+19],[x,-hh+8]]); g.fill();
     }
-    glow(g,()=>{ g.fillStyle='#ffa640'; rr(g,-hw+14,hh-26,W*.44,12,3); g.fill(); },'#ff9b3d',9);
-    const gx=-hw+W*.34, gy=-hh+H*.31;
-    g.strokeStyle=t.c; g.lineWidth=2;
-    g.beginPath(); g.arc(gx,gy,11,0,7); g.stroke();
-    for(let i=0;i<8;i++){ const a=i/8*6.283; g.beginPath();
-      g.moveTo(gx+Math.cos(a)*11,gy+Math.sin(a)*11);
-      g.lineTo(gx+Math.cos(a)*15,gy+Math.sin(a)*15); g.stroke(); }
+    g.fillStyle=_sh('#1d2835');                                  // open bay floor
+    rr(g,-hw+9,-hh+34,W-18,H-46,3); g.fill();
+    g.strokeStyle=_sh('#50647b'); g.lineWidth=2.4;               // crane rails
+    g.beginPath(); g.moveTo(-hw+11,-hh+38); g.lineTo(hw-11,-hh+38); g.stroke();
+    g.beginPath(); g.moveTo(-hw+11,hh-14); g.lineTo(hw-11,hh-14); g.stroke();
+    g.fillStyle=_sh('#5a6e86');                                  // gantry beam
+    rr(g,-8,-hh+36,16,H-52,2); g.fill();
+    g.strokeStyle=_sh('#101922'); g.lineWidth=1.2; g.stroke();
+    g.fillStyle=_sh('#2a3747'); rr(g,-5,-6,10,14,2); g.fill();   // hoist block
+    glow(g,()=>{ g.fillStyle='#ffa640'; rr(g,-hw+14,hh-24,W*.3,9,2); g.fill(); },'#ff9b3d',9);
+    g.fillStyle=t.c; g.globalAlpha=.9;                           // bay numbers
+    for(let i=0;i<3;i++){ rr(g,hw-20,-hh+44+i*14,9,4,1); g.fill(); }
+    g.globalAlpha=1;
+    lamp(-hw+15,-hh+36); lamp(hw-15,hh-12);
     bolts(7);
+  } else if(type==='watchspire'){
+    /* Bunker: a concrete emplacement, hexagonal so it never reads as another
+       shed, with an embrasure slit and sandbags banked against the front. The
+       rotating gun head is drawn over this at runtime. */
+    poly(g,[[-hw,-hh*.45],[-hw*.5,-hh],[hw*.5,-hh],[hw,-hh*.45],
+            [hw,hh*.45],[hw*.5,hh],[-hw*.5,hh],[-hw,hh*.45]]);
+    const gr=g.createLinearGradient(0,-hh,0,hh);
+    gr.addColorStop(0,_sh('#45586e')); gr.addColorStop(1,_sh('#16212d'));
+    g.fillStyle=gr; g.fill(); g.strokeStyle=_sh('#0d151e'); g.lineWidth=2.2; g.stroke();
+    g.fillStyle=_sh('#0f1a25');                                  // embrasure
+    rr(g,-hw*.62,-3.5,W*.62,7,2); g.fill();
+    glow(g,()=>{ g.fillStyle=t.c; rr(g,-hw*.5,-2,W*.4,4,1.5); g.fill(); },t.c,7);
+    sand(-hw*.78,hh-9,W*.78,8);
+    g.fillStyle='rgba(235,245,220,.09)';                         // roof slab edge
+    poly(g,[[-hw*.5,-hh],[hw*.5,-hh],[hw*.42,-hh+5],[-hw*.42,-hh+5]]); g.fill();
+  } else if(type==='citadel'){
+    /* Heavy assembly hall: the only structure big enough to put a hull
+       together, so it gets two gantry rails, a pit with something half-built
+       in it, and floodlights at all four corners. */
+    plate(g,-hw,-hh,W,H,5,_sh('#36475c'),_sh('#131d28'));
+    g.strokeStyle=_sh('#0d151e'); g.lineWidth=2.4; rr(g,-hw,-hh,W,H,5); g.stroke();
+    corr(-hw+8,-hh+8,W-16,24,10);                                // roof over the shops
+    corr(-hw+8,hh-32,W-16,24,10);
+    g.fillStyle=_sh('#1b2634');                                  // the pit
+    rr(g,-hw+14,-hh+38,W-28,H-76,4); g.fill();
+    g.strokeStyle=_sh('#50647b'); g.lineWidth=2.6;               // gantry rails
+    for(const y of [-hh+40,hh-40]){ g.beginPath();
+      g.moveTo(-hw+14,y); g.lineTo(hw-14,y); g.stroke(); }
+    g.fillStyle=_sh('#5a6e86');                                  // two gantries
+    for(const x of [-22,22]){ rr(g,x-7,-hh+38,14,H-76,2); g.fill();
+      g.strokeStyle=_sh('#101922'); g.lineWidth=1.2; g.stroke(); }
+    g.fillStyle=_sh('#3d4e63');                                  // the hull on the stocks
+    poly(g,[[hw-34,0],[10,-16],[-hw+26,-11],[-hw+26,11],[10,16]]); g.fill();
+    g.strokeStyle=_sh('#0f1922'); g.lineWidth=1.4; g.stroke();
+    glow(g,()=>{ g.fillStyle=t.c; rr(g,-12,-5,26,10,2); g.fill(); },t.c,10);
+    g.fillStyle='rgba(235,245,220,.10)';                         // welding sparks
+    for(let i=0;i<5;i++){ g.beginPath();
+      g.arc(hw-40+i*5,(i%2?-1:1)*7,1.3,0,7); g.fill(); }
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>lamp(sg[0]*(hw-13),sg[1]*(hh-13)));
+    bolts(8);
   } else {
-    poly(g,[[-hw,-hh+9],[-hw+9,-hh],[hw-9,-hh],[hw,-hh+9],[hw,hh-9],[hw-9,hh],[-hw+9,hh],[-hw,hh-9]]);
-    const gr=g.createLinearGradient(0,-hh,0,hh); gr.addColorStop(0,_sh('#3a4c62')); gr.addColorStop(1,_sh('#16212d'));
-    g.fillStyle=gr; g.fill(); g.strokeStyle=t.c; g.lineWidth=2; g.stroke();
+    plate(g,-hw,-hh,W,H,4,_sh('#36475c'),_sh('#141e29'));
+    g.strokeStyle=_sh('#0e1620'); g.lineWidth=2; rr(g,-hw,-hh,W,H,4); g.stroke();
     g.fillStyle=_sh('#0f1a25'); g.beginPath(); g.arc(0,0,hw*.62,0,7); g.fill();
   }
   // Building art is drawn from fixed grey-blue literals, so a faction wash over
@@ -5284,10 +5416,10 @@ function makeBldSpr(type,owner){
   g.save();
   g.setTransform(SS,0,0,SS,0,0);
   g.globalCompositeOperation='source-atop';
-  g.globalAlpha=_fk==='concord'?.22:.12; g.fillStyle=t.c;
+  g.globalAlpha=.14; g.fillStyle=t.c;
   g.fillRect(0,0,(W+PAD*2),(H+PAD*2));
-  if(_fk!=='concord'){ g.globalAlpha=.1; g.fillStyle=FBUILD[_fk].acc;
-    g.fillRect(0,0,(W+PAD*2),(H+PAD*2)); }
+  g.globalAlpha=.1; g.fillStyle=FBUILD[_fk].acc;
+  g.fillRect(0,0,(W+PAD*2),(H+PAD*2));
   g.globalAlpha=1; g.globalCompositeOperation='source-over';
   g.restore();
   g.globalAlpha=1; g.globalCompositeOperation='source-over';
