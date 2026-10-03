@@ -3886,15 +3886,32 @@ function aiScout(AI,ME,dt){
 /* --- structure placement: keep the mineral line clear --- */
 function aiPlace(ME,type,anchor,bias){
   const d=BDEF[type];
+  const clear=(x,y)=>{
+    if(!canPlace(type,x,y,ME)) return false;
+    const res=nearest(ents,x,y,e=>e.kind==='res'&&e.amount>0);
+    return !(res&&Math.hypot(res.x-x,res.y-y)<115);       // don't wall in the workers
+  };
   for(let i=0;i<44;i++){
     let a=Math.random()*Math.PI*2;
     if(bias) a=Math.atan2(bias.y-anchor.y,bias.x-anchor.x)+(Math.random()-.5)*1.5;
     const r=rnd(120,300);
     const x=snap(anchor.x+Math.cos(a)*r), y=snap(anchor.y+Math.sin(a)*r);
-    if(!canPlace(type,x,y,ME)) continue;
-    const res=nearest(ents,x,y,e=>e.kind==='res'&&e.amount>0);
-    if(res&&Math.hypot(res.x-x,res.y-y)<115) continue;    // don't wall in the workers
-    return {x,y};
+    if(clear(x,y)) return {x,y};
+  }
+  /* The sampling above only ever looks 120-300px from the anchor, and once a
+     base has filled in there is nothing that size left in that ring - a
+     112x112 Citadel simply could not be placed, so bots never built one and
+     never fielded a capital ship at all. Sweep outward deterministically,
+     with the step scaled to the footprint, so a big building is never
+     impossible just because home is crowded. */
+  const step=Math.max(26,Math.max(d.w,d.h)*.45);
+  const base=bias?Math.atan2(bias.y-anchor.y,bias.x-anchor.x):0;
+  for(let r=140;r<=860;r+=step){
+    for(let k=0;k<18;k++){
+      const a=base+k*(Math.PI*2/18);
+      const x=snap(anchor.x+Math.cos(a)*r), y=snap(anchor.y+Math.sin(a)*r);
+      if(clear(x,y)) return {x,y};
+    }
   }
   return null;
 }
@@ -4005,6 +4022,36 @@ function aiRun(AI,ME,dt){
   const building=t=>bs.some(b=>b.type===t&&!b.done);
   const count=t=>bs.filter(b=>b.type===t).length;
   const freeWorker=()=>workers.find(w=>w.cmd.t!=='build'&&!w.isScout)||workers[0]||null;
+  /* A capital ship, and the yard it comes out of, cost more than a bot is ever
+     holding at a random moment - it spends every scrap of aurite on infantry
+     as fast as it comes in. So it saves for them deliberately: one goal at a
+     time, and while it is within reach of that goal the barracks and the
+     Forgeworks stand down so the bank actually fills.
+     Guarded two ways: it only saves once it has an army to hold the ground
+     with, and it gives up after a while rather than stalling out and losing
+     the match with a full treasury. */
+  const _yard=bs.find(b=>b.type==='citadel'&&b.done);
+  const _ships=unitsOf(ME).filter(u=>u.type==='titan').length;
+  const _queuedShip=!!(_yard&&_yard.queue&&_yard.queue.length);
+  const _shipCap=GRAND?6:2;
+  let saveGoal=null;
+  if(bs.some(b=>b.type==='forgeworks'&&b.done)){
+    if(!_yard&&!bs.some(b=>b.type==='citadel'&&!b.done)) saveGoal=bldCost('citadel',ME);
+    else if(_yard&&!_queuedShip&&_ships<_shipCap) saveGoal=priceOf('unit','titan',ME);
+  }
+  const canPayGoal=!!saveGoal&&P[ME].m>=saveGoal.m+80&&P[ME].g>=saveGoal.g+40;
+  let savingUp=false;
+  if(saveGoal&&!canPayGoal&&army.length>=10&&
+     (P[ME].m>=saveGoal.m*.4||P[ME].g>=saveGoal.g*.4)){
+    /* Time-boxed on progress rather than on the clock: a flat cut-off expired
+       mid-save on a slower economy and the bot went back to buying infantry
+       with the ship already half paid for. It saves for as long as the bank is
+       still climbing, and gives up only if it genuinely stops getting closer. */
+    const bank=P[ME].m+P[ME].g;
+    if(!AI.saveSince){ AI.saveSince=AI.t; AI.saveBest=bank; AI.saveBestAt=AI.t; }
+    if(bank>(AI.saveBest||0)+60){ AI.saveBest=bank; AI.saveBestAt=AI.t; }
+    savingUp=(AI.t-(AI.saveBestAt||AI.t))<70;
+  } else if(canPayGoal||!saveGoal){ AI.saveSince=0; AI.saveBest=0; AI.saveBestAt=0; }
   const canBuild=()=>workers.length>0;
   const fs0=myFoeStarts(ME)[0]||BASES[1];
   const enemyDir=aiKnownBases(AI)[0]||{x:fs0.tx*TILE,y:fs0.ty*TILE};
@@ -4080,8 +4127,8 @@ function aiRun(AI,ME,dt){
     put('watchspire',home,enemyDir);
   /* Once the economy can carry it, a bot raises its own Citadel and starts
      fielding capital ships - it has to, or the player's Titan has no answer. */
-  if(has('forgeworks')&&!has('citadel')&&!building('citadel')&&
-     P[ME].m>=620&&P[ME].g>=260&&canBuild())
+  if(has('forgeworks')&&!has('citadel')&&!building('citadel')&&canBuild()&&
+     canAfford(ME,bldCost('citadel',ME)))
     put('citadel',home);
   if(AI.t>(GRAND?120:(DIFF.expoAt||200))&&AI.expo<(GRAND?6:(DIFF.expo||2))&&P[ME].m>=(DIFF.expoCost||480)&&!building('keystone')&&canBuild()){
     const spots=EXPOS.map(e=>({x:e.tx*TILE,y:e.ty*TILE}))
@@ -4132,17 +4179,12 @@ function aiRun(AI,ME,dt){
      Two parts: the gate now clears the real price, and while the bot is within
      reach of it the ichor-hungry units stand down so the bank actually fills
      instead of being spent on another Sunderer. */
-  const tCost=priceOf('unit','titan',ME);
-  const yard=bs.find(b=>b.type==='citadel'&&b.done);
-  const ships=us.filter(u=>u.type==='titan').length;
-  const queuedShip=yard&&yard.queue&&yard.queue.length>0;
-  // close enough that one more ichor spend would push the ship out of reach
-  const savingUp=!!yard&&!queuedShip&&ships<(GRAND?6:2)&&
-                 P[ME].g>=tCost.g*.55&&P[ME].g<tCost.g;
   for(const b of bs){
     if(!b.done||!BDEF[b.type].trains||b.type==='keystone') continue;
     if(b.type==='citadel'){
-      if(!b.queue.length&&P[ME].m>=tCost.m+120&&P[ME].g>=tCost.g+60) tryTrain(b,'titan');
+      const tc=priceOf('unit','titan',ME);
+      if(!b.queue.length&&_ships<_shipCap&&
+         P[ME].m>=tc.m&&P[ME].g>=tc.g){ tryTrain(b,'titan'); AI.saveSince=0; }
       continue;
     }
     if(b.queue.length>=(DIFF.qd||2)) continue;
@@ -4161,6 +4203,7 @@ function aiRun(AI,ME,dt){
       const want=(foeAir&&tl<4)?'talon':(tl<2&&AI.t>240?'talon':(hr<sn?'harrower':'sunderer'));
       tryTrain(b,want); continue;
     }
+    if(savingUp) continue;                      // banking for the capital ship
     if(P[ME].m>=(workers.length<8?150:55)) tryTrain(b,(P[ME].m>=380&&AI.t>170)?'bulwark':'warden');
   }
 

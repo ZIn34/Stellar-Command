@@ -788,6 +788,70 @@ test('the shipyard step walks the same build chain as the others', () => {
 });
 
 
+console.log('\nbots and capital ships');
+
+test('a big building can be placed even when home is crowded', () => {
+  /* aiPlace only sampled 120-300px from the anchor, so once a base filled in
+     there was nothing a 112x112 footprint could fit into - the Citadel was
+     unplaceable and bots never built one at all. */
+  arena('concord');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  // ring the base in buildings, the way a bot's sprawl does
+  run([
+    'var placed=0;',
+    'for(var r=120;r<=300&&placed<14;r+=60){',
+    ' for(var a=0;a<6.283&&placed<14;a+=0.5){',
+    '  var x=snap(k.x+Math.cos(a)*r), y=snap(k.y+Math.sin(a)*r);',
+    '  if(canPlace("habitat",x,y,0)){ mkBuilding("habitat",0,x,y,true); placed++; }',
+    ' }',
+    '}'
+  ].join('\n'));
+  ok(run('placed') >= 8, 'walled the base in with ' + run('placed') + ' buildings');
+  const spot = run('aiPlace(0,"citadel",k,null)');
+  ok(spot && spot.x !== undefined, 'the shipyard still found somewhere to go');
+  eq(run('canPlace("citadel",' + spot.x + ',' + spot.y + ',0)'), true,
+     'and the spot it picked is legal');
+});
+
+test('the shipyard gate is affordability, not an arbitrary bank', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  ok(/canAfford\(ME,bldCost\('citadel',ME\)\)/.test(whole),
+     'the bot builds it when it can pay for it');
+  ok(!/P\[ME\]\.m>=620&&P\[ME\]\.g>=260/.test(whole),
+     'the old hand-picked threshold is gone');
+});
+
+test('a bot saves for the ship instead of spending it on infantry', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  ok(/let saveGoal=null;/.test(whole), 'it has a savings goal');
+  ok(/if\(savingUp\) continue;/.test(whole), 'and production stands down while saving');
+  ok(/army\.length>=10/.test(whole), 'but only once it has an army to hold with');
+  ok(/AI\.saveBestAt/.test(whole), 'and it gives up if it stops making progress');
+  // the training gate must actually clear the real price
+  ok(!/P\[ME\]\.m>=720&&P\[ME\]\.g>=640/.test(whole),
+     'the training gate no longer sits below the price');
+});
+
+test('a bot really does get a shipyard up in a match', () => {
+  const res = run([
+    '(function(){',
+    ' scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord";',
+    ' startGame("warlord"); BOTS=[false,true,false,false];',
+    ' var yardAt=null;',
+    ' for(var i=0;i<5000;i++){',
+    '   over=false; simTick(0.1);',
+    '   if(!yardAt&&ents.some(function(e){return !e.dead&&e.owner===1&&',
+    '     e.type==="citadel"&&e.done;})){ yardAt=Math.round(gameTime); break; }',
+    ' }',
+    ' return {yardAt:yardAt, at:Math.round(gameTime)};',
+    '})()'
+  ].join('\n'));
+  ok(res.yardAt, 'the bot had a shipyard standing by ' + res.at + 's');
+});
+
+
 console.log('\nretaliation and surrender');
 
 test('a unit shot from outside its sight turns on whoever shot it', () => {
