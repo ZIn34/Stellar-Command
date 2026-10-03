@@ -3356,11 +3356,35 @@ function aiAssignWorker(ME,w){
   nodes.sort((a,b)=>(load.get(a)||0)-(load.get(b)||0));
   setGather(w,nodes[0],openDepot(ME,nodes[0].x,nodes[0].y,w));   // spread out instead of stacking
 }
+/* Bots used to send every unit to one identical coordinate, so twenty of them
+   converged on the same tile, wedged into each other and ground against
+   whatever rock happened to be in the way. A player never sees that, because
+   player orders go through formation(), which fans the group out over slots
+   snapped to open ground. Bots get the same treatment now.
+
+   The distance test matters as much as the spread: this is called from the AI
+   tick, and formation() clears each unit's path, so re-issuing the same order
+   every tick would mean no bot ever followed a path to the end. A unit already
+   walking to a slot in this block is left alone. */
+function aiMoveGroup(list,x,y,kind){
+  const k=kind||'amove';
+  /* Tag the unit with the group destination rather than measuring how far its
+     own slot is from the centre: a big army's outer columns sit well over a
+     hundred pixels out, so a distance test re-ordered them on every tick and
+     formation()'s clearNav threw away the path each time. A unit is re-ordered
+     only when the destination really changes, or when something else has taken
+     its command away. */
+  const tag=k+':'+Math.round(x/40)+':'+Math.round(y/40);
+  const us=(list||[]).filter(u=>u&&!u.dead&&(u.aiOrder!==tag||!u.cmd||u.cmd.t!==k));
+  if(!us.length) return;
+  formation(us,x,y,(px,py)=>({t:k,x:px,y:py}));
+  for(const u of us) u.aiOrder=tag;
+}
 /* --- defending the home front, including pulling workers off the line --- */
 function aiDefend(AI,ME,threat,army,workers){
   AI.mode='defend';
-  for(const u of army) if(u.cmd.t!=='attack'||!u.cmd.target||u.cmd.target.dead)
-    u.cmd={t:'amove',x:threat.x,y:threat.y};
+  aiMoveGroup(army.filter(u=>u.cmd.t!=='attack'||!u.cmd.target||u.cmd.target.dead),
+              threat.x,threat.y);
   const home=aiHome(ME);
   const close=home&&Math.hypot(threat.x-home.x,threat.y-home.y)<330;
   if(close&&army.length<4){
@@ -3501,10 +3525,10 @@ function aiRun(AI,ME,dt){
     const spots=aiScoutSpots(ME);
     if(AI.t>200&&army.length>=AI.threshold&&spots.length){
       const sweep=spots[(AI.scoutIdx)%spots.length];   // give up on recon, sweep in force
-      for(const u of army) if(u.cmd.t==='idle'||u.cmd.t==='amove'&&dist(u,sweep)>420)
-        u.cmd={t:'amove',x:sweep.x,y:sweep.y};
+      aiMoveGroup(army.filter(u=>u.cmd.t==='idle'||
+        (u.cmd.t==='amove'&&dist(u,sweep)>420)),sweep.x,sweep.y);
     } else {
-      for(const u of army) if(u.cmd.t==='idle'&&dist(u,home)>360) u.cmd={t:'amove',x:rallyPt.x,y:rallyPt.y};
+      aiMoveGroup(army.filter(u=>u.cmd.t==='idle'&&dist(u,home)>360),rallyPt.x,rallyPt.y);
     }
     return;
   }
@@ -3513,7 +3537,7 @@ function aiRun(AI,ME,dt){
     if(!AI.squad.length||AI.squad.length<AI.squadStart*.4){
       AI.mode='retreat'; AI.target=null;
       AI.threshold=Math.min(32,AI.threshold+DIFF.step);   // come back with more next time
-      for(const u of AI.squad) u.cmd={t:'amove',x:rallyPt.x,y:rallyPt.y};
+      aiMoveGroup(AI.squad,rallyPt.x,rallyPt.y);
       return;
     }
     let cx=0,cy=0; AI.squad.forEach(u=>{cx+=u.x;cy+=u.y;}); cx/=AI.squad.length; cy/=AI.squad.length;
@@ -3523,16 +3547,19 @@ function aiRun(AI,ME,dt){
       const sc=Math.hypot(o.x-cx,o.y-cy)+o.hp*.35+(o.kind==='building'?260:0);
       if(sc<fd){ fd=sc; focus=o; }
     }
-    for(const u of AI.squad){
-      if(focus&&(!u.target||u.target.dead||dist(u,u.target)>UDEF[u.type].rng*2.4)){
-        u.cmd={t:'attack',target:focus}; u.target=focus;
-      } else if(!focus&&u.cmd.t==='idle') u.cmd={t:'amove',x:target.x,y:target.y};
+    if(focus){
+      for(const u of AI.squad)
+        if(!u.target||u.target.dead||dist(u,u.target)>UDEF[u.type].rng*2.4){
+          u.cmd={t:'attack',target:focus}; u.target=focus;
+        }
+    } else {
+      aiMoveGroup(AI.squad.filter(u=>u.cmd.t==='idle'),target.x,target.y);
     }
     return;
   }
   if(AI.mode==='retreat'){
     if(!army.length||army.filter(u=>dist(u,home)<460).length>=army.length*.7) AI.mode='build';
-    else for(const u of army) if(u.cmd.t==='idle') u.cmd={t:'amove',x:rallyPt.x,y:rallyPt.y};
+    else aiMoveGroup(army.filter(u=>u.cmd.t==='idle'),rallyPt.x,rallyPt.y);
     return;
   }
   if(AI.mode==='stage'){
@@ -3540,19 +3567,19 @@ function aiRun(AI,ME,dt){
     const massed=army.filter(u=>dist(u,AI.staging)<300).length;
     if(massed>=Math.ceil(army.length*.7)){
       AI.mode='attack'; AI.wave++; AI.squad=army.slice(); AI.squadStart=army.length; AI.target=target;
-      for(const u of army) u.cmd={t:'amove',x:target.x,y:target.y};
-    } else for(const u of army) if(u.cmd.t==='idle') u.cmd={t:'amove',x:AI.staging.x,y:AI.staging.y};
+      aiMoveGroup(army,target.x,target.y);
+    } else aiMoveGroup(army.filter(u=>u.cmd.t==='idle'),AI.staging.x,AI.staging.y);
     return;
   }
   AI.mode='build';
-  for(const u of army) if(u.cmd.t==='idle'&&dist(u,home)>360) u.cmd={t:'amove',x:rallyPt.x,y:rallyPt.y};
+  aiMoveGroup(army.filter(u=>u.cmd.t==='idle'&&dist(u,home)>360),rallyPt.x,rallyPt.y);
   if(AI.t>=DIFF.grace&&army.length>=AI.threshold&&AI.t-AI.lastPush>20){
     AI.lastPush=AI.t;
     let sx=home.x+(target.x-home.x)*.62, sy=home.y+(target.y-home.y)*.62;
     const open=nearestOpen((sx/TILE)|0,(sy/TILE)|0);
     if(open){ sx=open[0]*TILE+TILE/2; sy=open[1]*TILE+TILE/2; }
     AI.staging={x:sx,y:sy}; AI.mode='stage';
-    for(const u of army) u.cmd={t:'amove',x:sx,y:sy};
+    aiMoveGroup(army,sx,sy);
   }
 }
 
