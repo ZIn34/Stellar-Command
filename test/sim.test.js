@@ -628,6 +628,49 @@ test('an enemy draining a vent in the fog tells you nothing', () => {
 
 console.log('\ncapital ships: spread and escort');
 
+test('the melee unit is cheap enough to open a match with', () => {
+  /* It is meant to be the first thing you build, so it has to be affordable
+     before anything else is standing and must not eat the tiny population you
+     start with. */
+  for (const f of ['concord', 'legion', 'pact']) {
+    run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="' + f + '"');
+    run('startGame("veteran")');
+    const br = run('priceOf("unit","breaker",0)');
+    const wd = run('priceOf("unit","warden",0)');
+    const d = run('defFor("unit","breaker",0)');
+    const purse = run('P[0].m');
+    ok(br.m < wd.m / 2, f + ': cheaper than half a Warden (' + br.m + ' vs ' + wd.m + ')');
+    eq(d.sup, 1, f + ': one population, like the other light units');
+    ok(Math.floor(purse / br.m) >= 4,
+       f + ': you can afford ' + Math.floor(purse / br.m) + ' from your opening purse');
+    ok(d.bt <= 20, f + ': and it is quick to build (' + d.bt + 's)');
+  }
+});
+
+test('bots field the melee unit early, off its real price', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  const code = whole.replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(/brCost=priceOf\('unit','breaker',ME\)\.m/.test(code),
+     'the gate reads the price rather than a hard number');
+  ok(!/P\[ME\]\.m>=200\)\?'breaker'/.test(code), 'the old flat threshold is gone');
+  const res = run([
+    '(function(){',
+    ' scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord";',
+    ' startGame("warlord"); BOTS=[false,true,false,false];',
+    ' var firstAt=null;',
+    ' for(var i=0;i<2500;i++){',
+    '   over=false; simTick(0.1);',
+    '   if(!firstAt&&ents.some(function(e){return !e.dead&&e.owner===1&&e.type==="breaker";})){',
+    '     firstAt=Math.round(gameTime); break; }',
+    ' }',
+    ' return {firstAt:firstAt, at:Math.round(gameTime)};',
+    '})()'
+  ].join(String.fromCharCode(10)));
+  ok(res.firstAt !== null && res.firstAt < 180,
+     'a bot had one out by ' + res.firstAt + 's');
+});
+
 test('every capital ship splashes', () => {
   for (const f of ['concord', 'legion', 'pact']) {
     run('FACOF=["' + f + '","' + f + '","' + f + '","' + f + '"]');

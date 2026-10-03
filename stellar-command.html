@@ -823,7 +823,11 @@ const UDEF={
   /* The close-quarters unit. Every doctrine has one and they all fight the
      same way - walk in and hit something - but each keeps its doctrine's own
      habits on top, so a Concord Breaker digs in and a Pact Lasher poisons. */
-  breaker: {n:'Breaker',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:90,  g:0,  sup:2, bt:24, r:12},
+  /* A quarter of what it used to cost, and one population instead of two -
+     it is meant to be the unit you open a match with, so it has to be
+     affordable before anything else is standing and not eat the tiny
+     population you start with. */
+  breaker: {n:'Breaker',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:23,  g:0,  sup:1, bt:16, r:12},
   /* The capital ship. One statline, three completely different machines built
      on it - see FSTYLE for what each doctrine actually fields. Three times the
      price of the old one and three times the machine: it is meant to be a
@@ -4435,10 +4439,15 @@ function aiRun(AI,ME,dt){
     }
     if(savingUp) continue;                      // banking for the capital ship
     if(P[ME].m>=(workers.length<8?150:55)){
-      // a third of the line is close-quarters, so bots bring a melee punch too
+      /* A third of the line is close-quarters, so bots bring a melee punch
+         too. The gates are read off the real price rather than hard numbers -
+         they were sized for a melee unit that cost ninety, and it costs a
+         quarter of that now, so a flat threshold would have had bots ignoring
+         the cheapest thing they can field. */
+      const brCost=priceOf('unit','breaker',ME).m;
       const br=us.filter(u=>u.type==='breaker').length;
       const wd=us.filter(u=>u.type==='warden').length;
-      const want=(AI.t>120&&br*2<wd&&P[ME].m>=200)?'breaker'
+      const want=(AI.t>35&&br*2<wd&&P[ME].m>=brCost*2)?'breaker'
                 :((P[ME].m>=380&&AI.t>170)?'bulwark':'warden');
       tryTrain(b,want);
     }
