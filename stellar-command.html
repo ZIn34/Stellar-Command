@@ -613,10 +613,30 @@ const FACTIONS={
 let facKey='concord';
 let FACOF=['concord','concord','concord','concord'];
 function facOf(o){ return FACTIONS[FACOF[o]]||FACTIONS.concord; }
-function unitCost(type,owner){
-  const d=UDEF[type], f=facOf(owner);
-  return {m:Math.round(d.m*f.cost), g:Math.round(d.g*f.cost)};
+/* There is no fixed population ceiling any more - what you can field is
+   whatever your housing supports, and nothing caps it on top of that. The
+   function stays so every caller keeps one answer to ask. */
+function popCeiling(){ return Infinity; }
+/* Every price in the game comes from here. It used to be worked out at the
+   call site - the guest's local prediction, the host's authoritative path, the
+   cancel refund, the salvage bounty and the info panel each re-derived it and
+   applied the doctrine multiplier by hand. They drifted, and a Pact player
+   could queue a unit at the discount and cancel it for the full list price,
+   netting ten aurite a go. Derive it once and there is nothing to drift. */
+function priceOf(kind,type,owner){
+  const d=(kind==='building'?BDEF:UDEF)[type];
+  if(!d) return {m:0,g:0};
+  // only units take the doctrine's cost multiplier; structures are list price
+  const f=(kind==='building')?1:facOf(owner).cost;
+  return {m:Math.round((d.m||0)*f), g:Math.round((d.g||0)*f)};
 }
+/* ...and every part-refund comes from here, off the same price. */
+function refundOf(kind,type,owner,frac){
+  const c=priceOf(kind,type,owner);
+  return {m:Math.floor(c.m*frac), g:Math.floor(c.g*frac)};
+}
+function unitCost(type,owner){ return priceOf('unit',type,owner); }
+function bldCost(type,owner){ return priceOf('building',type,owner); }
 function unitBT(type,owner){ return UDEF[type].bt*facOf(owner).bt; }
 const TEAM0_DEFAULT={c:'#4bd6ff',dk:'#12617f'};
 const COSMETICS=[
@@ -1072,7 +1092,8 @@ function recalcSupply(o){
       cap+=supplyOf(e.type,o);
     if(e.kind==='unit') used+=UDEF[e.type].sup;
     if(e.kind==='building'&&e.queue) for(const q of e.queue) used+=UDEF[q].sup; }
-  P[o].cap=Math.min(cap,GRAND?420:200); P[o].sup=used;
+  // no clamp: the cap is exactly what has been built
+  P[o].cap=cap; P[o].sup=used;
 }
 function nearest(list,x,y,f){
   let best=null,bd=1e9;
@@ -1143,10 +1164,56 @@ function openDepot(o,x,y,except){
   }
   return best||any;
 }
+/* The depot cap says how many a whole line supports. This says how many can
+   physically crowd one patch and still swing a pick: without it a dozen
+   Delvers were all sent to the same crystal, queued around it, and only the
+   two actually in reach ever mined - twelve harvesters, two of them working. */
+const NODE_SLOTS=2;                      // bodies that fit around one aurite patch
+const SIPHON_SLOTS=3;                    // a Siphon is crewed by three
+let NCOUNT=new Map(), NCOUNT_AT=-1;
+function nodeCounts(){
+  if(NCOUNT_AT===gameTime) return NCOUNT;
+  NCOUNT_AT=gameTime; NCOUNT=new Map();
+  for(const u of ents){
+    if(u.dead||u.kind!=='unit'||!UDEF[u.type].worker||u.cmd.t!=='gather') continue;
+    const n=u.cmd.node;
+    if(n&&!n.dead) NCOUNT.set(n.id,(NCOUNT.get(n.id)||0)+1);
+  }
+  return NCOUNT;
+}
+/* How many are already on this patch, not counting the one asking. */
+function nodeLoad(n,except){
+  if(!n) return 0;
+  let c=nodeCounts().get(n.id)||0;
+  if(except&&!except.dead&&except.cmd&&except.cmd.t==='gather'&&except.cmd.node===n) c--;
+  return Math.max(0,c);
+}
+function nodeSlots(n){
+  return (n&&n.kind==='building')?SIPHON_SLOTS:NODE_SLOTS;
+}
+function nodeFull(n,except){
+  if(!n) return true;
+  return nodeLoad(n,except)>=nodeSlots(n);
+}
+/* The nearest patch with a free slot, searched outward from a point. Falls
+   back to the nearest patch at all, so an order is never silently dropped. */
+function openNode(o,x,y,except,within){
+  let best=null,bd=1e18, any=null,ad=1e18;
+  for(const e of ents){
+    if(e.dead||e.kind!=='res'||e.type!=='aurite'||e.amount<=0) continue;
+    const d=(e.x-x)**2+(e.y-y)**2;
+    if(within&&d>within*within) continue;
+    if(d<ad){ ad=d; any=e; }
+    if(nodeFull(e,except)) continue;
+    if(d<bd){ bd=d; best=e; }
+  }
+  return best||any;
+}
 /* Every gather order goes through here so the per-line tally is never stale
    when a whole selection is assigned in one click. */
 function setGather(u,node,dep){
-  u.cmd={t:'gather',node:node,dep:dep||null}; u.target=null; WCOUNT_AT=-1;
+  u.cmd={t:'gather',node:node,dep:dep||null}; u.target=null;
+  WCOUNT_AT=-1; NCOUNT_AT=-1;
 }
 function enemyOf(o){ return o===0?1:0 }        // legacy pairing, still used for 1v1 fallbacks
 function hitRadius(e){ return e.kind==='building'?Math.max(e.w,e.h)*.42:e.r }
@@ -1208,9 +1275,9 @@ function damage(t,amt,by){
     if(t.owner===0) STATS[t.kind==='building'?'bLost':'lost']++;
     else if(by===0&&t.owner>0) STATS[t.kind==='building'?'bKilled':'killed']++;
     if(by!==undefined&&by!==null&&by!==t.owner&&P[by]){      // salvage bounty
-      const bd=t.kind==='unit'?Object.assign({},UDEF[t.type],unitCost(t.type,t.owner)):DEF(t);
       const cut=t.kind==='building'?.15:.2;
-      const bm=Math.floor((bd.m||0)*cut), bg=Math.floor((bd.g||0)*cut);
+      const back=refundOf(t.kind,t.type,t.owner,cut);
+      const bm=back.m, bg=back.g;
       if(bm||bg){
         P[by].m+=bm; P[by].g+=bg;
         if(by===0) fx.push({x:t.x,y:t.y,t:0,dur:1,k:'txt',
@@ -1330,12 +1397,20 @@ function losClear(x0,y0,x1,y1,wide,rad){
 }
 function nearestOpen(tx,ty,wide){
   if(!navBlocked(tx,ty,wide)) return [tx,ty];
+  /* Same top-left bias as slotFor, and this one feeds unjamming and the bots'
+     building placement, so everything nudged up and left. Nearest on the ring,
+     and stay inside the map while we are here. */
   for(let r=1;r<=14;r++){
+    let bx=-1,by=-1,bd=1e18;
     for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++){
       if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;
       const x=tx+dx, y=ty+dy;
-      if(!navBlocked(x,y,wide)) return [x,y];
+      if(x<0||y<0||x>=MAP_W||y>=MAP_H) continue;
+      if(navBlocked(x,y,wide)) continue;
+      const d=dx*dx+dy*dy;
+      if(d<bd){ bd=d; bx=x; by=y; }
     }
+    if(bx>=0) return [bx,by];
   }
   return wide?nearestOpen(tx,ty,false):null;      // fall back rather than strand it
 }
@@ -1657,7 +1732,11 @@ function updateUnit(u,dt){
 
 function findMineralNear(u,from){
   const dep=u?openDepot(u.owner,from.x,from.y,u):null, o=dep||from;
-  return nearest(ents,o.x,o.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
+  /* This was simply 'the nearest patch with anything left in it', which is why
+     every idle Delver walked to the same crystal. Prefer the nearest patch
+     with room and only double up when everything is taken. */
+  return openNode(u?u.owner:0,o.x,o.y,u)||
+         nearest(ents,o.x,o.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
 }
 function gatherStep(u,dt){
   const node=u.cmd.node;
@@ -1673,7 +1752,9 @@ function gatherStep(u,dt){
       if(u.owner===0) SFX.play('deposit',dep.x,dep.y);
       if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+'+Math.round(got),c:u.carryType==='m'?'#7fd0ff':'#35d18a'});
       let back=node;
-      if(!back||back.dead||(back.kind==='res'&&back.amount<=0)) back=findMineralNear(u,dep);
+      // keep your own patch unless it died or somebody took the slot while away
+      if(!back||back.dead||(back.kind==='res'&&back.amount<=0)||nodeFull(back,u))
+        back=findMineralNear(u,dep);
       if(back) setGather(u,back); else u.cmd={t:'idle'};
     } else navigate(u,dep.x,dep.y,dt,Math.max(dep.w,dep.h)*.5);
     return;
@@ -1910,7 +1991,7 @@ function pickBuilder(list,x,y){        // nearest free hand, so repeat placement
 }
 function startBuild(type,x,y,owner,workers){
   if(NET.role==='guest'&&owner===0){
-    const d=BDEF[type];
+    const d=bldCost(type,0);
     if(!canAfford(0,d)){ say(P[0].m<d.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); return false; }
     if(!canPlace(type,x,y,0)){ say('Cannot build there'); SFX.play('deny'); return false; }
     netCmd('build',{type,x,y,ids:(workers||[]).filter(Boolean).map(w=>w.id)});
@@ -1918,10 +1999,11 @@ function startBuild(type,x,y,owner,workers){
   }
   const d=BDEF[type], ok=canPlace(type,x,y,owner);
   if(!ok) return false;
-  if(!canAfford(owner,d)){ if(!owner){ say(P[owner].m<d.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); } return false; }
+  const bill=bldCost(type,owner);
+  if(!canAfford(owner,bill)){ if(!owner){ say(P[owner].m<bill.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); } return false; }
   let px=x,py=y,gey=null;
   if(d.onGeyser){ gey=ok; px=gey.x; py=gey.y; gey.taken=true; }
-  pay(owner,d);
+  pay(owner,bill);
   const b=mkBuilding(type,owner,px,py,false);
   if(gey) b.geyser=gey;
   const w=(workers||[]).filter(Boolean);
@@ -2084,11 +2166,19 @@ function rightClick(wx,wy,queue){
     SFX.play('attackOrder');
     fx.push({x:t.x,y:t.y,t:0,dur:.5,r:hitRadius(t)+8,k:'ping',c:'#ff6b52'}); return; }
   if(t&&(t.kind==='res'&&t.amount>0||t.kind==='building'&&t.type==='siphon'&&t.owner===0&&t.done)){
+    /* Sending twelve Delvers to one crystal used to put all twelve on that
+       crystal. What the order means is 'go and mine over there', so the patch
+       takes who fits and the rest fan out to the patches around it. */
     let any=false, full=false;
     for(const u of us) if(UDEF[u.type].worker){
       const line=t.kind==='building'?t:openDepot(u.owner,t.x,t.y,u);
       if(line&&lineFull(line,u)){ full=true; continue; }
-      setGather(u,t,t.kind==='building'?null:line); any=true;
+      let node=t;
+      if(t.kind==='res'&&nodeFull(t,u)){
+        const spill=openNode(u.owner,t.x,t.y,u,MINE_REACH);
+        if(spill) node=spill;
+      }
+      setGather(u,node,node.kind==='building'?null:line); any=true;
     }
     if(full&&!any){
       say(t.kind==='building'?nameOf('siphon',0)+' is fully manned - 3 harvesters'
@@ -2120,15 +2210,24 @@ function slotFor(u,x,y,taken){
   const wide=UDEF[u.type].r>=WIDE_R;
   const tx=clamp((x/TILE)|0,0,MAP_W-1), ty=clamp((y/TILE)|0,0,MAP_H-1);
   if(!navBlocked(tx,ty,wide)&&!taken.has(ti(tx,ty))){ taken.add(ti(tx,ty)); return {x,y}; }
+  /* This used to return the first free tile in scan order, and the scan runs
+     dx=-r..r then dy=-r..r - so the first hit on every ring is its top-left
+     corner. Any order that could not land exactly where you clicked drifted
+     up and to the left instead, by as much as ten tiles. Take the nearest
+     tile on the ring to the point actually asked for. */
   for(let r=1;r<=10;r++){
+    let bi=-1,bx=0,by=0,bd=1e18;
     for(let dx=-r;dx<=r;dx++) for(let dy=-r;dy<=r;dy++){
       if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;
       const nx=tx+dx, ny=ty+dy;
       if(nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue;
       const i=ti(nx,ny);
       if(taken.has(i)||navBlocked(nx,ny,wide)) continue;
-      taken.add(i); return {x:nx*TILE+TILE/2, y:ny*TILE+TILE/2};
+      const cx=nx*TILE+TILE/2, cy=ny*TILE+TILE/2;
+      const d=(cx-x)*(cx-x)+(cy-y)*(cy-y);
+      if(d<bd){ bd=d; bi=i; bx=cx; by=cy; }
     }
+    if(bi>=0){ taken.add(bi); return {x:bx,y:by}; }
   }
   const o=nearestOpen(tx,ty,wide);
   return o?{x:o[0]*TILE+TILE/2,y:o[1]*TILE+TILE/2}:{x,y};
@@ -2675,6 +2774,16 @@ function netInterp(){
 /* ---------- orders: the guest asks, the host decides ---------- */
 function selIds(){ return sel.filter(e=>e&&!e.dead&&e.owner===0).map(e=>e.id); }
 function netCmd(op,extra){ netRelay(Object.assign({k:'C',op},extra||{})); }
+/* A 2v2 with every seat on one side is not a match. The arrangement used to be
+   dropped silently in startOnline and quietly replaced with the default
+   pairing, so the host never found out their line-up had been ignored. */
+function teamsValid(arr,mode){
+  if(mode==='ffa') return true;
+  if(!arr||arr.length<2) return true;
+  const cap=(typeof MODES!=='undefined'&&MODES[mode])?MODES[mode].players:arr.length;
+  const live=arr.slice(0,cap);
+  return live.some(v=>v!==live[0]);
+}
 function netBegin(){
   if(!NET.isHost) return;
   const g=(typeof scaleKey!=='undefined'&&scaleKey==='grand');
@@ -2697,7 +2806,12 @@ function contextOrder(mine,wx,wy){
     for(const u of us) if(UDEF[u.type].worker){
       const line=t.kind==='building'?t:openDepot(u.owner,t.x,t.y,u);
       if(line&&lineFull(line,u)) continue;
-      setGather(u,t,t.kind==='building'?null:line); any=true;
+      let node=t;                        // same fan-out as the local path
+      if(t.kind==='res'&&nodeFull(t,u)){
+        const spill=openNode(u.owner,t.x,t.y,u,MINE_REACH);
+        if(spill) node=spill;
+      }
+      setGather(u,node,node.kind==='building'?null:line); any=true;
     }
     if(any) return;
   }
@@ -2738,9 +2852,10 @@ function netHostApply(c,from){
     case 'cancelq': { const b=bld(c.id); if(b) cancelQueue(b,c.i|0); break; }
     case 'cancelb': {
       const b=bld(c.id);
-      if(b&&!b.done){ const d=BDEF[b.type];
+      if(b&&!b.done){
         // every other case honours the issuing slot; this one paid slot 1
-        P[ME].m+=Math.floor(d.m*.75); P[ME].g+=Math.floor(d.g*.75);
+        const back=refundOf('building',b.type,ME,.75);
+        P[ME].m+=back.m; P[ME].g+=back.g;
         if(b.geyser) b.geyser.taken=null; b.dead=true; markNavDirty(); }
       break;
     }
@@ -2772,11 +2887,8 @@ function startOnline(seed,grand,mode){
     const t=FACOF.slice(), g=NET.slot, tmp=t[0]; t[0]=t[g]; t[g]=tmp; FACOF=t;
   }
   setupSides(mode||'duel',NET.humans||2);
-  if(NET.teams&&NET.teams.length===4&&(mode||'duel')!=='ffa'){
-    const t=NET.teams.slice();
-    // a side needs somebody on it, or there is no match to play
-    if(t.some(v=>v!==t[0])) TEAMOF=t;
-  }
+  if(NET.teams&&NET.teams.length===4&&teamsValid(NET.teams,mode||'duel')&&(mode||'duel')!=='ffa')
+    TEAMOF=NET.teams.slice();
   // Teams are defined in real slots; a guest sees itself as 0, so swap its own
   // slot into place or allies and enemies come out inverted on its screen.
   if(NET.slot){
@@ -3070,7 +3182,8 @@ function buildCard(){
       }});
       cardButtons.push({ic:'✕',name:'Cancel',hk:'X',act:function(){
         if(NET.role==='guest'){ netCmd('cancelb',{id:b.id}); setSel([]); return; }
-        P[0].m+=Math.floor(d.m*.75); P[0].g+=Math.floor(d.g*.75);
+        const back=refundOf('building',b.type,0,.75);
+        P[0].m+=back.m; P[0].g+=back.g;
         if(b.geyser) b.geyser.taken=null; b.dead=true; setSel([]); }});
     } else if(d.trains){
       for(const t of d.trains){
@@ -3230,6 +3343,27 @@ function updateFog(){
     }
   }
   revealRuins();
+  rememberRes();
+}
+/* A crystal's size and brightness track how much is left in it, and that was
+   drawn from the live amount wherever the tile had ever been explored - so you
+   could watch a patch on the far side of the map shrink and know exactly where
+   the enemy was mining, without ever scouting it. What you remember is what
+   you last actually saw. */
+function rememberRes(){
+  for(const e of ents){
+    if(e.kind!=='res') continue;
+    if(e.seenAmt===undefined) e.seenAmt=e.amount;
+    const tx=clamp((e.x/TILE)|0,0,MAP_W-1), ty=clamp((e.y/TILE)|0,0,MAP_H-1);
+    if(visible[ti(tx,ty)]===1){ e.seenAmt=e.dead?0:e.amount; e.seenTaken=!!e.taken; }
+  }
+}
+/* What to draw this node as: the live state in vision, your memory outside it. */
+function resShown(e){
+  const tx=clamp((e.x/TILE)|0,0,MAP_W-1), ty=clamp((e.y/TILE)|0,0,MAP_H-1);
+  if(visible[ti(tx,ty)]===1) return {amount:e.dead?0:e.amount, taken:!!e.taken, live:true};
+  const a=(e.seenAmt===undefined)?e.amount:e.seenAmt;
+  return {amount:a, taken:!!e.seenTaken, live:false};
 }
 /* A side with no Keystone left cannot rebuild or expand, so its remaining
    buildings stop being a secret - otherwise finishing a beaten opponent turns
@@ -3398,6 +3532,26 @@ function aiAssignWorker(ME,w){
   nodes.sort((a,b)=>(load.get(a)||0)-(load.get(b)||0));
   setGather(w,nodes[0],openDepot(ME,nodes[0].x,nodes[0].y,w));   // spread out instead of stacking
 }
+/* The three doctrines play very differently now - the Legion cannot repair and
+   gets stronger as it bleeds, the Pact only mends near its own structures, the
+   Concord repairs cheaply and quickly - and the bots knew none of it: every one
+   of them played the Concord's game. These are the knobs that make a bot fight
+   the way its doctrine wants to.
+
+     push     how big an army it wants before committing (x the base threshold)
+     bail     the share of a squad it will lose before calling off an attack
+     regroup  how much it raises the bar after a failed push
+     repair   whether it pulls workers off the line to mend buildings
+     homely   how strongly it prefers to fight near its own structures */
+const AIDOC={
+  concord:{push:1.1,  bail:.5,  regroup:1,   repair:true,  homely:0},
+  // no repairs to fall back on, wounded units heal by themselves and hit
+  // harder while hurt: commit earlier and see it through
+  legion: {push:.85,  bail:.25, regroup:.7,  repair:false, homely:0},
+  // units only mend near its own buildings, so it fights on its own ground
+  pact:   {push:1.15, bail:.45, regroup:1.1, repair:true,  homely:1}
+};
+function aiDoc(o){ return AIDOC[facKeyOf(o)]||AIDOC.concord; }
 /* Bots used to send every unit to one identical coordinate, so twenty of them
    converged on the same tile, wedged into each other and ground against
    whatever rock happened to be in the way. A player never sees that, because
@@ -3483,7 +3637,10 @@ function aiRun(AI,ME,dt){
       .sort((a,b)=>(a.hp/a.maxHp)-(b.hp/b.maxHp))[0];
     const busy=us.filter(u=>u.cmd.t==='repair'&&u.cmd.target&&!u.cmd.target.dead);
     for(const u of busy) if(u.cmd.target.hp>=u.cmd.target.maxHp) u.cmd={t:'idle'};
-    if(hurt&&busy.length<(hurt.type==='keystone'?3:2)&&P[ME].m>70){
+    // the Legion cannot repair at all, so pulling a Delver off aurite to try
+    // is pure lost income - it regenerates or it dies
+    if(hurt&&aiDoc(ME).repair&&!facOf(ME).noRepair&&
+       busy.length<(hurt.type==='keystone'?3:2)&&P[ME].m>70){
       const cand=workers.find(w=>!w.isScout&&!w.pulled&&
         w.cmd.t!=='build'&&w.cmd.t!=='repair'&&dist(w,hurt)<1100);
       if(cand){ cand.cmd={t:'repair',target:hurt}; cand.target=null; }
@@ -3491,7 +3648,14 @@ function aiRun(AI,ME,dt){
   }
 
   /* ---- economy ---- */
-  if(P[ME].cap-P[ME].sup<=(P[ME].cap>40?8:4)&&P[ME].cap<190&&count('habitat')-bs.filter(b=>b.type==='habitat'&&b.done).length<2)
+  /* This read 'cap<190' against a ceiling that is 420 in Grand War, so a bot
+     reached 190 and then stopped building housing for the rest of the match -
+     permanently stuck at under half the army it was allowed. */
+  /* Housing is now the only thing gating army size, so a bot builds it
+     whenever it is close to its own cap and never stops. The 'how many are
+     already going up' clause is what keeps it from spamming them. */
+  if(P[ME].cap-P[ME].sup<=(P[ME].cap>40?8:4)&&
+     count('habitat')-bs.filter(b=>b.type==='habitat'&&b.done).length<2)
     put('habitat',home);
   if(workers.length<aiWorkerTarget(ME)&&(!has('musterhall')||P[ME].m>=115)){
     /* This took the first Keystone with a short queue, which was almost always
@@ -3612,9 +3776,11 @@ function aiRun(AI,ME,dt){
   }
   if(AI.mode==='attack'){
     AI.squad=AI.squad.filter(u=>!u.dead);
-    if(!AI.squad.length||AI.squad.length<AI.squadStart*.4){
+    const doc=aiDoc(ME);
+    if(!AI.squad.length||AI.squad.length<AI.squadStart*(1-doc.bail)){
       AI.mode='retreat'; AI.target=null;
-      AI.threshold=Math.min(32,AI.threshold+DIFF.step);   // come back with more next time
+      // come back with more next time - the Legion barely bothers
+      AI.threshold=Math.min(32,AI.threshold+DIFF.step*doc.regroup);
       aiMoveGroup(AI.squad,rallyPt.x,rallyPt.y);
       return;
     }
@@ -3641,7 +3807,7 @@ function aiRun(AI,ME,dt){
     return;
   }
   if(AI.mode==='stage'){
-    if(army.length<Math.max(3,AI.threshold*.55)){ AI.mode='build'; return; }
+    if(army.length<Math.max(3,AI.threshold*aiDoc(ME).push*.55)){ AI.mode='build'; return; }
     const massed=army.filter(u=>dist(u,AI.staging)<300).length;
     if(massed>=Math.ceil(army.length*.7)){
       AI.mode='attack'; AI.wave++; AI.squad=army.slice(); AI.squadStart=army.length; AI.target=target;
@@ -3651,9 +3817,19 @@ function aiRun(AI,ME,dt){
   }
   AI.mode='build';
   aiMoveGroup(army.filter(u=>u.cmd.t==='idle'&&dist(u,home)>360),rallyPt.x,rallyPt.y);
-  if(AI.t>=DIFF.grace&&army.length>=AI.threshold&&AI.t-AI.lastPush>20){
+  if(AI.t>=DIFF.grace&&army.length>=AI.threshold*aiDoc(ME).push&&AI.t-AI.lastPush>20){
     AI.lastPush=AI.t;
-    let sx=home.x+(target.x-home.x)*.62, sy=home.y+(target.y-home.y)*.62;
+    /* The Pact only mends near its own structures, so it masses closer to home
+       and holds the ground it heals on instead of staging out in the open. */
+    const reach=.62-.18*aiDoc(ME).homely;
+    let sx=home.x+(target.x-home.x)*reach, sy=home.y+(target.y-home.y)*reach;
+    if(aiDoc(ME).homely){
+      const near=bldOf(ME).filter(b=>b.done&&dist(b,{x:sx,y:sy})<620);
+      if(near.length){                      // pull the staging point onto its own ground
+        let cx=0,cy=0; near.forEach(b=>{cx+=b.x;cy+=b.y;});
+        sx=(sx+cx/near.length)/2; sy=(sy+cy/near.length)/2;
+      }
+    }
     const open=nearestOpen((sx/TILE)|0,(sy/TILE)|0);
     if(open){ sx=open[0]*TILE+TILE/2; sy=open[1]*TILE+TILE/2; }
     AI.staging={x:sx,y:sy}; AI.mode='stage';
@@ -3756,8 +3932,11 @@ function mixHex(a,b,k){
    team colour is still mixed in on top so you can tell players apart. */
 const FBUILD={
   concord:{hi:'#61788f', mid:'#42566c', lo:'#2a3847', mix:.38, scale:1,   acc:'#9fd9ff'},
-  legion: {hi:'#8a6b4e', mid:'#56402c', lo:'#2b1d13', mix:.17, scale:1.1, acc:'#ffb173'},
-  pact:   {hi:'#9aae76', mid:'#5f7444', lo:'#333f27', mix:.15, scale:.92, acc:'#b6f08a'}
+  /* These were light enough that mixing them with a cyan team colour landed on
+     beige rather than ember, and on a washed mint rather than green. Deepen
+     and saturate them so the doctrine survives the mix. */
+  legion: {hi:'#8a6b4e', mid:'#56402c', lo:'#2b1d13', mix:.17, scale:1.1, acc:'#ff7a2e'},
+  pact:   {hi:'#9aae76', mid:'#5f7444', lo:'#333f27', mix:.15, scale:.92, acc:'#86ee46'}
 };
 /* The structures were all drawn in one grey-blue, so tinting the trim alone
    left every doctrine looking like the Concord. Re-grade the plate greys
@@ -3771,7 +3950,8 @@ const FBUILD={
    colour in it to tell two Legion players apart. */
 function facAcc(owner){
   const base=(TEAM[owner]||TEAM[0]).c, f=FBUILD[facKeyOf(owner)];
-  return (!f||f===FBUILD.concord)?base:mixHex(base,f.acc,.72);
+  // .72 left too much of the team colour in it to read as the doctrine's own
+  return (!f||f===FBUILD.concord)?base:mixHex(base,f.acc,.85);
 }
 /* The same for the few hard-coded highlights - the glints and lamp cores. */
 function facLight(hx,fk){
@@ -4396,8 +4576,9 @@ function renderTerrain(){
 }
 
 /* ===================== RESOURCE / ENTITY DRAWING ===================== */
-function drawAurite(e){
-  const f=clamp(.35+e.amount/e.max,.35,1), n=(e.id*2654435761>>>0)/4294967296;
+function drawAurite(e,shownAmt){
+  const amt=(shownAmt===undefined)?e.amount:shownAmt;
+  const f=clamp(.35+amt/e.max,.35,1), n=(e.id*2654435761>>>0)/4294967296;
   ctx.save(); ctx.translate(e.x,e.y);
   ctx.fillStyle='rgba(0,0,0,.34)';
   ctx.beginPath(); ctx.ellipse(2,9,20,7,0,0,7); ctx.fill();
@@ -4614,13 +4795,17 @@ function render(){
     ctx.beginPath(); ctx.arc(e.rally.x,e.rally.y,5,0,7); ctx.stroke();
   }
 
-  const list=ents.filter(e=>!e.dead&&vis(e));
+  /* Resources are drawn from memory outside vision, so a depleted patch keeps
+     being shown as you last saw it rather than quietly vanishing. */
+  const list=ents.filter(e=>vis(e)&&(!e.dead||e.kind==='res'));
   for(const e of list) if(e.kind==='res'){
     const tx=clamp((e.x/TILE)|0,0,MAP_W-1), ty=clamp((e.y/TILE)|0,0,MAP_H-1);
     if(!explored[ti(tx,ty)]) continue;
-    if(e.type==='vent'){ if(!e.taken) drawVent(e); } else drawAurite(e);
+    const sh=resShown(e);
+    if(sh.amount<=0) continue;
+    if(e.type==='vent'){ if(!sh.taken) drawVent(e); } else drawAurite(e,sh.amount);
   }
-  const draws=list.filter(e=>e.kind!=='res'&&(isAlly(e.owner)||seen(e))).sort((a,b)=>a.y-b.y);
+  const draws=list.filter(e=>!e.dead&&e.kind!=='res'&&(isAlly(e.owner)||seen(e))).sort((a,b)=>a.y-b.y);
   for(const e of draws) if(e.kind==='building') drawBuilding(e);
   for(const e of draws) if(e.kind==='unit') drawUnit(e);
 
@@ -4742,11 +4927,12 @@ function renderMM(){
     mctx.fillRect(x*s,y*s,s*st+.6,s*st+.6);
   }
   for(const e of ents){
-    if(e.dead) continue;
+    if(e.dead&&e.kind!=='res') continue;     // a mined-out patch may still be remembered
     const tx=clamp((e.x/TILE)|0,0,MAP_W-1), ty=clamp((e.y/TILE)|0,0,MAP_H-1);
     if(!explored[ti(tx,ty)]) continue;
     if(e.kind==='res'){
-      if(!visible[ti(tx,ty)]&&e.type==='aurite'&&e.amount<=0) continue;
+      // your memory of the patch, not its live state
+      if(resShown(e).amount<=0) continue;
       mctx.fillStyle=e.type==='vent'?'#35d18a':'#7fd0ff';
       mctx.fillRect(e.x/TILE*s-1,e.y/TILE*s-1,2.6,2.6);
       continue;
@@ -4829,8 +5015,10 @@ function simTick(dt){
     // and aiUpdate only walks slots flagged in BOTS, so a duel is a no-op here.
     aiUpdate(dt);
     fogT-=dt; if(fogT<=0){ fogT=.14; updateFog(); paintFog(); }
-    if(ents.length>400||gameTime%5<dt) ents=ents.filter(e=>!e.dead||e.kind==='res');
-    ents=ents.filter(e=>!e.dead);
+    /* A mined-out patch is kept while you still remember it standing, so the
+       memory has something to draw. Everything that looks for aurite already
+       tests amount>0, so a spent node is inert. */
+    ents=ents.filter(e=>!e.dead||(e.kind==='res'&&e.seenAmt>0));
     sel=sel.filter(e=>!e.dead);
     tutStep(dt);
     if(!netOnline()&&!TUT.on) checkEnd();
@@ -4973,7 +5161,8 @@ function replayUI(){
    Layout: 'SCR1' | headerLen | header JSON | per frame: count + Int32 payload. */
 function replaySave(){
   if(!REC.frames.length){ say('Nothing recorded'); SFX.play('deny'); return; }
-  const head={v:1, seed:SEED0>>>0, scale:GRAND?'grand':'standard', mode:modeKey,
+  const head={
+    v:REPLAY_FMT, seed:SEED0>>>0, scale:GRAND?'grand':'standard', mode:modeKey,
     terrain:terrainKey, facof:FACOF.slice(0,4),
     rocks:ROCK_CLUSTERS, nplay:NPLAY, teamof:TEAMOF.slice(0,4), step:REC.step,
     frames:REC.frames.length, when:new Date().toISOString()};
@@ -4997,11 +5186,19 @@ function replaySave(){
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
   say('Replay saved ('+Math.round(bytes/1024)+' KB)');
 }
+/* Bumped whenever the header gains a field. The header has grown twice now
+   (the doctrines on the field, then the corrected seed), and an older file
+   simply lacks those keys - which is fine, they fall back. A file from a
+   NEWER build is refused rather than loaded half-understood and replayed as
+   the wrong battle. */
+const REPLAY_FMT=2;
 function replayParse(buf){
   const dv=new DataView(buf), u8=new Uint8Array(buf);
   if(u8[0]!==83||u8[1]!==67||u8[2]!==82||u8[3]!==49) throw new Error('Not a Stellar Command replay');
   const hl=dv.getUint32(4,true);
   const head=JSON.parse(new TextDecoder().decode(u8.subarray(8,8+hl)));
+  if((head.v|0)>REPLAY_FMT)
+    throw new Error('That replay was saved by a newer version of the game');
   let off=8+hl; const frames=[];
   while(off+4<=buf.byteLength){
     const n=dv.getUint32(off,true); off+=4;
