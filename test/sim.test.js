@@ -180,11 +180,71 @@ test('the Concord gets no wounded-damage ramp', () => {
   eq(run('dmgOf(_u)'), full, 'concord damage is flat');
 });
 
-test('the Legion cannot repair and the Concord can', () => {
+test('every doctrine can repair, and the Concord is best at it', () => {
+  /* The Legion losing repair outright was a hole with nothing compensating
+     it - its identity is raw strength, not a missing mechanic. */
+  const rate = {};
+  for (const f of ['concord', 'legion', 'pact']) {
+    newMatch({ fac: f });
+    ok(!run('facOf(0).noRepair'), f + ' can repair');
+    run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+    run('var h=mkBuilding("habitat",0,k.x+300,k.y+300,true); h.hp=h.maxHp*0.4');
+    run('var w=ents.find(function(e){return !e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker;})');
+    run('P[0].m=3000');
+    run('w.cmd={t:"repair",target:h}');
+    const hp0 = run('h.hp');
+    tickOn(120);
+    rate[f] = run('h.hp') - hp0;
+    ok(rate[f] > 0, f + ' actually mended something (' + Math.round(rate[f]) + 'hp)');
+  }
+  ok(rate.concord > rate.legion && rate.concord > rate.pact,
+     'the Concord mends fastest, which is its whole thing');
+});
+
+test('each doctrine has exactly one thing it is best at', () => {
+  const F = {};
+  for (const f of ['concord', 'legion', 'pact']) F[f] = run('FACTIONS.' + f);
+  // Pact: numbers and money
+  ok(F.pact.cost < F.concord.cost && F.pact.cost < F.legion.cost, 'the Pact fields the cheapest units');
+  ok(F.pact.bt < F.concord.bt && F.pact.bt < F.legion.bt, 'and builds fastest');
+  ok(F.pact.trickle > 0, 'and draws income from its structures');
+  // Legion: raw strength, and no economy on top
+  ok(F.legion.hp > F.concord.hp && F.legion.hp > F.pact.hp, 'the Legion has the toughest bodies');
+  ok(F.legion.dmg > F.concord.dmg && F.legion.dmg > F.pact.dmg, 'and hits hardest');
+  ok(!F.legion.trickle && !(F.legion.salvage > 1) && F.legion.eco <= 1,
+     'and gets no economy to blur that');
+  // Concord: tech and efficiency
+  ok(F.concord.upgCost < 1 && F.concord.upgTime < 1, 'the Concord researches cheapest and fastest');
+  ok(F.concord.upgCost < (F.legion.upgCost || 1) && F.concord.upgCost < (F.pact.upgCost || 1),
+     'by a clear margin over the others');
+  ok(F.concord.eco > F.legion.eco, 'and wastes the least at the mineral line');
+});
+
+test('research is worth taking now', () => {
   newMatch({ fac: 'legion' });
-  eq(run('facOf(0).noRepair'), true, 'legion cannot repair');
-  setFactions('concord');
-  ok(!run('facOf(0).noRepair'), 'concord can repair');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var u=mkUnit("warden",0,k.x+300,k.y+300)');
+  const d0 = run('dmgOf(u)');
+  run('UP[0].wep=3');
+  const d3 = run('dmgOf(u)');
+  run('UP[0].wep=0');
+  ok(d3 / d0 > 1.6, 'fully upgraded weapons are worth over 60% more damage (+' +
+     Math.round(100 * (d3 / d0 - 1)) + '%)');
+  // plating grades properly and never reaches immunity
+  const took = [];
+  for (const lvl of [0, 1, 2, 3]) {
+    newMatch({ fac: 'concord' });
+    run('var k2=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+    run('var v=mkUnit("harrower",1,k2.x+400,k2.y+300)');   // tough enough to survive the hit
+    run('UP[1].arm=' + lvl);
+    run('v.hp=v.maxHp');
+    run('damage(v,100,0)');
+    took.push(run('v.maxHp-v.hp'));
+    run('UP[1].arm=0');
+  }
+  ok(took[0] > took[1] && took[1] > took[2] && took[2] > took[3],
+     'each level of plating helps: ' + took.map(t => Math.round(t)).join(' -> '));
+  ok(took[3] > 20, 'and the last level is not immunity (' + Math.round(took[3]) + ' of 100 still lands)');
 });
 
 test('each doctrine keeps its own names, prices and look', () => {
@@ -388,12 +448,13 @@ test('each doctrine has its own idea of when to commit', () => {
      'the Legion commits with a smaller army than the Concord');
   ok(doc.legion.bail < doc.concord.bail,
      'the Legion will lose more of a squad before calling off an attack');
-  eq(doc.legion.repair, false, 'the Legion does not try to repair');
+  eq(doc.legion.repair, true, 'the Legion patches things up now, like everyone');
   ok(doc.pact.homely > 0, 'the Pact prefers to fight on its own ground');
 });
 
-test('a Legion bot never pulls a Delver onto a repair it cannot perform', () => {
-  /* The Legion cannot repair, so a repair order is pure lost mining time. */
+test('a Legion bot sends Delvers to mend a damaged hall', () => {
+  /* It used to be unable to repair at all, so the bot was told not to try.
+     Now it can, and it should. */
   run('scaleKey="standard"; modeKey="ffa"; terrainKey="open"; facKey="concord"');
   run('startGame("warlord")');
   run('FACOF=["concord","legion","legion","legion"]');
@@ -407,7 +468,7 @@ test('a Legion bot never pulls a Delver onto a repair it cannot perform', () => 
     const n = run('ents.filter(u=>!u.dead&&u.kind==="unit"&&u.owner===1&&u.cmd&&u.cmd.t==="repair").length');
     if (n > peak) peak = n;
   }
-  eq(peak, 0, 'no Legion Delver was sent to repair');
+  ok(peak > 0, 'a Legion bot put at least one Delver on the repair');
 });
 
 test('a Concord bot does send Delvers to mend a damaged hall', () => {

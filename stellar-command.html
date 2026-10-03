@@ -647,22 +647,30 @@ const TEAM=[{c:PC,dk:'#12617f'},{c:EC,dk:'#7d2b1c'},
    winning it, the Pact wants to be everywhere at once. None of them is a flat
    upgrade - every rule that gives also takes. */
 const FACTIONS={
-  concord:{n:'AZURI CONCORD', d:'engineers - hold the line, mend, out-tech',
-           hp:1,    dmg:1,    sp:1,    cost:1,   bt:1,    eco:1,
+  /* The Pact kept its economy; the other two needed one of their own, because
+     an economic edge compounds over a match and a combat edge does not. The
+     Concord's is efficiency - the same Delvers bring more home, and its tech
+     is cheaper on top, so it out-researches everyone. */
+  concord:{n:'AZURI CONCORD', d:'engineers - out-tech them, mend anything, waste nothing',
+           hp:1,    dmg:1,    sp:1,    cost:1,   bt:1,    eco:1.15,
            repairMul:.6,                 // Delvers are proper engineers: repairs cost 40% less
            repairRate:1.7,               // and go 70% faster, mid-battle included
-           upgCost:.78, upgTime:.8,      // Forgeworks tech is cheaper and quicker
+           upgCost:.62, upgTime:.68,     // Forgeworks tech is far cheaper and quicker
            bldRegen:.012,                // structures mend themselves once left alone
-           tr:['repairs 40% cheaper, 70% faster','structures self-mend out of combat',
-               'upgrades 22% cheaper, 20% faster']},
-  legion: {n:'EMBER LEGION',  d:'berserkers - cannot repair, rage as they bleed',
+           tr:['upgrades 38% cheaper, 32% faster','Delvers bring home 15% more',
+               'repairs 40% cheaper, 70% faster',
+               'structures self-mend out of combat']},
+  /* It can repair after all - losing that outright was a hole with nothing
+     compensating it. It gets no economy on top: the Legion's whole answer is
+     raw strength, and the Pact's whole answer is numbers and money. Trying to
+     give it both would have blurred the only thing it is. */
+  legion: {n:'EMBER LEGION',  d:'berserkers - the strongest bodies, rage as they bleed',
            hp:1.28, dmg:1.1,  sp:.86,  cost:1.18, bt:1.18, eco:1,
-           noRepair:true,                // nothing in the Legion gets patched up
            regen:.035,                   // the wounded knit back together out of the fight
            rage:.4,                      // and hit harder the closer they are to dying
            pyre:1,                       // their structures take the enemy with them
            supplyBonus:2,                // they cram bodies into every Warren
-           tr:['cannot repair anything','wounded regenerate out of combat',
+           tr:['+28% hull, +10% damage','wounded regenerate out of combat',
                'up to +40% damage as health drops','structures detonate when they fall',
                '+2 population from every structure that gives it']},
   pact:   {n:'VERDANT PACT',  d:'swarm - grow wide, heal on your own soil',
@@ -948,9 +956,18 @@ function styleFor(e){ return (DEF(e)||{}).style||null; }
 let ents=[], nextId=1, shots=[], fx=[], gameTime=0, over=false, paused=false, gameOn=false;
 /* Forgeworks research. Weapons raise damage, plating cuts damage taken; both
    apply army-wide and give a late economy somewhere to go besides more bodies. */
+/* Research used to be worth 36% damage and 27% protection across three levels
+   for a fair chunk of a match's income, which is why nobody - player or bot -
+   ever bothered. Doubled, it is a real decision: fully upgraded weapons are
+   worth nearly three quarters again.
+
+   Plating is raised but not doubled. Damage is additive pressure; damage
+   REDUCTION compounds against everything at once, and the engine floors
+   incoming damage at 35%, so doubling it would both overshoot and waste the
+   last level. 18% a level tops out at 54% - strong, still beatable. */
 const UPG={
-  wep:{n:'Weapons', ic:'⚔', hk:'A', step:.12, max:3, m:150, g:50, bt:38},
-  arm:{n:'Plating', ic:'⛨', hk:'D', step:.09, max:3, m:150, g:50, bt:38}
+  wep:{n:'Weapons', ic:'⚔', hk:'A', step:.24, max:3, m:150, g:50, bt:38},
+  arm:{n:'Plating', ic:'⛨', hk:'D', step:.18, max:3, m:150, g:50, bt:38}
 };
 let UP=[{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0}];
 /* Research is a price like any other, so it follows the doctrine's discount
@@ -1670,7 +1687,9 @@ function damage(t,amt,by,src){
     if(t.owner===0) STATS[t.kind==='building'?'bLost':'lost']++;
     else if(by===0&&t.owner>0) STATS[t.kind==='building'?'bKilled':'killed']++;
     if(by!==undefined&&by!==null&&by!==t.owner&&P[by]){      // salvage bounty
-      const cut=t.kind==='building'?.15:.2;
+      // scaled by what the killer's doctrine makes of a wreck, if anything
+
+      const cut=(t.kind==='building'?.15:.2)*(facOf(by).salvage||1);
       const back=refundOf(t.kind,t.type,t.owner,cut);
       const bm=back.m, bg=back.g;
       if(bm||bg){
@@ -2246,7 +2265,7 @@ function gatherStep(u,dt){
   } else { u.hTimer=0; navigate(u,node.x,node.y,dt,reach-2); }
 }
 function canRepair(t,own){
-  if(facOf(own).noRepair) return false;         // the Legion mends nothing
+  if(facOf(own).noRepair) return false;         // kept, though no doctrine sets it now
   return t&&!t.dead&&t.owner===own&&t.hp<t.maxHp&&(t.kind==='unit'||(t.kind==='building'&&t.done));
 }
 function repairStep(u,dt){
@@ -4183,9 +4202,9 @@ function aiAssignWorker(ME,w){
      homely   how strongly it prefers to fight near its own structures */
 const AIDOC={
   concord:{push:1.1,  bail:.5,  regroup:1,   repair:true,  homely:0},
-  // no repairs to fall back on, wounded units heal by themselves and hit
-  // harder while hurt: commit earlier and see it through
-  legion: {push:.85,  bail:.25, regroup:.7,  repair:false, homely:0},
+  // wounded units heal themselves and hit harder while hurt, so it commits
+  // earlier and sees it through - and it does patch things up now
+  legion: {push:.85,  bail:.25, regroup:.7,  repair:true,  homely:0},
   // units only mend near its own buildings, so it fights on its own ground
   pact:   {push:1.15, bail:.45, regroup:1.1, repair:true,  homely:1}
 };
