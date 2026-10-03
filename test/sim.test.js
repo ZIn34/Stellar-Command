@@ -653,6 +653,103 @@ test('Escape cancels and never pauses', () => {
 });
 
 
+console.log('\nscouting');
+
+test('a bot does not feed an endless stream of scouts', () => {
+  /* Losing a scout used to cost nothing: the next tick drafted a replacement,
+     so a bot sent single units into your base one after another forever. */
+  const res = run([
+    '(function(){',
+    ' scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord";',
+    ' startGame("warlord"); BOTS=[false,true,false,false];',
+    ' var drafted=0, prev=0;',
+    ' for(var i=0;i<6000;i++){',
+    '   over=false; simTick(0.1);',
+    '   var a=(typeof AIS!=="undefined")?AIS[1]:null;',
+    '   var cur=(a&&a.scout&&!a.scout.dead)?a.scout.id:0;',
+    '   if(cur&&cur!==prev) drafted++;',
+    '   prev=cur;',
+    '   if(a&&a.scout) a.scout.dead=true;',      // every scout dies at once
+    ' }',
+    ' var a2=(typeof AIS!=="undefined")?AIS[1]:null;',
+    ' return {drafted:drafted, seconds:Math.round(gameTime), lost:a2?(a2.scoutLost||0):0};',
+    '})()'
+  ].join('\n'));
+  ok(res.drafted <= 8,
+     'only ' + res.drafted + ' scouts in ' + res.seconds + 's even with every one dying');
+  ok(res.lost > 0, 'it noticed it was losing them');
+});
+
+test('the scout gate stops once a bot knows where you live', () => {
+  const src = run('String(aiScout)');
+  ok(/if\(aiKnownBases\(AI\)\.length\) return;/.test(src),
+     'knowing a base ends scouting outright, rather than only when a timer agrees');
+  ok(/scoutLost/.test(src), 'and losing scouts backs it off');
+});
+
+console.log('\nclicking');
+
+test('left-clicking a hostile with fighters selected orders the attack', () => {
+  arena('concord');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('var me=mkUnit("warden",0,k.x+100,k.y+100)');
+  run('var foe=mkUnit("warden",1,k.x+240,k.y+60)');
+  run('var foeB=mkBuilding("habitat",1,k.x+380,k.y+160,true)');
+  tickOn(3);
+  // the order path the click branch calls
+  run('setSel([me]); me.cmd={t:"idle"}; me.target=null');
+  run('rightClick(foe.x,foe.y,false)');
+  eq(run('me.cmd.t'), 'attack', 'an enemy unit');
+  eq(run('me.cmd.target===foe'), true, 'and the right one');
+  run('me.cmd={t:"idle"}; me.target=null; setSel([me])');
+  run('rightClick(foeB.x,foeB.y,false)');
+  eq(run('me.cmd.t'), 'attack', 'an enemy building');
+  eq(run('me.cmd.target===foeB'), true, 'and the right one');
+  // and the click handler really does route hostiles through it
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  ok(/if\(!d\.shift&&!e\.ctrlKey&&isFoe\(e2\.owner,0\)\)/.test(whole),
+     'a plain left-click on a hostile is handled');
+  ok(/mine\.length\)\{[\s\S]{0,160}rightClick\(p\.x,p\.y,false\)/.test(whole),
+     'and it goes through the shared order path so a guest relays it');
+});
+
+test('an enemy can still be selected to read its statline', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  ok(/const mine=sel\.filter\(x=>!x\.dead&&x\.kind===.unit.&&x\.owner===0&&!UDEF\[x\.type\]\.worker\)/.test(whole),
+     'the attack only happens when you have your own fighters in hand');
+  ok(/if\(mine\.length\)\{/.test(whole),
+     'and an empty selection falls through to selecting the enemy');
+});
+
+console.log('\nsettings');
+
+test('the mouse settings exist and are applied', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  ok(/id="sDragPan"/.test(whole), 'a drag-pan sensitivity slider');
+  ok(/id="sZoomSpd"/.test(whole), 'a zoom speed slider');
+  ok(/OPT\.dragPan\|\|1/.test(whole), 'drag pan is read when panning');
+  ok(/OPT\.zoomSpd\|\|1/.test(whole), 'zoom speed is read on the wheel');
+  ok(/OPT\.invZoom/.test(whole), 'and the wheel can be inverted');
+});
+
+test('hotkeys are rebindable and fall back to the defaults', () => {
+  eq(run('keyFor("c_A")'), 'a', 'attack-move defaults to A');
+  run('OPT.keys={"c_A":"q"}');
+  eq(run('keyFor("c_A")'), 'q', 'a binding is honoured');
+  eq(run('keyIs("c_A","q")'), true, 'and the handler test agrees');
+  eq(run('keyIs("c_A","a")'), false, 'the old key stops working');
+  eq(run('hkOf("bld","habitat","H")'), 'H', 'card labels come from the binding');
+  run('OPT.keys={"b_habitat":"j"}');
+  eq(run('hkOf("bld","habitat","H")'), 'J', 'and change with it');
+  run('OPT.keys={}');
+  eq(run('keyFor("c_A")'), 'a', 'clearing restores the default');
+  ok(run('KEY_ACTS.length') >= 15, 'every action in the list is rebindable');
+});
+
+
 console.log('\nteams');
 
 test('a team arrangement with everyone on one side is rejected', () => {

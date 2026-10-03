@@ -3808,9 +3808,21 @@ function aiScoutSpots(ME){
 function aiScout(AI,ME,dt){
   const spots=aiScoutSpots(ME);
   if(!spots.length) return;
-  if(AI.scout&&AI.scout.dead) AI.scout=null;
+  if(AI.scout&&AI.scout.dead){
+    /* It walked into something. Losing a scout used to cost nothing, because
+       the next tick drafted a replacement immediately - which is why a bot
+       fed a stream of single units into your base one after another. Wait,
+       and give up for a good while after the third one. */
+    AI.scout=null;
+    AI.scoutLost=(AI.scoutLost||0)+1;
+    AI.nextScout=AI.t+(AI.scoutLost>=3?220:55);
+  }
   if(!AI.scout){
-    if(aiKnownBases(AI).length&&AI.t<(AI.nextScout||0)) return;   // already know where they live
+    if(AI.t<(AI.nextScout||0)) return;                   // cooling off
+    /* And once it knows where you live it stops looking. The old test needed
+       BOTH a known base and an unexpired timer to skip, so a bot that had
+       already found you kept sending scouts out every couple of minutes. */
+    if(aiKnownBases(AI).length) return;
     if(AI.t<15) return;
     const ws=unitsOf(ME).filter(u=>UDEF[u.type].worker);
     const army=unitsOf(ME).filter(u=>!UDEF[u.type].worker);
@@ -3825,7 +3837,10 @@ function aiScout(AI,ME,dt){
   if(Math.hypot(s.x-spot.x,s.y-spot.y)<130){
     if(AI.mainVisited) AI.scoutIdx++; else AI.mainVisited=true;
     AI.scoutT=0;
-    if(aiKnownBases(AI).length){ s.isScout=false; AI.scout=null; AI.nextScout=AI.t+120; return; }
+    if(aiKnownBases(AI).length){
+      // found them - put it back to work and stop scouting for good
+      s.isScout=false; AI.scout=null; AI.scoutDone=true; return;
+    }
   } else if(AI.scoutT>80){
     AI.scoutT=0;
     if(AI.mainVisited) AI.scoutIdx++;
