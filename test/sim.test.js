@@ -1634,6 +1634,60 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
 });
 
+console.log('\nthe roster, rewritten per army');
+
+function asArmy(f) {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="' + f + '"');
+  run('startGame("veteran")');
+}
+
+test('prose written in Allied names is rewritten into each army\'s own', () => {
+  asArmy('legion');
+  eq(run('facText("Train a Rifleman.")'), 'Train a Conscript Squad.', 'a unit');
+  eq(run('facText("Raise a Bunker.")'), 'Raise a Pillbox.', 'a building');
+  asArmy('pact');
+  eq(run('facText("Train a Rifleman.")'), 'Train a Gun Gang.', 'a unit, militia');
+});
+
+test('irregular plurals survive the rewrite', () => {
+  // 'Riflemen' shares no stem with 'Rifleman', so a bare +s rule mangles it,
+  // and 'Pillbox'+'s' is not a word
+  asArmy('legion');
+  eq(run('facText("five Riflemen")'), 'five Conscript Squads', 'Riflemen');
+  eq(run('facText("Bunkers can shoot air")'), 'Pillboxes can shoot air', 'Pillboxes');
+  asArmy('pact');
+  eq(run('facText("five Riflemen")'), 'five Gun Gangs', 'Riflemen, militia');
+});
+
+test('a name is never rewritten twice in one pass', () => {
+  /* 'Gunners' became 'Scrap Gunners', and then the pass for the singular
+     'Gunner' matched inside its own output: 'Scrap Scrap Gunners'. */
+  asArmy('pact');
+  eq(run('facText("Gunners hold the line")'), 'Scrap Gunners hold the line',
+     'the replacement is not re-scanned');
+  eq(run('facText("a Gunner")'), 'a Scrap Gunner', 'and the singular still works');
+});
+
+test('names that read the same singular or plural stay singular', () => {
+  /* Nothing in the text says which was meant, and taking them as plural
+     turned 'a Barracks' into 'a Drill Yards'. */
+  asArmy('legion');
+  eq(run('facText("Raise a Barracks.")'), 'Raise a Drill Yard.', 'Barracks');
+  eq(run('facText("no Headquarters left")'), 'no Command Post left', 'Headquarters');
+});
+
+test('the article agrees with whatever name replaced it', () => {
+  asArmy('pact');
+  const out = run('facText("Raise a Bunker and a Barracks.")');
+  ok(!/ a [aeiou]/i.test(out), 'no "a" left in front of a vowel: ' + out);
+});
+
+test('Allied text is left exactly as written', () => {
+  asArmy('concord');
+  const src = 'Train a Rifleman, then five Riflemen, at the Barracks.';
+  eq(run('facText(' + JSON.stringify(src) + ')'), src, 'the base army needs no rewrite');
+});
+
 console.log('\n' + (fail ? 'FAILED' : 'PASSED') + ': ' + pass + ' passed, ' + fail + ' failed');
 if (fail) {
   console.log('\nfailures:');

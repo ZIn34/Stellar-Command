@@ -827,8 +827,8 @@ const myFoes=()=>[0,1,2,3].filter(o=>o<NPLAY&&TEAMOF[o]!==TEAMOF[0]);
 /* ===================== DEFINITIONS ===================== */
 const UDEF={
   delver:  {n:'Sapper',   hp:60,  sp:118, dmg:5,  rng:18,  cd:1.1, sight:7, m:50,  g:0,  sup:1, bt:12, r:10, worker:true},
-  warden:  {n:'Rifle Squad',   hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
-  bulwark: {n:'Weapons Team',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
+  warden:  {n:'Rifleman',      hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
+  bulwark: {n:'Gunner',       hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
   sunderer:{n:'Howitzer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
   harrower:{n:'Battle Tank', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
   talon:   {n:'Warplane',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
@@ -5161,7 +5161,7 @@ function makeUnitSpr(type,owner){
     man(-R*.66, R*.56,.78,'rifle',.34);
     man( R*.06,-R*.08,1.5, 'rifle',0);
   } else if(type==='bulwark'){
-    /* Weapons team: a heavy machine gun behind a shield, with the gunner on
+    /* Gunner: a heavy machine gun behind a shield, with the gunner on
        it and a loader beside him. The shield is why this is the one that can
        stand and be shot at, and the long raised barrel is why it reaches
        aircraft. */
@@ -6760,9 +6760,10 @@ const FNAMES={
      own statline, role and hotkey, so muscle memory carries between armies.
      The Allied names are the ones all prose in this file is written in:
      facText() rewrites them into the other two. Keep them consonant-initial
-     and regular-plural, or 'a Trooper' and 'two Troopers' come out wrong. */
-  concord:{delver:'Sapper',    warden:'Rifle Squad',   breaker:'Flame Squad',
-           bulwark:'Weapons Team', sunderer:'Howitzer',harrower:'Battle Tank',
+     consonant-initial so the articles read right; irregular plurals are
+     fine, but list them in FPLURAL below or the rewriter will mangle them. */
+  concord:{delver:'Sapper',    warden:'Rifleman',      breaker:'Flame Squad',
+           bulwark:'Gunner',   sunderer:'Howitzer',    harrower:'Battle Tank',
            talon:'Warplane',   titan:'Land Battleship',
            keystone:'Headquarters', habitat:'Billet',  musterhall:'Barracks',
            siphon:'Refinery',  forgeworks:'Workshop',  watchspire:'Bunker',
@@ -6796,29 +6797,71 @@ function idleTitle(){
    Rather than tokenise a hundred strings, swap the generic name for the
    doctrine's own on the way to the screen. Longest name first so 'Bunker'
    is not half-eaten by a shorter match. */
+/* Plurals. Most names take a bare 's'; the ones that do not are listed here.
+   Some are irregular ('Rifleman' -> 'Riflemen') and some are already plural in
+   form, where adding an 's' gives 'Headquarterss' and 'Tank Workss'. Anything
+   absent falls back to name+'s'. */
+const FPLURAL={
+  concord:{warden:'Riflemen', keystone:'Headquarters', musterhall:'Barracks'},
+  legion: {watchspire:'Pillboxes', forgeworks:'Tank Works', citadel:'Heavy Works'},
+  pact:   {forgeworks:'Scrapworks'}
+};
+function plOf(fk,k){
+  const F=FPLURAL[fk]; if(F&&F[k]) return F[k];
+  const n=(FNAMES[fk]||{})[k];
+  return n?n+'s':'';
+}
+/* Rewriting Allied names into another army's used to run one replace per name
+   over the whole string, which re-read its own output: 'Gunners' became
+   'Scrap Gunners', and then the pass for the singular 'Gunner' found the
+   'Gunner' inside that and made it 'Scrap Scrap Gunners'. Everything is now
+   matched in a single sweep with one alternation, longest form first, so each
+   position in the text is consumed exactly once and can never be rewritten
+   twice. Built once per army and cached. */
 const RENAME_KEYS=Object.keys(FNAMES.concord)
   .sort((a,b)=>FNAMES.concord[b].length-FNAMES.concord[a].length);
+const RENAME_RE={};
+function renameMap(fk){
+  if(RENAME_RE[fk]) return RENAME_RE[fk];
+  const by={}, forms=[];
+  const add=(from,to)=>{
+    if(!from||!to||from===to||by[from]) return;
+    by[from]=to; forms.push(from);
+    const lf=from.toLowerCase(), lt=to.toLowerCase();
+    if(lf!==from&&!by[lf]){ by[lf]=lt; forms.push(lf); }
+  };
+  for(const k of RENAME_KEYS){
+    /* Plural before singular, so 'Riflemen' is matched before 'Rifleman'.
+       But where the Allied name is the same either way - Barracks,
+       Headquarters - the text cannot say which was meant, and registering the
+       plural would turn 'a Barracks' into 'a Drill Yards'. Singular wins
+       there, because that is how this prose almost always uses them. */
+    const ps=plOf('concord',k);
+    if(ps!==FNAMES.concord[k]) add(ps, plOf(fk,k));
+    add(FNAMES.concord[k], FNAMES[fk][k]);
+  }
+  forms.sort((a,b)=>b.length-a.length);
+  const esc=t=>t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const re=forms.length?new RegExp(forms.map(esc).join('|'),'g'):null;
+  return RENAME_RE[fk]={by,re};
+}
 function facText(t,owner){
   if(typeof t!=='string') return t;
   const fk=FACOF[(owner===undefined?0:owner)];
   if(!fk||fk==='concord'||!FNAMES[fk]) return t;
-  let out=t;
-  for(const k of RENAME_KEYS){
-    const from=FNAMES.concord[k], to=FNAMES[fk][k];
-    if(!from||!to||from===to) continue;
-    if(out.indexOf(from)>=0){
-      out=out.split(from).join(to);
-      /* 'Raise a Bunker' became 'Raise a Irregular'. Make the article agree
-         with whatever the name now starts with, but only where the rename
-         actually happened - a blanket a/an pass would break 'a unit'. */
-      const art=/^[aeiou]/i.test(to)?'an':'a', bad=art==='an'?'a':'an';
-      const Art=art.charAt(0).toUpperCase()+art.slice(1);
-      const Bad=bad.charAt(0).toUpperCase()+bad.slice(1);
-      out=out.split(bad+' '+to).join(art+' '+to);
-      out=out.split(Bad+' '+to).join(Art+' '+to);
-    }
-    const lf=from.toLowerCase(), lt=to.toLowerCase();
-    if(lf!==from&&out.indexOf(lf)>=0) out=out.split(lf).join(lt);
+  const m=renameMap(fk);
+  if(!m.re) return t;
+  const used={};
+  let out=t.replace(m.re,hit=>{ const to=m.by[hit]; if(to) used[to]=1; return to||hit; });
+  /* 'Raise a Bunker' became 'Raise a Irregular'. Make the article agree with
+     whatever the name now starts with, but only for names this call actually
+     introduced - a blanket a/an pass would break 'a unit'. */
+  for(const to in used){
+    const art=/^[aeiou]/i.test(to)?'an':'a', bad=art==='an'?'a':'an';
+    const Art=art.charAt(0).toUpperCase()+art.slice(1);
+    const Bad=bad.charAt(0).toUpperCase()+bad.slice(1);
+    out=out.split(bad+' '+to).join(art+' '+to);
+    out=out.split(Bad+' '+to).join(Art+' '+to);
   }
   return out;
 }
@@ -6906,14 +6949,14 @@ function menuInit(){
   const rows=[
     ['unit','delver','Hauls supply and fuel, raises every structure.'],
     ['unit','warden','Ranged infantry. The backbone of any push you make.'],
-    ['unit','bulwark','Heavy infantry: twice a Rifle Squad in every stat.'],
+    ['unit','bulwark','Heavy infantry: twice a Rifleman in every stat.'],
     ['unit','sunderer','Tracked artillery. Splash damage, needs a Workshop.'],
     ['unit','harrower','Assault walker. Brutal up close, very hard to kill.'],
     ['unit','breaker','Close-quarters. No reach at all, hits hard when it gets there.'],
     ['unit','talon','Warplane. Flies over terrain and hits ground or air.'],
     ['bld','keystone','Command hub. Trains Sappers, accepts cargo, +10 pop.'],
     ['bld','habitat','+8 population. Build these before you stall.'],
-    ['bld','musterhall','Trains Rifle Squads. Unlocks Workshop and Bunkers.'],
+    ['bld','musterhall','Trains Riflemen. Unlocks Workshop and Bunkers.'],
     ['bld','siphon','Built on a fuel well to draw fuel.'],
     ['bld','forgeworks','Trains the heavy units and researches your upgrades.'],
     ['bld','watchspire','Automated defence turret.'],
@@ -7764,14 +7807,14 @@ const TUT_STEPS=[
      if(placing==='musterhall') return 'pick your ground';
      return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
-  {b:'Train a Rifle Squad.',
-   h:dv('Click the finished Barracks and pick Rifle Squad from the panel at the bottom.',
-        'Tap the finished Barracks, then tap Rifle Squad in the panel at the bottom.'),
+  {b:'Train a Rifleman.',
+   h:dv('Click the finished Barracks and pick Rifleman from the panel at the bottom.',
+        'Tap the finished Barracks, then tap Rifleman in the panel at the bottom.'),
    focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
      return (sel.length===1&&sel[0]===h)?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
    ok:()=>mineU(u=>u.type==='warden').length>=1||
        mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
-  {b:'Attack-move your Rifle Squad out.',
+  {b:'Attack-move your Rifleman out.',
    h:dv('Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
         'Select it, tap Attack in the panel, then tap across the map. Attack-move walks there and engages anything on the way.'),
    focus:()=>{ const w=mineU(u=>u.type==='warden')[0];
@@ -7786,9 +7829,9 @@ const TUT_STEPS=[
      if(placing==='watchspire') return 'pick your ground';
      return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='watchspire'&&b.done).length>=1},
-  {b:'Build a squad: five Rifle Squads.',
+  {b:'Build a squad: five Riflemen.',
    h:dv('Queue them from the Barracks. Hold the button to stack the queue, and select several Barracks at once to build from all of them.',
-        'Tap the Barracks, then tap Rifle Squad five times to stack the queue.'),
+        'Tap the Barracks, then tap Rifleman five times to stack the queue.'),
    focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
      return (sel.length&&sel.every(e=>e.kind==='building'&&e.type==='musterhall'))
        ?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
@@ -7799,7 +7842,7 @@ const TUT_STEPS=[
   /* The three doctrines fight in genuinely different ways now, so there is a
      step about yours - and it is the only step whose win condition depends on
      which one you picked. */
-  {b:()=>({concord:'Dig in: hold your Rifle Squads still and let them shoot.',
+  {b:()=>({concord:'Dig in: hold your Riflemen still and let them shoot.',
            legion:'Get in close and trade. You hit harder as you burn.',
            pact:'Make them bleed: hit something and let the wound work.'})[facKey]||
           'Learn what your doctrine does.',
@@ -7847,15 +7890,15 @@ const TUT_STEPS=[
    ok:()=>{ if(facOf(0).noRepair) return gameTime-(TUT.noFixAt||gameTime)>7;
      const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
   {b:'Put your army on a control group.',
-   h:dv('Select your Rifle Squads and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
-        'Select your Rifle Squads, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
+   h:dv('Select your Riflemen and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
+        'Select your Riflemen, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
    focus:()=>{ const w=mineU(u=>u.type==='warden')[0]; return w?{ent:w}:null; },
    prog:()=>{ const n=Object.keys(groups).reduce((m,k)=>
        Math.max(m,(groups[k]||[]).filter(e=>e&&!e.dead).length),0);
      return n?('group of '+n):'none set'; },
    ok:()=>Object.keys(groups).some(k=>(groups[k]||[]).filter(e=>e&&!e.dead).length>=3)},
   {b:'Hold the line. Raiders inbound, one airborne.',
-   h:'Rifle Squads, Weapons Teams and Bunkers can shoot air. Howitzers and Battle Tanks cannot - that is the one hard rule of fighting here.',
+   h:'Riflemen, Gunners and Bunkers can shoot air. Howitzers and Battle Tanks cannot - that is the one hard rule of fighting here.',
    enter:()=>{ tutSpawnRaiders(4,true); say('Enemy raiders inbound - one gunship in the air.'); SFX.play('attackOrder'); },
    focus:()=>{ const f=tutFoeUnits()[0]; return f?{ent:f}:null; },
    prog:()=>tutFoeUnits().length+' raiders left',
@@ -7995,7 +8038,7 @@ function tutStep(dt){
   }
   tutHilite();
   TUT.progT-=dt;
-  if(TUT.progT<=0){                     // 'Rifle Squads 2 / 5' as it happens
+  if(TUT.progT<=0){                     // 'Riflemen 2 / 5' as it happens
     TUT.progT=.25;
     let pr='';
     if(typeof st.prog==='function'){ try{ pr=st.prog()||''; }catch(e){ pr=''; } }
