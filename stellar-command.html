@@ -2698,7 +2698,7 @@ function rightClick(wx,wy,queue){
     if(any){ SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:24,k:'ping',c:'#7dffb0'}); return; }
   }
   if(t&&facOf(0).noRepair&&t.owner===0&&t.hp<t.maxHp&&us.some(x=>UDEF[x.type].worker)){
-    say('The Legion mends nothing - our wounded heal themselves'); SFX.play('deny'); return;
+    say('No field repair in this army - our vehicles are recovered instead'); SFX.play('deny'); return;
   }
   if(canRepair(t,0)){
     let any=false;
@@ -3442,7 +3442,7 @@ function startOnline(seed,grand,mode,scale){
     NET.byId=new Map(); NET.centered=false; NET.prevT=0; NET.nextT=0;
     centerOn(BASES[1].tx*TILE,BASES[1].ty*TILE);
   }
-  say((NET.role==='host'?'You are the Azure Concord':'You command the Ember Legion')+
+  say((NET.role==='host'?'You hold the north':'You hold the south')+
       (NPLAY>2?(TEAMOF[0]===TEAMOF[2]?' — 2v2, your ally holds the flank'
                                        :' — free-for-all, trust no one'):'')+
       (GRAND?' — Grand War':'')+' — good hunting.');
@@ -3827,7 +3827,7 @@ function buildInfo(){
     const e=sel[0], d=DEF(e)||{};
     const dispName=e.kind==='res'?(e.type==='vent'?'FUEL WELL':'SUPPLY CACHE')
       :nameOf(e.type,e.owner).toUpperCase();
-    infoT.textContent=(isFoe(e.owner,0)?'LEGION · ':(e.owner>0&&isAlly(e.owner)?'ALLY · ':''))+dispName;
+    infoT.textContent=(isFoe(e.owner,0)?'ENEMY · ':(e.owner>0&&isAlly(e.owner)?'ALLY · ':''))+dispName;
     const col=TEAM[e.owner]?TEAM[e.owner].c:(e.type==='vent'?'#35d18a':'#7fd0ff');
     let s='<div id="single"><div class="big" style="color:'+col+'">'+
       (e.kind==='res'?(e.type==='vent'?'◈':'◆'):iconTag(e.kind==='unit'?'unit':'bld',e.type,e.owner))+
@@ -3849,7 +3849,7 @@ function buildInfo(){
       if(e.kind==='unit'){
         s+='<span class="k">DMG</span> '+Math.round(dmgOf(e))+' &nbsp; <span class="k">RNG</span> '+(Math.round(d.rng/TILE*10)/10)+
           ' &nbsp; <span class="k">SPD</span> '+Math.round(d.sp*facOf(e.owner).sp)+'<br>';
-        if(isBot(e.owner)&&ELITE.hp>1) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
+        if(isBot(e.owner)&&ELITE.hp>1) s+='<span style="color:#ff9b7f">Veteran bonus +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
           Math.round((ELITE.dmg-1)*100)+'% damage</span><br>';
         if(d.worker) s+='<span class="k">Cargo</span> '+(e.carry?e.carry+' '+(e.carryType==='m'?'supply':'fuel'):'empty')+'<br>';
         /* What this doctrine's version of the unit does that the others do
@@ -6067,7 +6067,7 @@ function replaySave(){
   const stamp=new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
-  a.download='stellar-replay-'+stamp+'.scr';
+  a.download='field-replay-'+stamp+'.scr';
   document.body.appendChild(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },0);
   say('Replay saved ('+Math.round(bytes/1024)+' KB)');
@@ -6351,7 +6351,7 @@ function init(){
   explored.fill(1);
   centerOn(BASES[0].tx*TILE,BASES[0].ty*TILE);
   refreshUI();
-  say('Commander — raise your outpost and break the Ember Legion.');
+  say('Commander — raise your outpost and break the enemy army.');
   setTimeout(function(){ hintFaded=true; const h=document.getElementById('hint'); if(h) h.style.opacity='0'; },32000);
   gameOn=true; last=performance.now(); lastFrameAt=performance.now();
   startSimWorker();
@@ -6474,7 +6474,7 @@ function facText(t,owner){
     if(!from||!to||from===to) continue;
     if(out.indexOf(from)>=0){
       out=out.split(from).join(to);
-      /* 'Raise a Bunker' became 'Raise a Impaler'. Make the article agree
+      /* 'Raise a Bunker' became 'Raise a Irregular'. Make the article agree
          with whatever the name now starts with, but only where the rename
          actually happened - a blanket a/an pass would break 'a unit'. */
       const art=/^[aeiou]/i.test(to)?'an':'a', bad=art==='an'?'a':'an';
@@ -6796,7 +6796,7 @@ function lobbyRoster(m){
     ? (pubNote+(key==='team'?'Click a side to move that seat. ':'')+
        (cap>2 ? 'Wait for more commanders, or start now and let bots take the empty seats.'
               : 'Waiting for an opponent.'))
-    : 'You are in - pick your legion. Waiting for the host to start.';
+    : 'You are in - pick your army. Waiting for the host to start.';
   /* The room is where you settle the match: the host drags seats between the
      two sides, and everyone picks their own doctrine with the line-up in
      front of them. Built out of nodes because none of it is trusted text. */
@@ -7466,18 +7466,18 @@ const TUT_STEPS=[
      step about yours - and it is the only step whose win condition depends on
      which one you picked. */
   {b:()=>({concord:'Dig in: hold your Troopers still and let them shoot.',
-           legion:'Get in close and trade. You hit harder as you bleed.',
-           pact:'Poison them: hit something and let it bleed.'})[facKey]||
+           legion:'Get in close and trade. You hit harder as you burn.',
+           pact:'Make them bleed: hit something and let the wound work.'})[facKey]||
           'Learn what your doctrine does.',
    h:()=>({
-     concord:dv('The Concord fights from a planted line: a unit that has not moved for a moment deals '+
+     concord:dv('Allied Command fights from a dug-in line: a unit that has not moved for a moment deals '+
        Math.round((ENTRENCH_DMG-1)*100)+'% more damage. Stop moving before the enemy arrives, do not chase.',
-       'The Concord fights from a planted line: a unit that stands still for a moment deals more damage. Stop moving before they arrive.'),
-     legion:dv('The Legion has almost no reach and hits far harder for it, so you have to close. It gets stronger the more hurt it is - a wounded Ravager swings for nearly half again - and it cannot repair, so trade bodies and let them heal up out of the fight.',
-       'The Legion has almost no reach and hits far harder for it. Close the distance. It gets stronger the more hurt it is, and it cannot repair - trade bodies and let them heal out of the fight.'),
-     pact:dv('Every Pact hit leaves a wound that keeps bleeding for '+VENOM_FOR+
-       ' seconds. You win long fights, not short ones - trade and withdraw, the poison keeps working.',
-       'Every Pact hit keeps bleeding for seconds afterwards. You win long fights - trade and withdraw, the poison does the rest.')
+       'Allied Command fights from a dug-in line: a unit that stands still for a moment deals more damage. Stop moving before they arrive.'),
+     legion:dv('The Shock Army has almost no reach and hits far harder for it, so you have to close. It gets stronger the more it burns - a shot-up Conscript hits for nearly half again - and damaged vehicles are recovered once they are out of contact, so trade bodies freely.',
+       'The Shock Army has almost no reach and hits far harder for it. Close the distance. It gets stronger the more it burns, and damaged vehicles are recovered out of contact - so trade bodies freely.'),
+     pact:dv('Every Militia hit leaves a wound that keeps bleeding for '+VENOM_FOR+
+       ' seconds. You win long fights, not short ones - trade and withdraw, the bleeding keeps working.',
+       'Every Militia hit keeps bleeding for seconds afterwards. You win long fights - trade and withdraw, the bleeding does the rest.')
    })[facKey]||'Fight something and watch what your units do.',
    enter:()=>{ tutSpawnRaiders(2,false);
      say('Two scouts wandered in. Use them.'); },
@@ -7499,8 +7499,8 @@ const TUT_STEPS=[
   {b:()=>facOf(0).noRepair?'Your doctrine cannot repair. Learn to live with it.'
                           :'Repair something with a Sapper.',
    h:()=>facOf(0).noRepair
-     ?dv('The Legion has no repair at all - that Headquarters stays broken. What you get instead is units that heal themselves once they are out of the fight, and a Spire Core that detonates when it falls. Press on.',
-         'The Legion cannot repair - that hull stays broken. Your units heal themselves out of combat instead. Press on.')
+     ?dv('Your army has no field repair - that Headquarters stays broken. What you get instead is vehicles recovered once they are out of contact, and a Command Post that cooks off when it falls. Press on.',
+         'Your army cannot repair - that hull stays broken. Your vehicles are recovered out of contact instead. Press on.')
      :dv('Your Headquarters has been knocked about. Select a Sapper and right-click the damaged building - repairs cost a fraction of the build price.',
          'Your Headquarters has been knocked about. Select a Sapper, then tap the damaged building to mend it.'),
    enter:()=>{ const k=tutHome(); if(k){ k.hp=Math.max(1,k.maxHp*.55); k.hurtAt=-999; }
@@ -7522,13 +7522,13 @@ const TUT_STEPS=[
    ok:()=>Object.keys(groups).some(k=>(groups[k]||[]).filter(e=>e&&!e.dead).length>=3)},
   {b:'Hold the line. Raiders inbound, one airborne.',
    h:'Troopers, Halftracks and Bunkers can shoot air. Howitzers and Battle Tanks cannot - that is the one hard rule of fighting here.',
-   enter:()=>{ tutSpawnRaiders(4,true); say('Legion raiders inbound - one Shrike in the air.'); SFX.play('attackOrder'); },
+   enter:()=>{ tutSpawnRaiders(4,true); say('Enemy raiders inbound - one gunship in the air.'); SFX.play('attackOrder'); },
    focus:()=>{ const f=tutFoeUnits()[0]; return f?{ent:f}:null; },
    prog:()=>tutFoeUnits().length+' raiders left',
    ok:()=>tutFoeUnits().length===0},
-  {b:'Raise a Refinery on an ichor vent and crew it.',
-   h:dv('The green vents give ichor, which every advanced unit needs. Build a Refinery on one, then right-click it with a Sapper.',
-        'The green vents give ichor, which every advanced unit needs. Build a Refinery on one, then tap it with a Sapper.'),
+  {b:'Raise a Refinery on a fuel well and crew it.',
+   h:dv('Fuel wells give fuel, which every advanced unit needs. Build a Refinery on one, then right-click it with a Sapper.',
+        'Fuel wells give fuel, which every advanced unit needs. Build a Refinery on one, then tap it with a Sapper.'),
    focus:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done)[0];
      if(sp) return {ent:sp};                       // built - now crew it
      if(placing==='siphon'){ const v=tutNearestRes('vent'); return v?{ent:v}:null; }
@@ -7539,7 +7539,7 @@ const TUT_STEPS=[
    ok:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
      return sp.length>0&&mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length>=1; }},
   {b:'Raise a Workshop.',
-   h:dv('Build menu, then F. It costs ichor and unlocks the heavy units - Howitzers, Battle Tanks and Gunships - plus upgrades.',
+   h:dv('Build menu, then F. It costs fuel and unlocks the heavy units - Howitzers, Battle Tanks and Gunships - plus upgrades.',
         'Tap Build and pick Workshop. It unlocks the heavy units and your upgrades.'),
    focus:()=>tutBuildFocus('forgeworks','F'),
    prog:()=>{ const b=mineB(x=>x.type==='forgeworks')[0];
@@ -7585,10 +7585,10 @@ const TUT_STEPS=[
        legion:'A walking furnace: enormous splash, and when it finally dies it takes everything around it with it.',
        pact:'A walking grove. It keeps birthing '+nameOf('warden',0)+'s for free, for ever, and knits itself back together.'
      }[facKey]||'';
-     return dv('Select the '+nameOf('citadel',0)+' and order one. '+c.m+' aurite and '+c.g+
-               ' ichor, ten population, and no limit on how many you own. '+mine,
-               'Tap the '+nameOf('citadel',0)+', then the ship. '+c.m+' aurite and '+c.g+
-               ' ichor, ten population, no limit on how many you own. '+mine);
+     return dv('Select the '+nameOf('citadel',0)+' and order one. '+c.m+' supply and '+c.g+
+               ' fuel, ten manpower, and no limit on how many you own. '+mine,
+               'Tap the '+nameOf('citadel',0)+', then the machine. '+c.m+' supply and '+c.g+
+               ' fuel, ten manpower, no limit on how many you own. '+mine);
    },
    focus:()=>{ const c=mineB(b=>b.type==='citadel'&&b.done)[0];
      return (sel.length===1&&sel[0]===c)?{el:'#card .btn[data-hk="C"]'}:(c?{ent:c}:null); },
@@ -7608,8 +7608,8 @@ const TUT_STEPS=[
    ok:()=>tutFoeBlds().length===0},
   {b:'Their base is yours. You are ready.',
    h:()=>{
-     const base=dv('Two habits win games: never stop making Sappers, and never let aurite pile up. ',
-                   'Two habits win games: never stop making Sappers, and never let aurite pile up. ');
+     const base=dv('Two habits win games: never stop making Sappers, and never let supply pile up. ',
+                   'Two habits win games: never stop making Sappers, and never let supply pile up. ');
      const mine={
        concord:'Your Concord mend cheaply and fight hardest from a planted line - hold ground, repair, out-tech. ',
        legion:'Your Legion cannot repair, so trade bodies: they heal themselves out of the fight and swing harder the more they bleed. ',

@@ -341,7 +341,7 @@ test('re-issuing the same group order is a no-op', () => {
 
 console.log('\nharvesting');
 
-test('a dozen idle Delvers spread over the patches instead of one crystal', () => {
+test('a dozen idle Sappers spread over the patches instead of one crystal', () => {
   newMatch({ fac: 'concord' });
   run([
     'var _k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone");',
@@ -356,7 +356,7 @@ test('a dozen idle Delvers spread over the patches instead of one crystal', () =
   const counts = Object.keys(spread).map(k => spread[k]);
   const patches = counts.length;
   const worst = Math.max.apply(null, counts);
-  ok(patches >= 4, '12 Delvers went to at least 4 patches (went to ' + patches + ')');
+  ok(patches >= 4, '12 Sappers went to at least 4 patches (went to ' + patches + ')');
   ok(worst <= run('NODE_SLOTS'),
      'no patch holds more than its slots (worst was ' + worst + ' on one patch)');
 });
@@ -386,7 +386,7 @@ test('a patch reports full once its slots are taken', () => {
   newMatch({ fac: 'concord' });
   run([
     'var _k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone");',
-    // a patch the starting Delvers are not already working
+    // a patch the starting Sappers are not already working
     'var _n=nearest(ents,_k.x,_k.y,e=>e.kind==="res"&&e.type==="aurite"&&e.amount>0&&nodeLoad(e)===0);',
     'var _a=mkUnit("delver",0,_k.x+30,_k.y+30), _b=mkUnit("delver",0,_k.x+50,_k.y+30);',
     'setGather(_a,_n); setGather(_b,_n);'
@@ -452,7 +452,7 @@ test('each doctrine has its own idea of when to commit', () => {
   ok(doc.pact.homely > 0, 'the Pact prefers to fight on its own ground');
 });
 
-test('a Legion bot sends Delvers to mend a damaged hall', () => {
+test('a Shock Army bot sends Sappers to mend a damaged hall', () => {
   /* It used to be unable to repair at all, so the bot was told not to try.
      Now it can, and it should. */
   run('scaleKey="standard"; modeKey="ffa"; terrainKey="open"; facKey="concord"');
@@ -468,10 +468,10 @@ test('a Legion bot sends Delvers to mend a damaged hall', () => {
     const n = run('ents.filter(u=>!u.dead&&u.kind==="unit"&&u.owner===1&&u.cmd&&u.cmd.t==="repair").length');
     if (n > peak) peak = n;
   }
-  ok(peak > 0, 'a Legion bot put at least one Delver on the repair');
+  ok(peak > 0, 'a Shock Army bot put at least one Sapper on the repair');
 });
 
-test('a Concord bot does send Delvers to mend a damaged hall', () => {
+test('an Allied bot does send Sappers to mend a damaged hall', () => {
   run('scaleKey="standard"; modeKey="ffa"; terrainKey="open"; facKey="concord"');
   run('startGame("warlord")');
   run('FACOF=["legion","concord","concord","concord"]');
@@ -485,7 +485,7 @@ test('a Concord bot does send Delvers to mend a damaged hall', () => {
     const n = run('ents.filter(u=>!u.dead&&u.kind==="unit"&&u.owner===1&&u.cmd&&u.cmd.t==="repair").length');
     if (n > peak) peak = n;
   }
-  ok(peak > 0, 'the Concord bot put at least one Delver on the repair');
+  ok(peak > 0, 'the Allied bot put at least one Sapper on the repair');
 });
 
 console.log('\nfog of war');
@@ -594,7 +594,7 @@ test('every doctrine fields a different capital ship at the same flat price', ()
   eq(!!seen.concord.def.ward, false, 'ward lives on the style, not the def');
   ok(run('FSTYLE.concord.titan.ward') && run('FSTYLE.legion.titan.boom') &&
      run('FSTYLE.pact.titan.brood'), 'each has its own ability');
-  eq(run('BDEF.citadel.req'), 'forgeworks', 'the yard needs a Forgeworks first');
+  eq(run('BDEF.citadel.req'), 'forgeworks', 'the yard needs a Workshop first');
   run('FACOF=["concord","concord","concord","concord"]');
 });
 
@@ -609,7 +609,7 @@ test('there is no limit on how many capital ships you own', () => {
   eq(run('cit.queue.length'), 3, 'all three are in the queue');
 });
 
-test('the Aegis Bastion shields what is under it and mends what it hangs over', () => {
+test('the Paladin shields what is under it and mends what it hangs over', () => {
   arena('concord');
   run('var T=mkUnit("titan",0,1200,1200)');
   // a target tough enough to survive the hit, or both just die and prove nothing
@@ -646,7 +646,7 @@ test('the Cataclysm Engine detonates when it dies', () => {
      ' -> ' + Math.round(after) + ')');
 });
 
-test('the Hollow Mother births free units that cost no population', () => {
+test('the Juggernaut births free units that cost no population', () => {
   arena('pact');
   run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
   run('for(var i=0;i<6;i++) mkBuilding("habitat",0,k.x+320+(i%3)*90,k.y-240+((i/3)|0)*90,true)');
@@ -675,7 +675,7 @@ test('an enemy draining a vent in the fog tells you nothing', () => {
   ok(run('!!_v'), 'found a vent outside vision');
   const shown = run('resShown(_v).amount');
   const pickable = run('entAt(_v.x,_v.y)===_v');
-  // somebody builds a Siphon on it and drains it, all out of sight
+  // somebody builds a Refinery on it and drains it, all out of sight
   run('_v.taken=true; _v.amount=Math.max(0,_v.amount-400)');
   eq(run('resShown(_v).amount'), shown, 'the figure you are shown does not move');
   ok(run('_v.amount') < shown, 'even though it really did drain');
@@ -700,7 +700,7 @@ test('the melee unit is cheap enough to open a match with', () => {
     const wd = run('priceOf("unit","warden",0)');
     const d = run('defFor("unit","breaker",0)');
     const purse = run('P[0].m');
-    ok(br.m < wd.m / 2, f + ': cheaper than half a Warden (' + br.m + ' vs ' + wd.m + ')');
+    ok(br.m < wd.m / 2, f + ': cheaper than half a Trooper (' + br.m + ' vs ' + wd.m + ')');
     eq(d.sup, 1, f + ': one population, like the other light units');
     ok(Math.floor(purse / br.m) >= 4,
        f + ': you can afford ' + Math.floor(purse / br.m) + ' from your opening purse');
@@ -742,7 +742,7 @@ test('every capital ship splashes', () => {
 });
 
 test('a splashing Pact ship still poisons everything it catches', () => {
-  /* The splash branch never touched venomApply, so giving the Hollow Mother a
+  /* The splash branch never touched venomApply, so giving the Juggernaut a
      spread would have quietly cost it the thing that makes it a Pact ship. */
   arena('pact');
   run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
@@ -758,7 +758,7 @@ test('a splashing Pact ship still poisons everything it catches', () => {
   ok(bleeding >= 2, 'both targets in one splash came away bleeding (' + bleeding + ')');
 });
 
-test('the Aegis Bastion gathers stragglers but obeys your orders', () => {
+test('the Paladin gathers stragglers but obeys your orders', () => {
   arena('concord');
   run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
   run('var cx=k.x+700, cy=k.y+700');
@@ -777,7 +777,7 @@ test('the Aegis Bastion gathers stragglers but obeys your orders', () => {
   ok(strayOut1 <= 0, 'and ended up inside it');
   ok(sentOut1 > sentOut0, 'the one you sent away kept going (' +
      Math.round(sentOut0) + 'px -> ' + Math.round(sentOut1) + 'px)');
-  eq(run('w.cmd.t'), 'gather', 'and the Delvers were left to work');
+  eq(run('w.cmd.t'), 'gather', 'and the Sappers were left to work');
 });
 
 test('a unit trading blows braces against the crowd', () => {
@@ -892,7 +892,7 @@ test('a group of halls reports what it is building and what is idle', () => {
   eq(pr.idle, 5 - busy, 'and how many are standing idle');
   ok(pr.soonest !== null && pr.soonest >= 0, 'with the soonest completion (' +
      (pr.soonest === null ? 'none' : pr.soonest.toFixed(1) + 's') + ')');
-  ok(pr.parts.join(', ').indexOf('Ravager') >= 0,
+  ok(pr.parts.join(', ').indexOf('Conscript') >= 0,
      "broken down in this doctrine's own names: " + pr.parts.join(', '));
 });
 
@@ -998,8 +998,8 @@ test('the tutorial teaches the shipyard and the capital ship', () => {
   run('facKey="pact"');
   run('startTutorial()');
   const steps = run('TUT_STEPS.map(function(s){return (typeof s.b==="function")?s.b():s.b;})');
-  const yard = steps.findIndex(t => /Worldheart|Citadel|Gate|Bloodforge/i.test(t));
-  const ship = steps.findIndex(t => /Hollow Mother|Titan|Bastion|Cataclysm/i.test(t));
+  const yard = steps.findIndex(t => /Proving Ground|Heavy Works|Boneyard/i.test(t));
+  const ship = steps.findIndex(t => /Paladin|Land Dreadnought|Juggernaut/i.test(t));
   ok(yard >= 0, 'there is a step for the shipyard');
   ok(ship > yard, 'and ordering the ship comes after building the yard');
   const last = steps.length - 1;
@@ -1010,24 +1010,24 @@ test('the shipyard step funds itself, since a training run never banks that much
   run('facKey="concord"');
   run('startTutorial()');
   const steps = run('TUT_STEPS.map(function(s){return (typeof s.b==="function")?s.b():s.b;})');
-  const i = steps.findIndex(t => /Ascendant Gate/i.test(t));
+  const i = steps.findIndex(t => /Proving Ground/i.test(t));
   ok(i >= 0, 'found the shipyard step');
   run('P[0].m=0; P[0].g=0');
   run('TUT.i=' + i + '; TUT_STEPS[' + i + ']._entered=false; tutShow()');
   const cost = run('priceOf("unit","titan",0)');
-  ok(run('P[0].m') >= cost.m, 'enough aurite to actually reach the ship');
-  ok(run('P[0].g') >= cost.g, 'and enough ichor');
+  ok(run('P[0].m') >= cost.m, 'enough supply to actually reach it');
+  ok(run('P[0].g') >= cost.g, 'and enough fuel');
 });
 
 test('the shipyard step walks the same build chain as the others', () => {
   run('facKey="legion"');
   run('startTutorial()');
   const steps = run('TUT_STEPS.map(function(s){return (typeof s.b==="function")?s.b():s.b;})');
-  const i = steps.findIndex(t => /Bloodforge/i.test(t));
+  const i = steps.findIndex(t => /Heavy Works/i.test(t));
   run('TUT.i=' + i + '; tutShow()');
   run('setSel([])');
   const a = run('(function(){var f=tutFocus(); return f&&f.ent?"rings a unit":JSON.stringify(f);})()');
-  ok(/rings a unit/.test(a), 'with nothing selected it points at a Delver');
+  ok(/rings a unit/.test(a), 'with nothing selected it points at a Sapper');
   run('var w=mineU(function(u){return UDEF[u.type].worker;})[0]; setSel([w])');
   run('cardMode="main"');
   eq(run('(tutFocus()||{}).el'), '#card .btn[data-hk="B"]', 'then the build menu');
@@ -1070,7 +1070,7 @@ test('the build button lets you through at the quoted price', () => {
     const price = run('bldCost("habitat",0).m');
     run('P[0].m=' + price + '; placing=null');
     const allowed = run('(function(){var b=cardButtons.filter(function(x){' +
-      'return !x.empty&&/Habitat|Bower|Warren/.test(x.name);})[0];' +
+      'return !x.empty&&/Billet|Camp|Bunkhouse/.test(x.name);})[0];' +
       'if(!b) return false; b.act(); return !!placing;})()');
     run('placing=null; cardMode="main"');
     ok(allowed, sc + ': the button accepted exactly the price it quoted (' + price + ')');
@@ -1160,7 +1160,7 @@ test('the price on the card is the price you are charged', () => {
   run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
   run('var w=ents.find(function(e){return !e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker;})');
   run('setSel([w]); cardMode="build"; refreshUI()');
-  const shown = run('(function(){var b=cardButtons.filter(function(x){return !x.empty&&x.cost&&/Habitat|Bower|Warren/.test(x.name);})[0];' +
+  const shown = run('(function(){var b=cardButtons.filter(function(x){return !x.empty&&x.cost&&/Billet|Camp|Bunkhouse/.test(x.name);})[0];' +
                     'return b?b.cost.m:-1;})()');
   run('cardMode="main"');
   run('P[0].m=5000');
@@ -1283,7 +1283,7 @@ test('a bot actually researches its upgrades now', () => {
     ' return {forgeAt:forgeAt, firstUp:firstUp, levels:(UP[1]?UP[1].wep+UP[1].arm:0)};',
     '})()'
   ].join(String.fromCharCode(10)));
-  ok(res.forgeAt !== null, 'it got a Forgeworks up at ' + res.forgeAt + 's');
+  ok(res.forgeAt !== null, 'it got a Workshop up at ' + res.forgeAt + 's');
   ok(res.firstUp !== null, 'and researched something by ' + res.firstUp + 's');
 });
 
@@ -1484,7 +1484,7 @@ test('a specific attack order is not overridden by being poked', () => {
   eq(run('A.target===T'), true, 'the order you gave still stands');
 });
 
-test('a Delver that gets shot keeps mining', () => {
+test('a Sapper that gets shot keeps mining', () => {
   arena('concord');
   run('var W=ents.find(e=>!e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker)');
   run('var F=mkUnit("warden",1,W.x+60,W.y)');
@@ -1493,7 +1493,7 @@ test('a Delver that gets shot keeps mining', () => {
   eq(run('!!W.target'), false, 'and it did not pick a fight');
 });
 
-test('a bot that loses its last Keystone surrenders instead of hiding', () => {
+test('a bot that loses its last Headquarters surrenders instead of hiding', () => {
   run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
   run('startGame("veteran")');
   run('BOTS=[false,true,false,false]');
