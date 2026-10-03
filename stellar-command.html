@@ -626,8 +626,10 @@ function popCeiling(){ return Infinity; }
 function priceOf(kind,type,owner){
   const d=(kind==='building'?BDEF:UDEF)[type];
   if(!d) return {m:0,g:0};
-  // only units take the doctrine's cost multiplier; structures are list price
-  const f=(kind==='building')?1:facOf(owner).cost;
+  /* Only units take the doctrine's cost multiplier, and structures are list
+     price. A capital ship is flat for everyone - it is meant to be the same
+     commitment whichever doctrine you run. */
+  const f=(kind==='building'||d.flatCost)?1:facOf(owner).cost;
   return {m:Math.round((d.m||0)*f), g:Math.round((d.g||0)*f)};
 }
 /* ...and every part-refund comes from here, off the same price. */
@@ -673,6 +675,7 @@ function applyCosmetics(){
   const pal=COSM_BY[COSM.palette]; const use=(pal&&owns(pal.id))?pal:COSM_BY.pal_azure;
   TEAM[0].c=use.c; TEAM[0].dk=use.dk;
   for(const k in SPR) delete SPR[k];            // sprites regenerate in the new colours
+  if(typeof clearDefs==='function') clearDefs();  // and so do the doctrine statlines
   for(const k in ICO) delete ICO[k];
 }
 /* ---------- shop ---------- */
@@ -749,7 +752,11 @@ const UDEF={
   bulwark: {n:'Bulwark',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
   sunderer:{n:'Sunderer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
   harrower:{n:'Harrower', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
-  talon:   {n:'Talon',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true}
+  talon:   {n:'Talon',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
+  /* The capital ship. One statline, three completely different machines built
+     on it - see FSTYLE for what each doctrine actually fields. Expensive in
+     both resources and in population, and nothing caps how many you own. */
+  titan:   {n:'Titan',    hp:1500,sp:56,  dmg:52, rng:150, cd:1.6, sight:12,m:500, g:500,sup:10,bt:92, r:27, aa:true, flatCost:true}
 };
 const BDEF={
   keystone:  {n:'Keystone',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
@@ -757,9 +764,97 @@ const BDEF={
   musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark'],hk:'R'},
   siphon:    {n:'Siphon',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
   forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'F'},
-  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'}
+  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
+  // the only place a Titan can be built, and it needs a Forgeworks first
+  citadel:   {n:'Citadel',    hp:1300,w:112,h:112,m:350,g:150,bt:62,sight:7,
+              trains:['titan'],req:'forgeworks',hk:'G'}
 };
-const DEF=(e)=> e.kind==='unit'?UDEF[e.type]:BDEF[e.type];
+/* The three doctrines had the same roster with different numbers on it. This
+   is where they stop fighting the same way.
+
+   A style may override rng/cd outright, scale dmg and sp, and set one of three
+   behaviours:
+     charge    hold still for a beat, then sprint in and hit far harder
+     venom     every hit leaves a wound that keeps bleeding
+     entrench  stand still and the next shots land harder
+
+   Anything not listed here keeps the shared statline, which is deliberate:
+   siege and air stay at range for everyone, or a doctrine has no answer to
+   something it must be able to answer. */
+const FSTYLE={
+  concord:{
+    /* Milled, disciplined, rewards holding a line. */
+    warden:  {entrench:true, dmgMul:1},
+    bulwark: {entrench:true},
+    harrower:{entrench:true},
+    sunderer:{entrench:true},
+    watchspire:{entrench:true},
+    /* AEGIS BASTION - a flying command ship. It barely fights; what it does is
+       keep everything under it alive, and mend the buildings it hangs over. */
+    titan:{air:true, rng:170, dmgMul:.72, cd:1.5,
+           ward:{range:250, cut:.32}, mends:{range:230, rate:26}}
+  },
+  legion:{
+    /* Brawlers. They close the distance and they hit like a truck when they
+       arrive - the trade-off is that everything is in your face to do it. */
+    warden:  {rng:30,  dmgMul:1.6,  cd:1.0, spMul:1.1,  charge:true},
+    bulwark: {rng:34,  dmgMul:1.5,  cd:.56, spMul:1.08, charge:true},
+    harrower:{rng:28,  dmgMul:1.65, cd:.78, spMul:1.1,  charge:true},
+    /* CATACLYSM ENGINE - a walking siege furnace. Enormous area damage, and
+       when it finally goes down it takes the neighbourhood with it. */
+    titan:{rng:196, dmgMul:1.35, cd:2.3, spMul:.82, splash:104,
+           boom:{dmg:210, range:190}}
+  },
+  pact:{
+    /* Attrition. Nothing the Pact touches stops bleeding, so a fight it
+       survives it has usually already won. */
+    warden:  {venom:true, dmgMul:.86},
+    bulwark: {venom:true, dmgMul:.9},
+    harrower:{venom:true, dmgMul:.9},
+    sunderer:{venom:true},
+    talon:   {venom:true},
+    /* HOLLOW MOTHER - a walking grove. It keeps birthing Thornlings for free
+       and knits itself back together, so it wins by never running out. */
+    titan:{venom:true, rng:132, dmgMul:.9, cd:1.5,
+           brood:{type:'warden', every:6.5, cap:6}, mend:.035}
+  }
+};
+const CHARGE_RANGE=250, CHARGE_WIND=.7, CHARGE_RUN=1.25,
+      CHARGE_SPEED=2.7, CHARGE_HIT=1.9, CHARGE_CD=5.5;
+const VENOM_DPS=.32, VENOM_FOR=4.5;      // share of the hit, bled out over seconds
+const ENTRENCH_AT=1.5, ENTRENCH_DMG=1.28;
+/* Faction stat overrides are folded into the definition itself, so range,
+   damage, cooldown, the info panel and the field manual all read the same
+   numbers without each of them knowing about doctrines. */
+let DEFC=new Map();
+function clearDefs(){ DEFC=new Map(); }
+function styleOf(kind,type,owner){
+  const t=(FSTYLE[facKeyOf(owner)]||{})[type];
+  return t||null;
+}
+function defFor(kind,type,owner){
+  const base=(kind==='unit'?UDEF:BDEF)[type];
+  if(!base) return base;
+  const fk=facKeyOf(owner), key=kind+type+fk;
+  const hit=DEFC.get(key);
+  if(hit) return hit;
+  const st=(FSTYLE[fk]||{})[type];
+  let d=base;
+  if(st){
+    d=Object.assign({},base);
+    if(st.rng!==undefined) d.rng=st.rng;
+    if(st.cd!==undefined) d.cd=st.cd;
+    if(st.dmgMul) d.dmg=Math.max(1,Math.round(base.dmg*st.dmgMul));
+    if(st.spMul) d.sp=Math.round(base.sp*st.spMul);
+    if(st.splash!==undefined) d.splash=st.splash;
+    if(st.air!==undefined) d.air=st.air;
+    d.style=st;
+  }
+  DEFC.set(key,d);
+  return d;
+}
+const DEF=(e)=> defFor(e.kind,e.type,e.owner);
+function styleFor(e){ return (DEF(e)||{}).style||null; }
 
 /* ===================== WORLD STATE ===================== */
 let ents=[], nextId=1, shots=[], fx=[], gameTime=0, over=false, paused=false, gameOn=false;
@@ -1090,7 +1185,7 @@ function recalcSupply(o){
   for(const e of ents){ if(e.dead||e.owner!==o) continue;
     if(e.kind==='building'&&e.done&&BDEF[e.type].supply)
       cap+=supplyOf(e.type,o);
-    if(e.kind==='unit') used+=UDEF[e.type].sup;
+    if(e.kind==='unit'&&!e.spawned) used+=UDEF[e.type].sup;   // brood is free
     if(e.kind==='building'&&e.queue) for(const q of e.queue) used+=UDEF[q].sup; }
   // no clamp: the cap is exactly what has been built
   P[o].cap=cap; P[o].sup=used;
@@ -1257,9 +1352,89 @@ function findTarget(e,rad){
 
 /* ===================== COMBAT ===================== */
 let PYRE_D=0;
+/* A Bastion hanging overhead soaks part of every hit aimed at anything under
+   it. Stacking two does not stack the cut - the best one applies - so a second
+   Bastion buys you coverage, not invulnerability. */
+function wardFactor(t){
+  if(!t||t.kind==='res') return 1;
+  let cut=0;
+  for(const e of around(t.x,t.y,300)){
+    if(e.dead||e.kind!=='unit'||e===t) continue;
+    if(!isAlly2(e.owner,t.owner)) continue;
+    const st=styleFor(e);
+    if(!st||!st.ward) continue;
+    if(Math.hypot(e.x-t.x,e.y-t.y)>st.ward.range) continue;
+    if(st.ward.cut>cut) cut=st.ward.cut;
+  }
+  return 1-cut;
+}
+/* Same-side test that works for a building or a unit without caring which. */
+function isAlly2(a,b){ return a===b||(TEAMOF[a]!==undefined&&TEAMOF[a]===TEAMOF[b]); }
+/* Everything a capital ship does between shots: mend what it hangs over, knit
+   itself together, and - for the Pact - keep giving birth. */
+function titanTick(u,dt){
+  const st=styleFor(u);
+  if(!st) return;
+  if(st.mend&&u.hp<u.maxHp) u.hp=Math.min(u.maxHp,u.hp+u.maxHp*st.mend*dt);
+  if(st.mends){
+    u.mendT=(u.mendT||0)-dt;
+    if(u.mendT<=0){
+      u.mendT=.5;
+      for(const e of around(u.x,u.y,st.mends.range+40)){
+        if(e.dead||e.kind!=='building'||!isAlly2(e.owner,u.owner)) continue;
+        if(e.hp>=e.maxHp) continue;
+        if(Math.hypot(e.x-u.x,e.y-u.y)>st.mends.range) continue;
+        e.hp=Math.min(e.maxHp,e.hp+st.mends.rate*.5);
+        if(u.owner===0&&Math.random()<.4)
+          fx.push({x:e.x+rnd(-10,10),y:e.y-e.h*.3,t:0,dur:.5,r:4,k:'hit',c:'#8fe4ff'});
+        break;                             // one structure at a time, not a blanket
+      }
+    }
+  }
+  if(st.brood){
+    u.broodT=(u.broodT||st.brood.every)-dt;
+    if(u.broodT<=0){
+      u.broodT=st.brood.every;
+      u.brood=(u.brood||[]).filter(c=>c&&!c.dead);
+      if(u.brood.length<st.brood.cap){
+        const a=Math.random()*6.283, r=u.r+22;
+        const c=mkUnit(st.brood.type,u.owner,u.x+Math.cos(a)*r,u.y+Math.sin(a)*r);
+        if(c){
+          c.spawned=true;                  // free, and costs no population
+          c.cmd={t:'amove',x:u.x+Math.cos(a)*120,y:u.y+Math.sin(a)*120};
+          u.brood.push(c);
+          if(u.owner===0||seen(u))
+            fx.push({x:c.x,y:c.y,t:0,dur:.5,r:16,k:'ping',c:'#9ff06a'});
+        }
+      }
+    }
+  }
+}
+/* A Pact hit leaves a wound that keeps bleeding. The stacks do not add up
+   forever - a fresh hit refreshes the clock and keeps the worse rate - so the
+   doctrine wins long fights without one volley deleting anything. */
+function venomApply(t,amt,by){
+  if(!t||t.dead) return;
+  const dps=amt*VENOM_DPS;
+  const cur=t.venom;
+  if(cur&&cur.until>gameTime) t.venom={dps:Math.max(cur.dps,dps),until:gameTime+VENOM_FOR,by:by};
+  else t.venom={dps:dps,until:gameTime+VENOM_FOR,by:by};
+}
+function venomTick(e,dt){
+  const v=e.venom;
+  if(!v) return;
+  if(v.until<=gameTime||e.dead){ e.venom=null; return; }
+  e.hp-=v.dps*dt;
+  if(e.owner===0||isAlly(e.owner)) e.hurtAt=gameTime;
+  if(Math.random()<dt*3.2)
+    fx.push({x:e.x+rnd(-7,7),y:e.y-(e.kind==='building'?e.h*.3:e.r),
+             t:0,dur:.5,r:3.4,k:'hit',c:'#9ff06a'});
+  if(e.hp<=0&&!e.dead) damage(e,0,v.by);   // let the usual death path run
+}
 function damage(t,amt,by){
   if(t.dead) return;
   if(t.kind==='unit'&&UP[t.owner]) amt*=Math.max(.35,1-UP[t.owner].arm*UPG.arm.step);
+  amt*=wardFactor(t);                      // a Bastion's shield, if one is overhead
   t.hp-=amt; t.flash=.12; t.hurtAt=gameTime;
   if(t.owner===0){
     lastAlert={x:t.x,y:t.y};
@@ -1283,6 +1458,13 @@ function damage(t,amt,by){
         if(by===0) fx.push({x:t.x,y:t.y,t:0,dur:1,k:'txt',
           s:'+'+bm+(bg?' +'+bg:''),c:'#ffcf5a'});
       }
+    }
+    /* The Engine is a furnace on legs and it does not go quietly. */
+    const _ts=(t.kind==='unit')?styleFor(t):null;
+    if(_ts&&_ts.boom){
+      splashAt(t.x,t.y,_ts.boom.range,_ts.boom.dmg,t.owner);
+      fx.push({x:t.x,y:t.y,t:0,dur:.9,r:_ts.boom.range,k:'boom'});
+      SFX.play('bigBoom',t.x,t.y);
     }
     SFX.play(t.kind==='building'?'bigBoom':'boom',t.x,t.y);
     /* A Legion hall is a bomb with a roof on it. Razing their base costs you
@@ -1329,9 +1511,11 @@ function fire(a,t){
   if(NET.role==='host'&&rng>40) netEvent([1,Math.round(a.x),Math.round(a.y),Math.round(t.x),Math.round(t.y),a.owner,d.splash?1:0,snd,Math.round(ang*100),Math.round(ar*mz.s),Math.round(sx),Math.round(sy)]);
   if(rng>40){
     shots.push({x:sx,y:sy,tx:t.x,ty:t.y,t:0,dur:Math.max(.06,Math.hypot(t.x-sx,t.y-sy)/900),
-      c:TEAM[a.owner].c,big:!!d.splash,target:t,dmg,splash:d.splash||0,owner:a.owner});
+      c:TEAM[a.owner].c,big:!!d.splash,target:t,dmg,splash:d.splash||0,owner:a.owner,
+      venom:!!(d.style&&d.style.venom)});
   } else {
     damage(t,dmg,a.owner);
+    if(d.style&&d.style.venom) venomApply(t,dmg,a.owner);
     fx.push({x:(a.x+t.x)/2,y:(a.y+t.y)/2,t:0,dur:.18,r:10,k:'hit',c:TEAM[a.owner].c});
   }
 }
@@ -1342,7 +1526,10 @@ function stepShots(dt){
       s.done=true;
       if(s.splash) splashAt(s.tx,s.ty,s.splash,s.dmg,s.owner),
         fx.push({x:s.tx,y:s.ty,t:0,dur:.4,r:s.splash,k:'boom'});
-      else if(s.target&&!s.target.dead) damage(s.target,s.dmg,s.owner);
+      else if(s.target&&!s.target.dead){
+        damage(s.target,s.dmg,s.owner);
+        if(s.venom) venomApply(s.target,s.dmg,s.owner);
+      }
     }
   }
   shots=shots.filter(s=>!s.done);
@@ -1579,7 +1766,8 @@ function steer(u,tx,ty,dt,stopAt){
   const dx=tx-u.x, dy=ty-u.y, d=Math.hypot(dx,dy);
   const near=stopAt||3;
   if(d<=near) return true;
-  const sp=UDEF[u.type].sp*facOf(u.owner).sp*MOVE_RATE*(u.slow?.55:1);
+  const sp=DEF(u).sp*facOf(u.owner).sp*MOVE_RATE*(u.slow?.55:1)*
+           ((u.chgT>0)?CHARGE_SPEED:1);    // a charging Legion unit is sprinting
   const step=Math.min(sp*dt,d);
   let nx=dx/d, ny=dy/d;
   u.face=Math.atan2(ny,nx);
@@ -1652,7 +1840,7 @@ function separate(){
 function inRange(a,t,extra){ return Math.hypot(t.x-a.x,t.y-a.y) <= DEF(a).rng+hitRadius(t)+(extra||0) }
 
 function updateUnit(u,dt){
-  const d=UDEF[u.type];
+  const d=DEF(u);                          // the doctrine's statline, not the shared one
   u.atkCd=Math.max(0,u.atkCd-dt);
   u.flash=Math.max(0,u.flash-dt);
   u.muzzle=Math.max(0,(u.muzzle||0)-dt);
@@ -1682,6 +1870,19 @@ function updateUnit(u,dt){
     }
   }
 
+  /* How long since this unit actually moved - what 'dug in' means. */
+  if(u.px0===undefined){ u.px0=u.x; u.py0=u.y; }
+  if(Math.hypot(u.x-u.px0,u.y-u.py0)>3){ u.stillT=0; u.px0=u.x; u.py0=u.y; }
+  else u.stillT=(u.stillT||0)+dt;
+  venomTick(u,dt);
+  if(u.dead) return;
+  if(u.type==='titan') titanTick(u,dt);
+  // charge timers run down whatever else is happening
+  u.chgCd=Math.max(0,(u.chgCd||0)-dt);
+  if(u.windT>0) u.windT-=dt;
+  if(u.chgT>0) u.chgT-=dt;
+  if(u.chgT<=0) u.chgHit=false;
+
   // auto acquire
   if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
     if(c.t==='idle'||c.t==='amove'||c.t==='hold') u.target=findTarget(u,d.sight*TILE*.8);
@@ -1689,6 +1890,34 @@ function updateUnit(u,dt){
     if(u.target&&c.t==='idle') u.retreat={x:u.x,y:u.y};
   }
   if(u.target&&u.target.dead) u.target=null;
+
+  /* The charge. A Legion brawler that can see something a little way off plants
+     itself, winds up for a beat - the tell is deliberate, it is what makes the
+     thing dodgeable - then sprints in and hits for nearly double. */
+  const _st=d.style;
+  if(_st&&_st.charge&&u.target&&!u.target.dead&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
+    const far=Math.hypot(u.target.x-u.x,u.target.y-u.y);
+    const reach=d.rng+hitRadius(u.target);
+    if(u.windT>0){                         // planted, about to go
+      u.face=Math.atan2(u.target.y-u.y,u.target.x-u.x);
+      if(u.windT<=0||u.windT-dt<=0){ u.chgT=CHARGE_RUN; u.chgHit=true;
+        if(u.owner===0||seen(u)) SFX.play('attackOrder',u.x,u.y); }
+      if(u.owner===0||seen(u))
+        fx.push({x:u.x,y:u.y,t:0,dur:.14,r:u.r+5+(1-u.windT/CHARGE_WIND)*10,
+                 k:'ping',c:'#ff8a3d'});
+      return;                              // it does not shoot or walk mid-wind-up
+    }
+    if(u.chgT>0){
+      if(far<=reach){                      // arrived - the impact lands at full weight
+        if(u.atkCd<=0){ fire(u,u.target); u.chgT=0; u.chgHit=false; }
+      } else navigate(u,u.target.x,u.target.y,dt,reach*.8);
+      return;
+    }
+    if(far>reach+6&&far<CHARGE_RANGE&&u.chgCd<=0){
+      u.windT=CHARGE_WIND; u.chgCd=CHARGE_CD;
+      return;
+    }
+  }
 
   // hard attack order
   if(c.t==='attack'){
@@ -2471,7 +2700,7 @@ function netView(o){
   return o===0?g:(o===g?0:o);
 }
 const NET_U=['delver','warden','bulwark','sunderer','harrower','talon'];
-const NET_B=['keystone','habitat','musterhall','siphon','forgeworks','watchspire'];
+const NET_B=['keystone','habitat','musterhall','siphon','forgeworks','watchspire','citadel'];
 const NET_R=['aurite','vent'];
 function netTypeIdx(e){
   if(e.kind==='unit') return NET_U.indexOf(e.type);
@@ -3144,7 +3373,7 @@ function buildCard(){
   }
   if(us.length){
     if(cardMode==='build'){
-      for(const t of ['keystone','habitat','musterhall','siphon','forgeworks','watchspire']){
+      for(const t of ['keystone','habitat','musterhall','siphon','forgeworks','watchspire','citadel']){
         const d=BDEF[t], locked=d.req&&!hasBuilding(0,d.req);
         cardButtons.push({img:iconOf('bld',t,0),name:nameOf(t,0),cost:{m:d.m,g:d.g},hk:d.hk,dis:locked,
           tip:locked?'Requires '+nameOf(d.req,0):'',
@@ -4127,7 +4356,8 @@ BOLT.onerror=function(){ boltOK=false; };
 BOLT.src='bolt.png';
 const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
   bulwark:{d:1.95,off:.68,s:1.5}, sunderer:{d:2.05,off:0,s:2.3},
-  harrower:{d:1.45,off:0,s:2.0}, watchspire:{d:1.1,off:0,s:1.6} };
+  harrower:{d:1.45,off:0,s:2.0}, watchspire:{d:1.1,off:0,s:1.6},
+  titan:{d:1.6,off:0,s:2.8} };
 
 /* ---------- units (drawn facing +x) ---------- */
 function makeUnitSpr(type,owner){
@@ -4144,7 +4374,47 @@ function makeUnitSpr(type,owner){
   if(_fs!==1) g.scale(_fs,_fs);
   const hullGrad=()=>{ const gr=g.createLinearGradient(0,-R,0,R);
     gr.addColorStop(0,HULL_HI); gr.addColorStop(.55,HULL); gr.addColorStop(1,HULL_LO); return gr; };
-  if(type==='delver'){
+  if(type==='titan'){
+    /* A capital ship: a long spined core with a heavy ring around the middle
+       and four outriggers. facPoly and facRR rebuild the same point list in
+       each doctrine's own language, so this one silhouette comes out milled
+       for the Concord, hammered for the Legion and grown for the Pact. */
+    g.fillStyle=DARK;                                   // outriggers
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
+      g.save(); g.translate(sg[0]*R*.42,sg[1]*R*.78); g.rotate(sg[1]*.42);
+      rr(g,-R*.5,-5,R*1.0,10,4); g.fill();
+      g.restore();
+    });
+    g.fillStyle=HULL_LO;                                // wing roots
+    [[-1],[1]].forEach(sg=>{
+      poly(g,[[-R*.2,sg[0]*R*.5],[R*.5,sg[0]*R*.95],[R*.1,sg[0]*R*1.08],[-R*.6,sg[0]*R*.72]]);
+      g.fill(); g.strokeStyle=DARK; g.lineWidth=1.3; g.stroke();
+    });
+    poly(g,[[R*1.3,0],[R*.62,-R*.56],[-R*.3,-R*.72],[-R*1.1,-R*.34],
+            [-R*1.1,R*.34],[-R*.3,R*.72],[R*.62,R*.56]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.8; g.stroke();
+    g.fillStyle=HULL_HI;                                // dorsal spine
+    poly(g,[[R*1.08,0],[R*.3,-R*.26],[-R*.78,-R*.2],[-R*.78,R*.2],[R*.3,R*.26]]);
+    g.fill(); g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
+    g.fillStyle=DARK;                                   // the heavy ring
+    rr(g,-R*.46,-R*.84,R*.3,R*1.68,5); g.fill();
+    g.fillStyle=t.c; g.globalAlpha=.9;
+    rr(g,-R*.4,-R*.66,R*.17,R*1.32,4); g.fill(); g.globalAlpha=1;
+    g.fillStyle=DARK;                                   // prow lance
+    rr(g,R*.55,-4.6,R*.85,9.2,3); g.fill();
+    g.fillStyle=HULL; rr(g,R*1.18,-6,R*.3,12,2.4); g.fill();
+    g.fillStyle=t.c;                                    // flank batteries
+    for(let i=-1;i<=1;i+=2){
+      rr(g,-R*.1,i*R*.5-2.4,R*.62,4.8,2); g.fill();
+    }
+    // the core
+    const cg=g.createRadialGradient(-R*.05,-R*.1,1,0,0,R*.46);
+    cg.addColorStop(0,_lt('#e9f6ff')); cg.addColorStop(.45,t.c); cg.addColorStop(1,DARK);
+    glow(g,()=>{ g.fillStyle=cg; g.beginPath(); g.arc(0,0,R*.4,0,7); g.fill(); },t.c,16);
+    g.strokeStyle=DARK; g.lineWidth=1.6; g.beginPath(); g.arc(0,0,R*.4,0,7); g.stroke();
+    g.fillStyle=_lt('#cdefff');
+    glow(g,()=>{ g.beginPath(); g.arc(-R*.08,-R*.06,R*.14,0,7); g.fill(); },t.c,9);
+  } else if(type==='delver'){
     plate(g,-R-3,-R*.62,R*.7,R*1.24,3,HULL,HULL_LO);
     g.fillStyle=t.c; g.globalAlpha=.85; rr(g,-R-1.5,-R*.34,2,R*.68,1); g.fill(); g.globalAlpha=1;
     g.fillStyle=DARK;
@@ -4729,6 +4999,25 @@ function drawUnit(u){
     ctx.save(); ctx.globalAlpha=Math.min(.8,u.flash*4); ctx.fillStyle='#fff';
     ctx.beginPath(); ctx.arc(u.x,u.y,d.r+1.5,0,7); ctx.fill(); ctx.restore();
   }
+  /* The wind-up before a charge is the whole counterplay, so it has to be
+     unmistakable: the unit plants and a ring closes on it. */
+  if(u.windT>0){
+    const k=1-clamp(u.windT/CHARGE_WIND,0,1);
+    ctx.save();
+    ctx.strokeStyle='#ff8a3d'; ctx.lineWidth=2.4; ctx.globalAlpha=.4+k*.6;
+    ctx.beginPath(); ctx.arc(u.x,u.y-lift,d.r+22-k*18,0,7); ctx.stroke();
+    ctx.restore();
+  } else if(u.chgT>0){                     // and a streak while it runs
+    ctx.save();
+    ctx.strokeStyle='#ff8a3d'; ctx.lineWidth=3; ctx.globalAlpha=.5;
+    ctx.beginPath(); ctx.moveTo(u.x-Math.cos(u.face)*d.r*2.1,u.y-Math.sin(u.face)*d.r*2.1-lift);
+    ctx.lineTo(u.x-Math.cos(u.face)*d.r*.6,u.y-Math.sin(u.face)*d.r*.6-lift); ctx.stroke();
+    ctx.restore();
+  }
+  if(u.venom&&u.venom.until>gameTime){     // and a wound that is still bleeding
+    ctx.save(); ctx.globalAlpha=.75; ctx.fillStyle='#9ff06a';
+    ctx.beginPath(); ctx.arc(u.x+d.r*.7,u.y-d.r*.7-lift,2.6,0,7); ctx.fill(); ctx.restore();
+  }
   if(d.worker&&u.carry>0){
     const c=u.carryType==='m'?'#7fd0ff':'#35d18a';
     ctx.save(); ctx.shadowColor=c; ctx.shadowBlur=8; ctx.fillStyle=c;
@@ -4895,6 +5184,20 @@ function render(){
     ctx.globalAlpha=1;
     ctx.strokeStyle=ok?'#7dffb0':'#ff8a7a'; ctx.lineWidth=2; ctx.setLineDash([9,6]);
     ctx.strokeRect(px-d.w/2,py-d.h/2,d.w,d.h); ctx.setLineDash([]);
+  }
+  /* A Bastion's cover has to be legible or you cannot fight under it. */
+  for(const e of ents){
+    if(e.dead||e.kind!=='unit'||e.type!=='titan') continue;
+    if(!isAlly(e.owner)&&!seen(e)) continue;
+    const st=styleFor(e);
+    if(!st||!st.ward) continue;
+    const pulse=.09+.04*Math.sin(gameTime*1.7+e.id);
+    ctx.save();
+    ctx.globalAlpha=pulse; ctx.fillStyle=TEAM[e.owner].c;
+    ctx.beginPath(); ctx.arc(e.x,e.y,st.ward.range,0,7); ctx.fill();
+    ctx.globalAlpha=.34; ctx.strokeStyle=TEAM[e.owner].c; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(e.x,e.y,st.ward.range,0,7); ctx.stroke();
+    ctx.restore();
   }
   if(TUT.on) drawTutFocus();            // inside the world transform
   ctx.restore();
@@ -5480,13 +5783,16 @@ const SCALES={
    the underlying type so a rename can never shuffle or collide with them. */
 const HK={delver:'D',warden:'W',bulwark:'B',sunderer:'S',harrower:'H',talon:'T'};
 const FNAMES={
-  concord:{delver:'Delver',warden:'Warden',bulwark:'Bulwark',sunderer:'Sunderer',
+  concord:{titan:'Aegis Bastion',citadel:'Ascendant Gate',
+           delver:'Delver',warden:'Warden',bulwark:'Bulwark',sunderer:'Sunderer',
            harrower:'Harrower',talon:'Talon',keystone:'Keystone',habitat:'Habitat',
            musterhall:'Barracks',siphon:'Siphon',forgeworks:'Forgeworks',watchspire:'Watchspire'},
-  legion: {delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',
+  legion: {titan:'Cataclysm Engine',citadel:'Bloodforge',
+           delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',
            harrower:'Devourer',talon:'Shrike',keystone:'Spire Core',habitat:'Warren',
            musterhall:'Blood Pit',siphon:'Leech',forgeworks:'Furnace',watchspire:'Impaler'},
-  pact:   {delver:'Tiller',warden:'Thornling',bulwark:'Bramble',sunderer:'Lobber',
+  pact:   {titan:'Hollow Mother',citadel:'Worldheart',
+           delver:'Tiller',warden:'Thornling',bulwark:'Bramble',sunderer:'Lobber',
            harrower:'Gorger',talon:'Driftwing',keystone:'Heartroot',habitat:'Bower',
            musterhall:'Grove',siphon:'Taproot',forgeworks:'Kiln',watchspire:'Bristle'}
 };
@@ -5539,7 +5845,13 @@ function dmgOf(e){
   /* Blood Rage. A wounded Legion swings harder, so trading down is the whole
      plan - a Devourer on its last sliver hits for nearly half again. */
   const rage=(e.kind==='unit'&&f.rage&&e.maxHp)?1+f.rage*clamp(1-e.hp/e.maxHp,0,1):1;
-  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage;
+  /* Dug in: a Concord line that has not moved for a moment shoots harder, so
+     holding ground is worth something to the doctrine that is built for it. */
+  const st=d.style;
+  const dug=(st&&st.entrench&&(e.stillT||0)>=ENTRENCH_AT)?ENTRENCH_DMG:1;
+  // and a Legion unit that is mid-charge lands its impact at full weight
+  const chg=(st&&st.charge&&e.chgHit)?CHARGE_HIT:1;
+  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage*dug*chg;
 }
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
