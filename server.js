@@ -147,11 +147,19 @@ function newCode(){
   do{ code=String(Math.floor(1000+Math.random()*9000)); }while(rooms.has(code));
   return code;
 }
+/* A client picks its own mode and faction, and those strings are handed
+   straight back out to every other client. Only ever store one we know. */
+const MODE_OK={duel:1,team:1,ffa:1}, FAC_OK={concord:1,legion:1,pact:1};
+function pick(tbl,v,dflt){
+  return (typeof v==='string'&&Object.prototype.hasOwnProperty.call(tbl,v))?v:dflt;
+}
+function okMode(m){ return pick(MODE_OK,m,'duel'); }
+function okFac(f){ return pick(FAC_OK,f,'concord'); }
 function openRoom(c,quick,mode,pub){
   const code=newCode();
   const room={code,players:[c],quick:!!quick,born:Date.now(),started:false,
               pub:!!pub,                      // listed in the browser, or code-only
-              mode:(typeof mode==='string'?mode:'duel')};
+              mode:okMode(mode)};
   rooms.set(code,room); c.room=room;
   send(c,{t:'hosted',code,quick:!!quick});
   roster(room);
@@ -172,7 +180,7 @@ function addPlayer(room,c){
 function begin(room,mode,grand,seed,terrain){
   room.started=true;
   const facs=['concord','concord','concord','concord'];
-  room.players.forEach((pl,i)=>{ if(pl&&pl.fac&&i<4) facs[i]=pl.fac; });
+  room.players.forEach((pl,i)=>{ if(pl&&pl.fac&&i<4) facs[i]=okFac(pl.fac); });
   room.cfg={mode:mode,grand:!!grand,seed:seed,terrain:terrain,count:room.players.length,facs:facs};
   room.players.forEach((c,i)=>{
     send(c,{t:'start',role:i===0?'host':'guest',code:room.code,
@@ -182,7 +190,7 @@ function begin(room,mode,grand,seed,terrain){
 }
 function handle(c,text){
   let m; try{ m=JSON.parse(text); }catch(e){ return; }
-  if(m.t==='host'){ if(c.room) return; c.fac=m.fac; openRoom(c,false,m.mode,m.pub); return; }
+  if(m.t==='host'){ if(c.room) return; c.fac=okFac(m.fac); openRoom(c,false,m.mode,m.pub); return; }
   if(m.t==='quick'){
     if(c.room) return;
     for(const room of rooms.values()){
@@ -190,7 +198,7 @@ function handle(c,text){
         if(addPlayer(room,c)) return;
       }
     }
-    c.fac=m.fac;
+    c.fac=okFac(m.fac);
     openRoom(c,true,m.mode,true);   // quick play is public by nature
     send(c,{t:'searching'});
     return;
@@ -202,7 +210,7 @@ function handle(c,text){
     if(room.started){                          // rejoin a seat that opened up
       const seat=room.players.indexOf(null);
       if(seat<0){ send(c,{t:'error',msg:'That game is full'}); return; }
-      room.players[seat]=c; c.room=room; c.fac=m.fac||c.fac;
+      room.players[seat]=c; c.room=room; c.fac=okFac(m.fac||c.fac);
       const g=room.cfg||{};
       send(c,{t:'start',role:'guest',code:room.code,slot:seat,count:g.count||room.players.length,
               mode:g.mode,grand:!!g.grand,seed:g.seed,terrain:g.terrain,facs:g.facs,rejoin:true});
@@ -211,14 +219,14 @@ function handle(c,text){
     }
     if(room.players.length>=MAXP){ send(c,{t:'error',msg:'That game is already full'}); return; }
     if(room.players.indexOf(c)>=0){ send(c,{t:'error',msg:'That is your own code'}); return; }
-    c.fac=m.fac;
+    c.fac=okFac(m.fac);
     addPlayer(room,c);
     return;
   }
   if(m.t==='begin'){
     const room=c.room;
     if(!room||room.started||hostOf(room)!==c) return;
-    room.mode=m.mode||room.mode;
+    if(m.mode!==undefined) room.mode=okMode(m.mode);
     begin(room,room.mode,m.grand,m.seed,m.terrain);
     return;
   }

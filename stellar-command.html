@@ -378,7 +378,7 @@ body.touch .mouse-only{display:none}
 </div>
 <div id="panel">
   <div id="sideBtns">
-    <button id="idle" title="Idle Delvers - select (F1)"><span class="ib">&#9874;</span><b id="idleN">0</b></button>
+    <button id="idle" title="Idle harvesters - select (F1)"><span class="ib">&#9874;</span><b id="idleN">0</b></button>
     <button id="armyBtn" title="Select army (F2)"><span class="ib">&#9876;</span></button>
   </div>
   <div id="mmWrap"><canvas id="mm" width="200" height="200"></canvas><div id="clock">0:00</div></div>
@@ -550,16 +550,38 @@ const TEAM=[{c:PC,dk:'#12617f'},{c:EC,dk:'#7d2b1c'},
    A palette recolours YOUR forces on YOUR screen; opponents keep the colours
    that tell the sides apart. Hues avoid the red, green and orange rival slots. */
 /* ===================== FACTIONS =====================
-   Each side runs the same roster through a different doctrine: multipliers on
-   health, damage, speed, price and build time. Buildings stay neutral so towers
-   and tech keep one balance point, and nothing here is a flat upgrade. */
+   Stat multipliers alone made the three sides feel like one army with a tint,
+   so each doctrine also plays by its own rules. They want different things out
+   of a match: the Concord wants to hold a line and keep its veterans alive,
+   the Legion wants the fight to happen NOW and has no way to heal except by
+   winning it, the Pact wants to be everywhere at once. None of them is a flat
+   upgrade - every rule that gives also takes. */
 const FACTIONS={
-  concord:{n:'AZURI CONCORD', d:'even doctrine - no weaknesses',
-           hp:1,    dmg:1,    sp:1,    cost:1,   bt:1,    eco:1},
-  legion: {n:'EMBER LEGION',  d:'tougher, harder hitting, slower and dearer',
-           hp:1.28, dmg:1.14, sp:.86,  cost:1.2, bt:1.18, eco:1},
-  pact:   {n:'VERDANT PACT',  d:'cheap, quick, fragile - win on numbers',
-           hp:.8,   dmg:.92,  sp:1.22, cost:.8,  bt:.76,  eco:1.06}
+  concord:{n:'AZURI CONCORD', d:'engineers - hold the line, mend, out-tech',
+           hp:1,    dmg:1,    sp:1,    cost:1,   bt:1,    eco:1,
+           repairMul:.6,                 // Delvers are proper engineers: repairs cost 40% less
+           repairRate:1.7,               // and go 70% faster, mid-battle included
+           upgCost:.78, upgTime:.8,      // Forgeworks tech is cheaper and quicker
+           bldRegen:.012,                // structures mend themselves once left alone
+           tr:['repairs 40% cheaper, 70% faster','structures self-mend out of combat',
+               'upgrades 22% cheaper, 20% faster']},
+  legion: {n:'EMBER LEGION',  d:'berserkers - cannot repair, rage as they bleed',
+           hp:1.28, dmg:1.1,  sp:.86,  cost:1.18, bt:1.18, eco:1,
+           noRepair:true,                // nothing in the Legion gets patched up
+           regen:.035,                   // the wounded knit back together out of the fight
+           rage:.4,                      // and hit harder the closer they are to dying
+           pyre:1,                       // their structures take the enemy with them
+           supplyBonus:2,                // they cram bodies into every Warren
+           tr:['cannot repair anything','wounded regenerate out of combat',
+               'up to +40% damage as health drops','structures detonate when they fall',
+               '+2 population per Warren']},
+  pact:   {n:'VERDANT PACT',  d:'swarm - grow wide, heal on your own soil',
+           hp:.8,   dmg:.92,  sp:1.22, cost:.8,  bt:.76,  eco:1.02,
+           trickle:.55,                  // every structure draws aurite out of the ground
+           groveRegen:.05, groveRange:240,
+           buildRate:1.4,                // Tillers raise things fast
+           tr:['every structure trickles aurite','units mend fast near your buildings',
+               'builds 40% faster','fragile away from home']}
 };
 let facKey='concord';
 let FACOF=['concord','concord','concord','concord'];
@@ -701,7 +723,8 @@ const UPG={
   arm:{n:'Plating', ic:'⛨', hk:'D', step:.09, max:3, m:150, g:50, bt:38}
 };
 let UP=[{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0}];
-function upCost(key,lvl){ const u=UPG[key]; return {m:Math.round(u.m*(1+lvl*.8)), g:Math.round(u.g*(1+lvl*.8))}; }
+function upCost(key,lvl,owner){ const u=UPG[key], k=facOf(owner||0).upgCost||1;
+  return {m:Math.round(u.m*(1+lvl*.8)*k), g:Math.round(u.g*(1+lvl*.8)*k)}; }
 const P=[{m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0},
          {m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0}];   // slot 0 is always the local player
 let blocked, terr, explored, visible;
@@ -1010,7 +1033,8 @@ function hasBuilding(o,t){ return ents.some(e=>!e.dead&&e.kind==='building'&&e.o
 function recalcSupply(o){
   let cap=0,used=0;
   for(const e of ents){ if(e.dead||e.owner!==o) continue;
-    if(e.kind==='building'&&e.done&&BDEF[e.type].supply) cap+=BDEF[e.type].supply;
+    if(e.kind==='building'&&e.done&&BDEF[e.type].supply)
+      cap+=BDEF[e.type].supply+(facOf(o).supplyBonus||0);
     if(e.kind==='unit') used+=UDEF[e.type].sup;
     if(e.kind==='building'&&e.queue) for(const q of e.queue) used+=UDEF[q].sup; }
   P[o].cap=Math.min(cap,GRAND?420:200); P[o].sup=used;
@@ -1130,10 +1154,11 @@ function findTarget(e,rad){
 }
 
 /* ===================== COMBAT ===================== */
+let PYRE_D=0;
 function damage(t,amt,by){
   if(t.dead) return;
   if(t.kind==='unit'&&UP[t.owner]) amt*=Math.max(.35,1-UP[t.owner].arm*UPG.arm.step);
-  t.hp-=amt; t.flash=.12;
+  t.hp-=amt; t.flash=.12; t.hurtAt=gameTime;
   if(t.owner===0){
     lastAlert={x:t.x,y:t.y};
     if(t.kind==='building'){
@@ -1157,6 +1182,15 @@ function damage(t,amt,by){
       }
     }
     SFX.play(t.kind==='building'?'bigBoom':'boom',t.x,t.y);
+    /* A Legion hall is a bomb with a roof on it. Razing their base costs you
+       something, and they will happily plant one in your face. The depth guard
+       stops a packed base from chaining itself into a stack overflow. */
+    const _pf=facOf(t.owner);
+    if(t.kind==='building'&&_pf.pyre&&PYRE_D<4){
+      const rad=Math.max(t.w,t.h)*.85, amt=(24+t.maxHp*.05)*_pf.pyre;
+      PYRE_D++; splashAt(t.x,t.y,rad,amt,t.owner); PYRE_D--;
+      fx.push({x:t.x,y:t.y,t:0,dur:.9,r:rad,k:'boom'});
+    }
     if(NET.role==='host') netEvent([2,Math.round(t.x),Math.round(t.y),t.kind==='building'?1:0]);
     fx.push({x:t.x,y:t.y,t:0,dur:t.kind==='building'?.7:.35,r:t.kind==='building'?Math.max(t.w,t.h)*.7:22,k:'boom'});
     if(t.kind==='building'){ markNavDirty(); if(t.type==='siphon'&&t.geyser) t.geyser.taken=null; }
@@ -1512,6 +1546,30 @@ function updateUnit(u,dt){
   u.flash=Math.max(0,u.flash-dt);
   u.muzzle=Math.max(0,(u.muzzle||0)-dt);
   const c=u.cmd;
+  /* Doctrine healing - the only sustain the Legion and the Pact have, since
+     neither buys health back with cash the way the Concord does. The Legion
+     mends anywhere but only once it is out of the fight; the Pact mends almost
+     at once, but only standing on its own ground. Checked twice a second. */
+  const _fh=facOf(u.owner);
+  if(u.hp<u.maxHp&&(_fh.regen||_fh.groveRegen)){
+    u.regT=(u.regT||0)-dt;
+    if(u.regT<=0){
+      u.regT=.5;
+      let rate=0, grove=false;
+      if(_fh.regen&&gameTime-(u.hurtAt||-999)>4) rate=_fh.regen;
+      if(_fh.groveRegen&&gameTime-(u.hurtAt||-999)>1.5&&
+         around(u.x,u.y,_fh.groveRange||240).some(
+           e=>!e.dead&&e.kind==='building'&&e.done&&e.owner===u.owner)){
+        if(_fh.groveRegen>rate){ rate=_fh.groveRegen; grove=true; }
+      }
+      if(rate>0){
+        u.hp=Math.min(u.maxHp,u.hp+u.maxHp*rate*.5);
+        if(u.owner===0&&Math.random()<.32)
+          fx.push({x:u.x+rnd(-6,6),y:u.y-u.r,t:0,dur:.45,r:4,k:'hit',
+                   c:grove||_fh.groveRegen?'#b6f08a':'#ff9b5a'});
+      }
+    }
+  }
 
   // auto acquire
   if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
@@ -1602,6 +1660,7 @@ function gatherStep(u,dt){
   } else { u.hTimer=0; navigate(u,node.x,node.y,dt,reach-2); }
 }
 function canRepair(t,own){
+  if(facOf(own).noRepair) return false;         // the Legion mends nothing
   return t&&!t.dead&&t.owner===own&&t.hp<t.maxHp&&(t.kind==='unit'||(t.kind==='building'&&t.done));
 }
 function repairStep(u,dt){
@@ -1609,9 +1668,10 @@ function repairStep(u,dt){
   if(!canRepair(t,u.owner)){ u.cmd={t:'idle'}; return; }
   if(edgeDist(u,t)>workReach(u,t)){ navigate(u,t.x,t.y,dt,workStop(u,t)); return; }
   u.face=Math.atan2(t.y-u.y,t.x-u.x);
-  const d=DEF(t), pool=P[u.owner];
-  const perSec=t.maxHp/Math.max(8,d.bt||20);      // a full rebuild takes about as long as building it
-  const cm=(d.m||0)*.35/t.maxHp, cg=(d.g||0)*.35/t.maxHp;
+  const d=DEF(t), pool=P[u.owner], _fr=facOf(u.owner);
+  const perSec=t.maxHp/Math.max(8,d.bt||20)*(_fr.repairRate||1);   // a full rebuild takes about as long as building it
+  const _rm=_fr.repairMul||1;
+  const cm=(d.m||0)*.35*_rm/t.maxHp, cg=(d.g||0)*.35*_rm/t.maxHp;
   let heal=perSec*dt;
   if(cm>0) heal=Math.min(heal,pool.m/cm);
   if(cg>0) heal=Math.min(heal,pool.g/cg);
@@ -1648,7 +1708,7 @@ function buildStep(u,dt){
   if(!b||b.dead||b.done){ u.cmd={t:'idle'};
     const n=findMineralNear(u,u); if(n) setGather(u,n); return; }
   if(edgeDist(u,b)<=workReach(u,b)){
-    const rate=BUILD_RATE/BDEF[b.type].bt;
+    const rate=BUILD_RATE/BDEF[b.type].bt*(facOf(u.owner).buildRate||1);
     b.prog=Math.min(1,b.prog+rate*dt);
     b.lastBuildT=gameTime;
     b.hp=Math.min(b.maxHp, b.maxHp*(.12+.88*b.prog));
@@ -1666,6 +1726,23 @@ function updateBuilding(b,dt){
   b.flash=Math.max(0,b.flash-dt);
   if(!b.done) return;
   const d=BDEF[b.type];
+  const _fb=facOf(b.owner);
+  /* Concord yards patch themselves once nobody is shooting at them, so their
+     defensive line comes back for free between pushes. The Pact instead draws
+     aurite up through every root it puts down - for them, spreading out IS the
+     economy, and a fifth Bower pays for itself. */
+  if(_fb.bldRegen&&b.hp<b.maxHp&&gameTime-(b.hurtAt||-999)>6)
+    b.hp=Math.min(b.maxHp,b.hp+b.maxHp*_fb.bldRegen*dt);
+  if(_fb.trickle&&P[b.owner]){
+    P[b.owner].m+=_fb.trickle*dt;
+    if(b.owner===0){
+      STATS.aurite+=_fb.trickle*dt;
+      b.tkFx=(b.tkFx||0)-dt;
+      if(b.tkFx<=0){ b.tkFx=5;
+        fx.push({x:b.x,y:b.y-b.h*.45,t:0,dur:.8,k:'txt',
+                 s:'+'+Math.round(_fb.trickle*5),c:'#b6f08a'}); }
+    }
+  }
   if(d.dmg){                                   // turret
     b.atkCd=Math.max(0,b.atkCd-dt);
     if(!b.target||b.target.dead||Math.hypot(b.target.x-b.x,b.target.y-b.y)>d.rng+40) b.target=findTarget(b,d.rng);
@@ -1716,10 +1793,10 @@ function tryResearch(b,key){
   }
   const o=b.owner, lvl=UP[o][key];
   if(lvl>=UPG[key].max||b.res) { if(!o){ say(b.res?'Already researching':'Fully researched'); SFX.play('deny'); } return false; }
-  const c=upCost(key,lvl);
+  const c=upCost(key,lvl,o);
   if(!canAfford(o,c)){ if(!o){ say(P[o].m<c.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); } return false; }
   pay(o,c);
-  b.res={key,t:0,dur:UPG[key].bt};
+  b.res={key,t:0,dur:UPG[key].bt*(facOf(o).upgTime||1)};
   return true;
 }
 /* One press, one unit from each building in the group - the ones that cannot
@@ -1979,6 +2056,9 @@ function rightClick(wx,wy,queue){
     let any=false;
     for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'build',site:t}; any=true; }
     if(any){ SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:24,k:'ping',c:'#7dffb0'}); return; }
+  }
+  if(t&&facOf(0).noRepair&&t.owner===0&&t.hp<t.maxHp&&us.some(x=>UDEF[x.type].worker)){
+    say('The Legion mends nothing - our wounded heal themselves'); SFX.play('deny'); return;
   }
   if(canRepair(t,0)){
     let any=false;
@@ -2341,7 +2421,12 @@ function netRecv(m){
   if(m.t==='start'){
     NET.role=m.role; NET.code=m.code; NET.ended=false; NET.byId=new Map();
     NET.slot=m.slot|0; NET.humans=m.count|0||1; NET.terrain=m.terrain||terrainKey;
-    NET.facs=Array.isArray(m.facs)?m.facs:null;
+    /* The relay hands these out; keep only doctrines we actually have, so a
+       bad name can never reach a lookup table as a key. */
+    NET.facs=Array.isArray(m.facs)
+      ?m.facs.slice(0,4).map(f=>(typeof f==='string'&&
+        Object.prototype.hasOwnProperty.call(FACTIONS,f))?f:'concord')
+      :null;
     NET.lostAt=null;
     if(m.rejoin) say('Reconnected as Commander '+(NET.slot+1)+'.');
     lobbyClose();
@@ -2781,7 +2866,7 @@ function alertStep(){
 }
 function say(t){
   const m=document.getElementById('msg');
-  m.textContent=t; m.classList.add('on');
+  m.textContent=facText(t); m.classList.add('on');
   clearTimeout(say._t); say._t=setTimeout(()=>m.classList.remove('on'),1900);
 }
 function updMMBtn(){
@@ -4404,16 +4489,25 @@ function renderMM(){
 
 /* ===================== CAMERA ===================== */
 function updateCam(dt){
-  const sp=(keys['shift']?1500:950)*OPT.scroll*dt/cam.z; let dx=0,dy=0;
+  /* Two separate speeds off one base: the arrow keys follow SCROLL SPEED, the
+     screen edge follows MOUSE PAN SPEED. They used to multiply, so the edge
+     slider did nothing recognisable once the scroll slider was off 100%. */
+  const base=(keys['shift']?1500:950)*dt/cam.z;
+  const sp=base*(OPT.scroll||1); let dx=0,dy=0;
   if(keys['arrowleft']) dx-=sp;
   if(keys['arrowright']) dx+=sp;
   if(keys['arrowup']) dy-=sp;
   if(keys['arrowdown']) dy+=sp;
-  const W=window.innerWidth, H=window.innerHeight;
-  const live=OPT.edge&&!IS_TOUCH&&mouse.inWin&&mouse.ex!==undefined&&
+  /* innerWidth is not always the viewport the cursor is measured against -
+     a zoomed window, a webview or a fullscreen handoff can all report 0 or a
+     stale size, and then every edge test failed and panning simply died.
+     Fall back through the document and the canvas before giving up. */
+  const W=window.innerWidth||document.documentElement.clientWidth||cv.clientWidth||0;
+  const H=window.innerHeight||document.documentElement.clientHeight||cv.clientHeight||0;
+  const live=OPT.edge&&!IS_TOUCH&&mouse.inWin&&W>0&&H>0&&mouse.ex!==undefined&&
              mouse.ex>=0&&mouse.ey>=0&&mouse.ex<=W&&mouse.ey<=H;
   if(live&&!drag){
-    const E=OPT.edgeZone||22, ms=sp*(OPT.edgeSpd||1);
+    const E=OPT.edgeZone||22, ms=base*(OPT.edgeSpd||1);
     if(mouse.ex<E) dx-=ms; else if(mouse.ex>W-E) dx+=ms;
     if(mouse.ey<E) dy-=ms; else if(mouse.ey>H-E) dy+=ms;
   }
@@ -4912,11 +5006,40 @@ function nameOf(type,owner){
   return f[type]||(UDEF[type]&&UDEF[type].n)||(BDEF[type]&&BDEF[type].n)||type;
 }
 function unitName(type,owner){ return nameOf(type,owner); }
+function idleTitle(){
+  const ib=document.getElementById('idle');
+  if(ib) ib.title='Idle '+nameOf('delver',0)+'s - select (F1)';
+}
+/* The tutorial, the field manual and most of the one-line messages were
+   written with Concord names in them, and they read wrong the moment you
+   pick another doctrine - 'build more habitats' when you have no Habitats.
+   Rather than tokenise a hundred strings, swap the generic name for the
+   doctrine's own on the way to the screen. Longest name first so 'Watchspire'
+   is not half-eaten by a shorter match. */
+const RENAME_KEYS=Object.keys(FNAMES.concord)
+  .sort((a,b)=>FNAMES.concord[b].length-FNAMES.concord[a].length);
+function facText(t,owner){
+  if(typeof t!=='string') return t;
+  const fk=FACOF[(owner===undefined?0:owner)];
+  if(!fk||fk==='concord'||!FNAMES[fk]) return t;
+  let out=t;
+  for(const k of RENAME_KEYS){
+    const from=FNAMES.concord[k], to=FNAMES[fk][k];
+    if(!from||!to||from===to) continue;
+    if(out.indexOf(from)>=0) out=out.split(from).join(to);
+    const lf=from.toLowerCase(), lt=to.toLowerCase();
+    if(lf!==from&&out.indexOf(lf)>=0) out=out.split(lf).join(lt);
+  }
+  return out;
+}
 function dmgOf(e){
   const d=DEF(e);
   const up=(e.kind==='unit'&&UP[e.owner])?1+UP[e.owner].wep*UPG.wep.step:1;
-  const fac=e.kind==='unit'?facOf(e.owner).dmg:1;
-  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac;
+  const f=facOf(e.owner), fac=e.kind==='unit'?f.dmg:1;
+  /* Blood Rage. A wounded Legion swings harder, so trading down is the whole
+     plan - a Devourer on its last sliver hits for nearly half again. */
+  const rage=(e.kind==='unit'&&f.rage&&e.maxHp)?1+f.rage*clamp(1-e.hp/e.maxHp,0,1):1;
+  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage;
 }
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
@@ -4955,9 +5078,13 @@ function menuInit(){
   Object.keys(FACTIONS).forEach(k=>{
     const d=FACTIONS[k], el=document.createElement('div');
     el.className='scard'+(k===facKey?' on':'');
-    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
-    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); facKey=k;
-      fw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
+    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>'+
+      (d.tr?'<i style="opacity:.72;line-height:1.45">&bull; '+
+            d.tr.join('<br>&bull; ')+'</i>':'');
+    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); facKey=k; FACOF[0]=k;
+      fw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on');
+      if(window.manRender) manRender();
+      idleTitle(); };
     fw.appendChild(el);
   });
   const tw=document.getElementById('terrains');
@@ -4988,6 +5115,7 @@ function menuInit(){
     ['unit','bulwark','Heavy infantry: twice a Warden in every stat.'],
     ['unit','sunderer','Tracked artillery. Splash damage, needs a Forgeworks.'],
     ['unit','harrower','Assault walker. Brutal up close, very hard to kill.'],
+    ['unit','talon','Gunship. Flies over terrain and hits ground or air.'],
     ['bld','keystone','Command hub. Trains Delvers, accepts cargo, +10 pop.'],
     ['bld','habitat','+8 population. Build these before you stall.'],
     ['bld','musterhall','Trains Wardens. Unlocks Forgeworks and Watchspires.'],
@@ -4995,13 +5123,24 @@ function menuInit(){
     ['bld','forgeworks','Trains Sunderers.'],
     ['bld','watchspire','Automated defence turret.']
   ];
-  man.innerHTML=rows.map(r=>{
-    const d=r[0]==='unit'?UDEF[r[1]]:BDEF[r[1]];
-    const cost=d.m+(d.g?' + <u>'+d.g+'</u>':'');
-    return '<div class="mrow">'+iconTag(r[0],r[1],0)+
-      '<div><div class="mn">'+d.n+'</div><div class="md">'+r[2]+'</div></div>'+
-      '<div class="mc">'+cost+'</div></div>';
-  }).join('');
+  /* Redrawn whenever you pick a doctrine, so the roster you are reading is
+     the one you are about to command - names, prices and population alike. */
+  window.manRender=function(){
+    const f=FACTIONS[facKey]||FACTIONS.concord, sb=f.supplyBonus||0;
+    man.innerHTML=rows.map(r=>{
+      const d=r[0]==='unit'?UDEF[r[1]]:BDEF[r[1]];
+      const cm=r[0]==='unit'?Math.round(d.m*f.cost):d.m;
+      const cg=r[0]==='unit'?Math.round((d.g||0)*f.cost):(d.g||0);
+      const cost=cm+(cg?' + <u>'+cg+'</u>':'');
+      let desc=facText(r[2]);
+      if(sb&&d.supply) desc=desc.replace(/\+\d+ pop/,'+'+(d.supply+sb)+' pop');
+      return '<div class="mrow">'+iconTag(r[0],r[1],0)+
+        '<div><div class="mn">'+nameOf(r[1],0)+'</div><div class="md">'+desc+'</div></div>'+
+        '<div class="mc">'+cost+'</div></div>';
+    }).join('');
+  };
+  manRender();
+  idleTitle();
   document.getElementById('deploy').onclick=()=>{ SFX.unlock(); goFullscreen(); SFX.play('deploy'); startGame(diffKey); };
   lobbyInit();
   requestAnimationFrame(menuFrame);
@@ -5186,22 +5325,43 @@ function lobbyBrowse(){
 function lobbyRooms(list){
   const el=document.getElementById('lobRooms'); if(!el) return;
   if(NET.state!=='browse') return;
+  el.textContent='';
   if(!list||!list.length){
-    el.innerHTML='<div class="none">No open games right now. Host one and others can join it here.</div>';
-    return;
+    const none=document.createElement('div');
+    none.className='none';
+    none.textContent='No open games right now. Host one and others can join it here.';
+    el.appendChild(none); return;
   }
+  /* Every field in a room row arrived over the wire from a relay that nobody
+     authenticates, so none of it is trusted. This used to be built with
+     innerHTML, which let whoever hosted a room choose the markup that ran in
+     everyone else's browser. Build the row out of nodes, set text and never
+     markup, and show only values we actually recognise. */
   const label={duel:'1v1',team:'2v2',ffa:'Free for all'};
-  el.innerHTML=list.map(r=>'<div class="room" data-code="'+r.code+'">'+
-    '<span><b>'+r.code+'</b> &nbsp;<i>'+(label[r.mode]||r.mode)+'</i></span>'+
-    '<i>'+r.n+' / '+r.max+' waiting'+(r.quick?' - quick play':'')+'</i></div>').join('');
-  el.querySelectorAll('.room').forEach(row=>{
+  const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
+  for(const r of list.slice(0,40)){
+    if(!r||typeof r!=='object') continue;
+    const code=String(r.code==null?'':r.code).replace(/\D/g,'').slice(0,4);
+    if(code.length!==4) continue;
+    const n=Math.max(0,Math.min(99,r.n|0)), mx=Math.max(1,Math.min(99,r.max|0))||4;
+    const row=document.createElement('div');
+    row.className='room'; row.dataset.code=code;
+    const left=document.createElement('span');
+    const b=document.createElement('b'); b.textContent=code;
+    const i1=document.createElement('i');
+    i1.textContent=(typeof r.mode==='string'&&own(label,r.mode))?label[r.mode]:'custom';
+    left.appendChild(b); left.appendChild(document.createTextNode(' \u00a0')); left.appendChild(i1);
+    const i2=document.createElement('i');
+    i2.textContent=n+' / '+mx+' waiting'+(r.quick?' - quick play':'');
+    row.appendChild(left); row.appendChild(i2);
     row.onclick=()=>{
       SFX.play('click');
       lobbySetState('linking');
-      document.getElementById('lobMsg').textContent='Joining '+row.dataset.code+'...';
-      netSend({t:'join',code:row.dataset.code,fac:facKey});
+      document.getElementById('lobMsg').textContent='Joining '+code+'...';
+      netSend({t:'join',code:code,fac:facKey});
     };
-  });
+    el.appendChild(row);
+  }
 }
 function lobbyShowServer(){
   const row=document.getElementById('lobSrv');
@@ -5535,8 +5695,8 @@ function tutShow(){
   tutEl('tut').style.display='block';
   tutEl('tut').classList.toggle('done',!!st.last);
   tutEl('tutStep').textContent=st.last?'':(TUT.i+1)+' / '+(TUT_STEPS.length-1);
-  tutEl('tutBody').textContent=st.b;
-  tutEl('tutHint').textContent=(typeof st.h==='function')?st.h():st.h;
+  tutEl('tutBody').textContent=facText(st.b);
+  tutEl('tutHint').textContent=facText((typeof st.h==='function')?st.h():st.h);
   tutEl('tutSkip').textContent=st.last?'FINISH':'SKIP';
 }
 function tutAdvance(){
