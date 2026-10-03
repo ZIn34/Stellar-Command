@@ -5368,7 +5368,8 @@ function makeBldSpr(type,owner){
   const poly=(gg,pts)=>facPoly(gg,pts,_fk);
   const rr=(gg,x,y,w,h,r)=>facRR(gg,x,y,w,h,r,_fk);
   const plate=(gg,x,y,w,h,r,a,b)=>facPlate(gg,x,y,w,h,r,a,b,_fk);
-  const _H=hullSet(owner), HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;
+  const _H=hullSet(owner);
+  let HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;   // the per-type tone pass lifts these
   const W=d.w, H=d.h, hw=W/2, hh=H/2;
   const c=newCv((W+PAD*2)*SS,(H+PAD*2)*SS), g=c.getContext('2d');
   g.scale(SS,SS); g.translate(hw+PAD,hh+PAD); g.lineJoin='round';
@@ -5410,6 +5411,84 @@ function makeBldSpr(type,owner){
     g.fillStyle=_sh('#50647b'); rr(g,x-4,y-11,8,5,1.5); g.fill();
     glow(g,()=>{ g.fillStyle=_lt('#fff3cf'); rr(g,x-3,y-10,6,3,1); g.fill(); },'#ffe6a8',7);
   };
+  /* Everything here used to fill the same rounded rectangle and put its
+     detail inside it. At the size these are actually played at, interior
+     detail is a few pixels and the only thing that reads is the OUTLINE - so
+     every structure looked like the same beige slab. These draw first, behind
+     the body, and deliberately break out of the footprint: a zigzag of tent
+     peaks, round tanks, a sawtooth roof, gantry arms. Squint at the result and
+     the shapes are still different, which is the whole point. */
+  const sil=()=>{
+    const dk=_sh('#0f1821'), md=_sh('#3c4e63'), hi=_sh('#55697f');
+    if(type==='habitat'){
+      // three tent peaks over the top edge
+      for(let i=-1;i<=1;i++){
+        const cx=i*(W*.3);
+        g.fillStyle=i===0?hi:md;
+        poly(g,[[cx-W*.17,-hh+4],[cx,-hh-15],[cx+W*.17,-hh+4]]); g.fill();
+        g.strokeStyle=dk; g.lineWidth=1.4; g.stroke();
+      }
+    } else if(type==='musterhall'){
+      // a ridge along the top and loading bays biting out of the bottom
+      g.fillStyle=hi;
+      poly(g,[[-hw+6,-hh+6],[0,-hh-13],[hw-6,-hh+6]]); g.fill();
+      g.strokeStyle=dk; g.lineWidth=1.5; g.stroke();
+      g.fillStyle=dk;
+      for(let i=0;i<3;i++){ rr(g,-hw+14+i*(W-34)/2.6,hh-2,W*.17,15,2); g.fill(); }
+    } else if(type==='siphon'){
+      // two tanks, taller than the pad: a round silhouette, not a box
+      for(let i=-1;i<=1;i+=2){
+        const cx=i*(W*.26);
+        g.fillStyle=md; g.beginPath(); g.arc(cx,0,hh+11,0,7); g.fill();
+        g.strokeStyle=dk; g.lineWidth=2; g.stroke();
+      }
+    } else if(type==='forgeworks'){
+      // sawtooth roof, jagged across the top
+      for(let i=0;i<4;i++){
+        const x=-hw+6+i*((W-12)/4);
+        g.fillStyle=i%2?hi:md;
+        poly(g,[[x,-hh+8],[x,-hh-14],[x+(W-12)/4,-hh+2],[x+(W-12)/4,-hh+8]]); g.fill();
+        g.strokeStyle=dk; g.lineWidth=1.2; g.stroke();
+      }
+    } else if(type==='citadel'){
+      // gantry arms reaching out past the walls on both sides
+      g.fillStyle=md; g.strokeStyle=dk; g.lineWidth=1.6;
+      for(const sy of [-1,1]){
+        rr(g,-hw-16,sy*(hh*.5)-7,W+32,14,3); g.fill(); g.stroke();
+      }
+      g.fillStyle=dk;
+      for(const sx of [-1,1]) for(const sy of [-1,1]){
+        rr(g,sx*(hw+10)-6,sy*(hh*.5)-9,12,18,2); g.fill();
+      }
+    } else if(type==='keystone'){
+      // sandbagged bastions bulging off each corner
+      g.fillStyle=md; g.strokeStyle=dk; g.lineWidth=1.5;
+      [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
+        g.beginPath();
+        g.ellipse(sg[0]*(hw-3),sg[1]*(hh-3),15,11,0,0,7); g.fill(); g.stroke();
+      });
+    } else if(type==='watchspire'){
+      // a low sandbag ring wider than the emplacement
+      g.fillStyle=md; g.strokeStyle=dk; g.lineWidth=1.4;
+      g.beginPath(); g.ellipse(0,hh*.1,hw+12,hh*.72,0,0,7); g.fill(); g.stroke();
+    }
+  };
+  /* A different value per type as well, so they separate on brightness even
+     when the shape is too small to read at all. */
+  const TONE={keystone:1.14,citadel:1.1,forgeworks:1.0,musterhall:.94,
+              siphon:.88,habitat:.82,watchspire:1.06};
+  {
+    const k=TONE[type]||1;
+    if(k!==1){
+      const lift=hx=>{
+        const p=parseInt(hx.slice(1),16);
+        const ch=[p>>16&255,p>>8&255,p&255].map(v=>Math.max(0,Math.min(255,Math.round(v*k))));
+        return '#'+((1<<24)|(ch[0]<<16)|(ch[1]<<8)|ch[2]).toString(16).slice(1);
+      };
+      HULL_HI=lift(HULL_HI); HULL=lift(HULL); HULL_LO=lift(HULL_LO);
+    }
+  }
+  sil();
   if(type==='keystone'){
     /* Headquarters: a walled compound. Revetment wall, four sandbagged corner
        bastions, a flat-roofed command block with a radio mast, and a vehicle
@@ -8259,6 +8338,7 @@ window.addEventListener('resize',()=>{ if(menuOn) menuSize(); optApply(); });
 resize();
 settingsInit();
 menuInit();
+window.__art={unitSpr,bldSpr,UDEF,BDEF,FNAMES,FACOF,mkUnit,getEnts:()=>ents,setZoom,centerOn,TEAMOF};  /* TEMP HOOK */
 </script>
 </body>
 </html>
