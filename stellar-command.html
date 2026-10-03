@@ -3012,15 +3012,35 @@ function netView(o){
 const NET_U=['delver','warden','bulwark','sunderer','harrower','talon'];
 const NET_B=['keystone','habitat','musterhall','siphon','forgeworks','watchspire','citadel'];
 const NET_R=['aurite','vent'];
+/* The melee unit and the capital ship were added to the game but never to the
+   table above, so netTypeIdx could not encode them: netSnapshot skips whatever
+   it cannot encode, and a guest therefore never saw a single one of them -
+   neither the enemy's nor its own. With melee at a quarter price that is most
+   of an army missing from the other player's screen.
+   They are appended AFTER the resource block rather than inserted into NET_U,
+   because these indices also go into saved replays: anything already written
+   keeps its meaning and old .scr files still decode. */
+const NET_U2=['breaker','titan'];
+const NET_X=NET_U.length+NET_B.length+NET_R.length;
 function netTypeIdx(e){
-  if(e.kind==='unit') return NET_U.indexOf(e.type);
-  if(e.kind==='building') return NET_U.length+NET_B.indexOf(e.type);
-  return NET_U.length+NET_B.length+NET_R.indexOf(e.type);
+  if(e.kind==='unit'){
+    const i=NET_U.indexOf(e.type);
+    if(i>=0) return i;
+    const j=NET_U2.indexOf(e.type);
+    return j<0?-1:NET_X+j;
+  }
+  if(e.kind==='building'){
+    const i=NET_B.indexOf(e.type);
+    return i<0?-1:NET_U.length+i;          // -1 here used to decode as a unit
+  }
+  const i=NET_R.indexOf(e.type);
+  return i<0?-1:NET_U.length+NET_B.length+i;
 }
 function netTypeOf(i){
   if(i<NET_U.length) return {kind:'unit',type:NET_U[i]};
   if(i<NET_U.length+NET_B.length) return {kind:'building',type:NET_B[i-NET_U.length]};
-  return {kind:'res',type:NET_R[i-NET_U.length-NET_B.length]};
+  if(i<NET_X) return {kind:'res',type:NET_R[i-NET_U.length-NET_B.length]};
+  return {kind:'unit',type:NET_U2[i-NET_X]};
 }
 function netOnline(){ return NET.role==='host'||NET.role==='guest'; }
 let SEED=1, SEED0=1;

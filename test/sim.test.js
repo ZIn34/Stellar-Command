@@ -1658,6 +1658,71 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
 });
 
+console.log('\nonline: what reaches the other player');
+
+test('every unit type survives a snapshot', () => {
+  /* netSnapshot drops anything netTypeIdx cannot encode, and the unit table
+     was never extended when the melee unit and the capital ship were added -
+     so a guest simply never saw them, its own or the enemy's. With melee at a
+     quarter price that is most of an army. */
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  const types = run('Object.keys(UDEF)');
+  const missing = run('Object.keys(UDEF).filter(function(t){' +
+                      'return netTypeIdx({kind:"unit",type:t})<0;})');
+  eq(JSON.stringify(missing), '[]',
+     'no unit type is unencodable (' + types.length + ' types)');
+  const bmissing = run('Object.keys(BDEF).filter(function(t){' +
+                       'return netTypeIdx({kind:"building",type:t})<0;})');
+  eq(JSON.stringify(bmissing), '[]', 'and no building type is either');
+});
+
+test('a type index decodes back to the type it came from', () => {
+  // the encoding is shared with saved replays, so it has to round-trip
+  const bad = run('(function(){var out=[];' +
+    'var kinds=[["unit",Object.keys(UDEF)],["building",Object.keys(BDEF)],' +
+    '           ["res",NET_R]];' +
+    'for(var k=0;k<kinds.length;k++){ var kind=kinds[k][0], list=kinds[k][1];' +
+    ' for(var i=0;i<list.length;i++){ var t=list[i];' +
+    '  var idx=netTypeIdx({kind:kind,type:t});' +
+    '  var back=netTypeOf(idx);' +
+    '  if(!back||back.kind!==kind||back.type!==t)' +
+    '   out.push(kind+" "+t+" -> "+idx+" -> "+JSON.stringify(back)); } }' +
+    'return out;})()');
+  eq(JSON.stringify(bad), '[]', 'every type round-trips through the index');
+});
+
+test('the indices replays were recorded with have not moved', () => {
+  /* Saved .scr files carry these numbers, so the original six units, the
+     buildings and the two resources must keep the indices they had. */
+  const expect = [['unit','delver',0],['unit','warden',1],['unit','bulwark',2],
+                  ['unit','sunderer',3],['unit','harrower',4],['unit','talon',5],
+                  ['building','keystone',6],['building','citadel',12],
+                  ['res','aurite',13],['res','vent',14]];
+  for (const [kind, type, idx] of expect) {
+    eq(run('netTypeIdx({kind:"' + kind + '",type:"' + type + '"})'), idx,
+       kind + ' ' + type + ' still encodes as ' + idx);
+  }
+});
+
+test('a snapshot carries the whole army, not six eighths of it', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  // one of every unit type on the field, owned by the other side
+  run('Object.keys(UDEF).forEach(function(t,i){ mkUnit(t,1,k.x+200+i*40,k.y+200); })');
+  const sent = run('(function(){var grab=null; var old=netRelay;' +
+    'netRelay=function(o){ grab=o; };' +
+    'try{ netSnapshot(); } finally { netRelay=old; }' +
+    'var seen={};' +
+    'for(var i=0;i<grab.e.length;i++){ var info=netTypeOf(grab.e[i][1]);' +
+    ' if(info.kind==="unit") seen[info.type]=1; }' +
+    'return Object.keys(seen).sort();})()');
+  const want = run('Object.keys(UDEF).sort()');
+  eq(JSON.stringify(sent), JSON.stringify(want),
+     'the snapshot carried every unit type that was on the field');
+});
+
 console.log('\nthe roster, rewritten per army');
 
 function asArmy(f) {
