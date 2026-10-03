@@ -795,9 +795,8 @@ const BDEF={
 /* The three doctrines had the same roster with different numbers on it. This
    is where they stop fighting the same way.
 
-   A style may override rng/cd outright, scale dmg and sp, and set one of three
+   A style may override rng/cd outright, scale dmg and sp, and set one of two
    behaviours:
-     charge    hold still for a beat, then sprint in and hit far harder
      venom     every hit leaves a wound that keeps bleeding
      entrench  stand still and the next shots land harder
 
@@ -818,11 +817,11 @@ const FSTYLE={
            ward:{range:300, cut:.5}, mends:{range:270, rate:78}}
   },
   legion:{
-    /* Brawlers. They close the distance and they hit like a truck when they
-       arrive - the trade-off is that everything is in your face to do it. */
-    warden:  {rng:30,  dmgMul:1.6,  cd:1.0, spMul:1.1,  charge:true},
-    bulwark: {rng:34,  dmgMul:1.5,  cd:.56, spMul:1.08, charge:true},
-    harrower:{rng:28,  dmgMul:1.65, cd:.78, spMul:1.1,  charge:true},
+    /* Brawlers. Almost no reach, and they hit like a truck for it - the
+       trade-off is that everything has to be in your face to do anything. */
+    warden:  {rng:30,  dmgMul:1.6,  cd:1.0, spMul:1.1},
+    bulwark: {rng:34,  dmgMul:1.5,  cd:.56, spMul:1.08},
+    harrower:{rng:28,  dmgMul:1.65, cd:.78, spMul:1.1},
     /* CATACLYSM ENGINE - a walking siege furnace. Enormous area damage, and
        when it finally goes down it takes the neighbourhood with it. */
     titan:{rng:210, dmgMul:1.35, cd:2.3, spMul:.82, splash:152,
@@ -842,8 +841,6 @@ const FSTYLE={
            brood:{type:'warden', every:4.2, cap:14}, mend:.105}
   }
 };
-const CHARGE_RANGE=250, CHARGE_WIND=.7, CHARGE_RUN=1.25,
-      CHARGE_SPEED=2.7, CHARGE_HIT=1.9, CHARGE_CD=5.5;
 const VENOM_DPS=.32, VENOM_FOR=4.5;      // share of the hit, bled out over seconds
 const ENTRENCH_AT=1.5, ENTRENCH_DMG=1.28;
 /* Faction stat overrides are folded into the definition itself, so range,
@@ -1458,19 +1455,33 @@ function venomTick(e,dt){
    its own sight radius, so a unit sniped from further out, or one part-way
    through a move order, just stood there and took it. Anything that is not
    under a specific attack order now turns on whatever is hitting it. */
+/* The case this is for: your squad is chewing on a building and enemy units
+   start killing them from behind. They should turn, deal with the units, and
+   then go back to the building - not stand there being shot, and not go
+   chasing anything that scratches them from across the map.
+
+   So it is deliberately narrow. Only a UNIT provokes this (a tower is
+   something you walk out of, not something you charge). It only fires when
+   you are not already trading with a unit, so a firefight keeps its focus.
+   And it sets a temporary override rather than rewriting the order, which is
+   what lets the siege resume on its own once the attackers are dead. */
+const RETAL_FOR=6;
+function retalTarget(u){
+  const r=u.retal;
+  if(!r||r.until<=gameTime||!r.target||r.target.dead){ u.retal=null; return null; }
+  return r.target;
+}
 function retaliate(t,src){
   if(!t||!src||t.dead||src.dead) return;
   if(t.kind!=='unit'||UDEF[t.type].worker) return;     // Delvers keep mining
+  if(src.kind!=='unit') return;                        // not a turret
   if(t.owner===src.owner||isAlly2(t.owner,src.owner)) return;
   const c=t.cmd;
-  if(c&&c.t==='attack'&&c.target&&!c.target.dead) return;   // a told order stands
   if(c&&(c.t==='gather'||c.t==='build'||c.t==='repair')) return;
-  if(t.target&&!t.target.dead){
-    // already busy with something: only switch if this one is closer
-    const d0=Math.hypot(t.target.x-t.x,t.target.y-t.y);
-    const d1=Math.hypot(src.x-t.x,src.y-t.y);
-    if(d1>=d0) return;
-  }
+  // already in a fight with something that can fight back? keep the focus
+  const cur=retalTarget(t)||((t.target&&!t.target.dead)?t.target:null);
+  if(cur&&cur.kind==='unit') return;
+  t.retal={target:src, until:gameTime+RETAL_FOR};
   t.target=src;
   if(c&&c.t==='idle'&&!t.retreat) t.retreat={x:t.x,y:t.y};
 }
@@ -1811,8 +1822,7 @@ function steer(u,tx,ty,dt,stopAt){
   const dx=tx-u.x, dy=ty-u.y, d=Math.hypot(dx,dy);
   const near=stopAt||3;
   if(d<=near) return true;
-  const sp=DEF(u).sp*facOf(u.owner).sp*MOVE_RATE*(u.slow?.55:1)*
-           ((u.chgT>0)?CHARGE_SPEED:1);    // a charging Legion unit is sprinting
+  const sp=DEF(u).sp*facOf(u.owner).sp*MOVE_RATE*(u.slow?.55:1);
   const step=Math.min(sp*dt,d);
   let nx=dx/d, ny=dy/d;
   u.face=Math.atan2(ny,nx);
@@ -1922,12 +1932,6 @@ function updateUnit(u,dt){
   venomTick(u,dt);
   if(u.dead) return;
   if(u.type==='titan') titanTick(u,dt);
-  // charge timers run down whatever else is happening
-  u.chgCd=Math.max(0,(u.chgCd||0)-dt);
-  if(u.windT>0) u.windT-=dt;
-  if(u.chgT>0) u.chgT-=dt;
-  if(u.chgT<=0) u.chgHit=false;
-
   // auto acquire
   if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
     if(c.t==='idle'||c.t==='amove'||c.t==='hold') u.target=findTarget(u,d.sight*TILE*.8);
@@ -1936,39 +1940,16 @@ function updateUnit(u,dt){
   }
   if(u.target&&u.target.dead) u.target=null;
 
-  /* The charge. A Legion brawler that can see something a little way off plants
-     itself, winds up for a beat - the tell is deliberate, it is what makes the
-     thing dodgeable - then sprints in and hits for nearly double. */
-  const _st=d.style;
-  if(_st&&_st.charge&&u.target&&!u.target.dead&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
-    const far=Math.hypot(u.target.x-u.x,u.target.y-u.y);
-    const reach=d.rng+hitRadius(u.target);
-    if(u.windT>0){                         // planted, about to go
-      u.face=Math.atan2(u.target.y-u.y,u.target.x-u.x);
-      if(u.windT<=0||u.windT-dt<=0){ u.chgT=CHARGE_RUN; u.chgHit=true;
-        if(u.owner===0||seen(u)) SFX.play('attackOrder',u.x,u.y); }
-      if(u.owner===0||seen(u))
-        fx.push({x:u.x,y:u.y,t:0,dur:.14,r:u.r+5+(1-u.windT/CHARGE_WIND)*10,
-                 k:'ping',c:'#ff8a3d'});
-      return;                              // it does not shoot or walk mid-wind-up
-    }
-    if(u.chgT>0){
-      if(far<=reach){                      // arrived - the impact lands at full weight
-        if(u.atkCd<=0){ fire(u,u.target); u.chgT=0; u.chgHit=false;
-          if(u.owner===0) tutAct('charged'); }
-      } else navigate(u,u.target.x,u.target.y,dt,reach*.8);
-      return;
-    }
-    if(far>reach+6&&far<CHARGE_RANGE&&u.chgCd<=0){
-      u.windT=CHARGE_WIND; u.chgCd=CHARGE_CD;
-      return;
-    }
-  }
-
   // hard attack order
   if(c.t==='attack'){
     if(!c.target||c.target.dead){ u.cmd={t:'idle'}; }
-    else { u.target=c.target;
+    else {
+      /* Told to kill a building, and something alive is shooting you: deal
+         with the shooter first. The order itself is untouched, so the moment
+         the attackers are down the siege picks up where it left off. A told
+         order on a UNIT is never overridden - that is a focus-fire command. */
+      const rt=(c.target.kind==='building')?retalTarget(u):null;
+      u.target=rt||c.target;
       if(inRange(u,u.target)){ if(u.atkCd<=0) fire(u,u.target); }
       else navigate(u,u.target.x,u.target.y,dt,d.rng*.8);
       return; }
@@ -3599,8 +3580,6 @@ function buildInfo(){
         const _st=d.style;
         if(_st){
           const notes=[];
-          if(_st.charge) notes.push('Charges: plants, then sprints in for '+
-            Math.round((CHARGE_HIT-1)*100)+'% more');
           if(_st.venom) notes.push('Every hit keeps bleeding for '+VENOM_FOR+'s');
           if(_st.entrench) notes.push('Dug in after '+ENTRENCH_AT+'s still: +'+
             Math.round((ENTRENCH_DMG-1)*100)+'% damage'+
@@ -3617,8 +3596,7 @@ function buildInfo(){
         if(e.venom&&e.venom.until>gameTime)
           s+='<span style="color:#9ff06a">Bleeding '+e.venom.dps.toFixed(1)+'/s</span><br>';
         const names={idle:'Idle',move:'Moving',amove:'Attack-move',attack:'Attacking',gather:'Extracting',build:'Constructing',repair:'Repairing',hold:'Holding position'};
-        s+='<span class="k">Order</span> '+
-          (e.windT>0?'Winding up':(e.chgT>0?'Charging':(names[e.cmd.t]||e.cmd.t)));
+        s+='<span class="k">Order</span> '+(names[e.cmd.t]||e.cmd.t);
       } else {
         if(!e.done){
           const busy=(gameTime-(e.lastBuildT===undefined?-99:e.lastBuildT))<.4;
@@ -5153,21 +5131,6 @@ function drawUnit(u){
     ctx.save(); ctx.globalAlpha=Math.min(.8,u.flash*4); ctx.fillStyle='#fff';
     ctx.beginPath(); ctx.arc(u.x,u.y,d.r+1.5,0,7); ctx.fill(); ctx.restore();
   }
-  /* The wind-up before a charge is the whole counterplay, so it has to be
-     unmistakable: the unit plants and a ring closes on it. */
-  if(u.windT>0){
-    const k=1-clamp(u.windT/CHARGE_WIND,0,1);
-    ctx.save();
-    ctx.strokeStyle='#ff8a3d'; ctx.lineWidth=2.4; ctx.globalAlpha=.4+k*.6;
-    ctx.beginPath(); ctx.arc(u.x,u.y-lift,d.r+22-k*18,0,7); ctx.stroke();
-    ctx.restore();
-  } else if(u.chgT>0){                     // and a streak while it runs
-    ctx.save();
-    ctx.strokeStyle='#ff8a3d'; ctx.lineWidth=3; ctx.globalAlpha=.5;
-    ctx.beginPath(); ctx.moveTo(u.x-Math.cos(u.face)*d.r*2.1,u.y-Math.sin(u.face)*d.r*2.1-lift);
-    ctx.lineTo(u.x-Math.cos(u.face)*d.r*.6,u.y-Math.sin(u.face)*d.r*.6-lift); ctx.stroke();
-    ctx.restore();
-  }
   if(u.venom&&u.venom.until>gameTime){     // and a wound that is still bleeding
     ctx.save(); ctx.globalAlpha=.75; ctx.fillStyle='#9ff06a';
     ctx.beginPath(); ctx.arc(u.x+d.r*.7,u.y-d.r*.7-lift,2.6,0,7); ctx.fill(); ctx.restore();
@@ -6037,9 +6000,7 @@ function dmgOf(e){
      holding ground is worth something to the doctrine that is built for it. */
   const st=d.style;
   const dug=(st&&st.entrench&&(e.stillT||0)>=ENTRENCH_AT)?ENTRENCH_DMG:1;
-  // and a Legion unit that is mid-charge lands its impact at full weight
-  const chg=(st&&st.charge&&e.chgHit)?CHARGE_HIT:1;
-  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage*dug*chg;
+  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage*dug;
 }
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
@@ -6978,32 +6939,32 @@ const TUT_STEPS=[
      step about yours - and it is the only step whose win condition depends on
      which one you picked. */
   {b:()=>({concord:'Dig in: hold your Wardens still and let them shoot.',
-           legion:'Charge: send your Ravagers at something.',
+           legion:'Get in close and trade. You hit harder as you bleed.',
            pact:'Poison them: hit something and let it bleed.'})[facKey]||
           'Learn what your doctrine does.',
    h:()=>({
      concord:dv('The Concord fights from a planted line: a unit that has not moved for a moment deals '+
        Math.round((ENTRENCH_DMG-1)*100)+'% more damage. Stop moving before the enemy arrives, do not chase.',
        'The Concord fights from a planted line: a unit that stands still for a moment deals more damage. Stop moving before they arrive.'),
-     legion:dv('The Legion has almost no range - it closes. Attack something a little way off and your Ravager will plant, wind up, then sprint in for '+
-       Math.round((CHARGE_HIT-1)*100)+'% more on the hit. The wind-up is the price.',
-       'The Legion closes the distance. Attack something a little way off and your Ravager plants, winds up, then charges in for far more damage.'),
+     legion:dv('The Legion has almost no reach and hits far harder for it, so you have to close. It gets stronger the more hurt it is - a wounded Ravager swings for nearly half again - and it cannot repair, so trade bodies and let them heal up out of the fight.',
+       'The Legion has almost no reach and hits far harder for it. Close the distance. It gets stronger the more hurt it is, and it cannot repair - trade bodies and let them heal out of the fight.'),
      pact:dv('Every Pact hit leaves a wound that keeps bleeding for '+VENOM_FOR+
        ' seconds. You win long fights, not short ones - trade and withdraw, the poison keeps working.',
        'Every Pact hit keeps bleeding for seconds afterwards. You win long fights - trade and withdraw, the poison does the rest.')
    })[facKey]||'Fight something and watch what your units do.',
-   enter:()=>{ tutSpawnRaiders(2,false); TUT.docBase=(TUT.acts.docHit||0);
+   enter:()=>{ tutSpawnRaiders(2,false);
      say('Two scouts wandered in. Use them.'); },
    focus:()=>{ const f=tutFoeUnits()[0]; return f?{ent:f}:null; },
    prog:()=>{
-     if(facKey==='legion') return (TUT.acts.charged||0)+' / 1 charges landed';
+     if(facKey==='legion') return tutFoeUnits().length+' scouts left';
      if(facKey==='pact'){ const b=tutFoeUnits().filter(u=>u.venom&&u.venom.until>gameTime).length;
        return b?('bleeding: '+b):'nothing bleeding yet'; }
      const dug=mineU(u=>!UDEF[u.type].worker&&(u.stillT||0)>=ENTRENCH_AT).length;
      return dug+' dug in';
    },
    ok:()=>{
-     if(facKey==='legion') return (TUT.acts.charged||0)>=1||tutFoeUnits().length===0;
+     // the Legion lesson is simply to go and do it up close
+     if(facKey==='legion') return tutFoeUnits().length===0;
      if(facKey==='pact') return tutFoeUnits().some(u=>u.venom&&u.venom.until>gameTime)||
        tutFoeUnits().length===0;
      return mineU(u=>!UDEF[u.type].worker&&(u.stillT||0)>=ENTRENCH_AT).length>=1;
@@ -7072,6 +7033,45 @@ const TUT_STEPS=[
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="T"]'}:(f?{ent:f}:null); },
    ok:()=>mineU(u=>u.type==='talon').length>=1||
        mineB(b=>b.type==='forgeworks'&&b.queue&&b.queue.length>0).length>0},
+  /* The biggest commitment in the game, and nothing used to mention it, so a
+     new commander would never find out the Citadel existed. Two steps: raise
+     the yard, then order the ship. */
+  {b:()=>'Raise a '+nameOf('citadel',0)+'.',
+   h:()=>dv('Build menu, then G. It is the only place your capital ship can be built, and it needs the Forgeworks you just put up. Here is a training allowance to pay for it.',
+            'Tap Build and pick the '+nameOf('citadel',0)+'. It is the only place your capital ship can be built. Here is a training allowance to pay for it.'),
+   enter:()=>{
+     // the ship costs more than a training run would ever bank
+     P[0].m=Math.max(P[0].m,2600); P[0].g=Math.max(P[0].g,2200);
+     say('Command has released funds - raise the '+nameOf('citadel',0)+'.');
+   },
+   focus:()=>tutBuildFocus('citadel','G'),
+   prog:()=>{ const b=mineB(x=>x.type==='citadel')[0];
+     if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
+     if(placing==='citadel') return 'pick your ground';
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
+   ok:()=>mineB(b=>b.type==='citadel'&&b.done).length>=1},
+  {b:()=>'Order a '+nameOf('titan',0)+'.',
+   h:()=>{
+     const c=priceOf('unit','titan',0);
+     const mine={
+       concord:'It barely fights. What it does is hang over your army and halve the damage coming in, and mend the buildings beneath it.',
+       legion:'A walking furnace: enormous splash, and when it finally dies it takes everything around it with it.',
+       pact:'A walking grove. It keeps birthing '+nameOf('warden',0)+'s for free, for ever, and knits itself back together.'
+     }[facKey]||'';
+     return dv('Select the '+nameOf('citadel',0)+' and order one. '+c.m+' aurite and '+c.g+
+               ' ichor, ten population, and no limit on how many you own. '+mine,
+               'Tap the '+nameOf('citadel',0)+', then the ship. '+c.m+' aurite and '+c.g+
+               ' ichor, ten population, no limit on how many you own. '+mine);
+   },
+   focus:()=>{ const c=mineB(b=>b.type==='citadel'&&b.done)[0];
+     return (sel.length===1&&sel[0]===c)?{el:'#card .btn[data-hk="C"]'}:(c?{ent:c}:null); },
+   prog:()=>{ const t=mineU(u=>u.type==='titan')[0];
+     if(t) return 'under way';
+     const c=mineB(b=>b.type==='citadel'&&b.done)[0];
+     if(c&&c.queue&&c.queue.length) return 'building';
+     return 'select the '+nameOf('citadel',0); },
+   ok:()=>mineU(u=>u.type==='titan').length>=1||
+       mineB(b=>b.type==='citadel'&&b.queue&&b.queue.length>0).length>0},
   {b:'Take their base. It is defended.',
    h:dv('A full enemy base, garrisoned, with a commander who will train more and repair what you break. Select your army, press A and click their base - kill the production first or they will just keep coming.',
         'A full enemy base, garrisoned and defended. Select your army, tap Attack, then tap their base - kill the production first or they will keep coming.'),

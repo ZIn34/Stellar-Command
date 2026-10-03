@@ -475,30 +475,11 @@ test('the same unit has a different statline in each doctrine', () => {
   ok(seen.legion.rng < seen.concord.rng / 2,
      'the Legion warden is a brawler (' + seen.legion.rng + ' vs ' + seen.concord.rng + ')');
   ok(seen.legion.dmg > seen.concord.dmg, 'and it hits harder for it');
+  // the charge mechanic was removed; the brawler statline is what remains
+  ok(!run('FSTYLE.legion.warden.charge'), 'no charge behaviour left on it');
   eq(seen.pact.rng, seen.concord.rng, 'the Pact keeps its range');
   ok(seen.pact.dmg < seen.concord.dmg, 'and trades raw damage for the wound');
   run('FACOF=["concord","concord","concord","concord"]');
-});
-
-test('a Legion brawler winds up and then charges', () => {
-  arena('legion');
-  run('var A=mkUnit("warden",0,1000,1000), B=mkUnit("warden",1,1180,1000)');
-  let wind = 0, ran = 0;
-  for (let i = 0; i < 140; i++) {
-    run('over=false'); run('simTick(0.05)');
-    if (run('A.windT>0')) wind++;
-    if (run('A.chgT>0')) ran++;
-  }
-  ok(wind > 3, 'it planted and wound up (' + wind + ' frames)');
-  ok(ran > 2, 'then it sprinted in (' + ran + ' frames)');
-});
-
-test('a charge hits far harder than a standing blow', () => {
-  arena('legion');
-  run('var A=mkUnit("warden",0,1000,1000)');
-  run('A.chgHit=false'); const flat = run('dmgOf(A)');
-  run('A.chgHit=true');  const slam = run('dmgOf(A)');
-  ok(slam > flat * 1.5, 'the impact is worth it (' + flat.toFixed(1) + ' -> ' + slam.toFixed(1) + ')');
 });
 
 test('a Pact wound keeps working after the attacker is gone', () => {
