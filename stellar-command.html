@@ -1210,7 +1210,10 @@ const SFX=(function(){
       tone(t+i*.19,{f,type:'sawtooth',dur:.6,g:.13*v,dest:d}))}
   };
   const SAMP={};                       // name -> decoded AudioBuffer
-  const SAMP_RATE={bigBoom:.72,cannon:.92,complete:1.08};  // deaths sit deeper, completions brighter
+  /* cannon used to be pitched down here because it shared the rifle's
+     recording; the heavy report is rendered into cannon.wav now, so
+     pitching it again just made it sludge. */
+  const SAMP_RATE={bigBoom:.72,complete:1.08};  // deaths sit deeper, completions brighter
   const SAMP_VOL={rifle:.55,cannon:.8,turret:.6,drill:.5,boom:.8,bigBoom:1,
     select:.5,order:.5,attackOrder:.5,click:.4,deny:.55,build:.6,complete:.8,
     trained:.6,deposit:.35,deploy:.8,victory:.9,defeat:.9};
@@ -5647,7 +5650,7 @@ function renderTerrain(){
   const n1=smoothNoise(NW,NH,17,1), n2=smoothNoise(NW,NH,7,2), n3=smoothNoise(NW,NH,3,3);
   const small=newCv(NW,NH), sg=small.getContext('2d');
   const img=sg.createImageData(NW,NH), D=img.data;
-  const stops=[[0,[21,29,33]],[.30,[30,44,41]],[.52,[49,63,47]],[.72,[74,84,58]],[1,[112,116,82]]];
+  const stops=[[0,[26,26,19]],[.30,[41,43,28]],[.52,[59,59,36]],[.72,[84,80,51]],[1,[119,111,75]]];
   for(let i=0;i<NW*NH;i++){
     let v=n1[i]*.58+n2[i]*.30+n3[i]*.12;
     v=clamp((v-.22)/.58,0,1);
@@ -5666,22 +5669,22 @@ function renderTerrain(){
   // --- fine grain ---
   for(let i=0;i<Math.round(14000*DETAIL);i++){
     const x=hash2(i,101)*WW, y=hash2(i,211)*WH, s=1+hash2(i,307)*2.6, r=hash2(i,401);
-    g.fillStyle=r>.62?'rgba(190,215,190,.07)':(r>.3?'rgba(0,0,0,.13)':'rgba(120,150,120,.05)');
+    g.fillStyle=r>.62?'rgba(224,212,170,.07)':(r>.3?'rgba(0,0,0,.13)':'rgba(152,142,100,.05)');
     g.fillRect(x,y,s,s);
   }
   // --- scattered stones ---
   for(let i=0;i<Math.round(420*DETAIL);i++){
     const x=hash2(i,911)*WW, y=hash2(i,977)*WH, r=2.5+hash2(i,1013)*5;
     g.fillStyle='rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(x+1.5,y+2,r,r*.7,0,0,7); g.fill();
-    g.fillStyle='rgba(120,134,124,.55)'; g.beginPath(); g.ellipse(x,y,r,r*.72,hash2(i,1031)*3,0,7); g.fill();
-    g.fillStyle='rgba(196,214,198,.22)'; g.beginPath(); g.ellipse(x-r*.2,y-r*.25,r*.5,r*.34,0,0,7); g.fill();
+    g.fillStyle='rgba(138,130,104,.55)'; g.beginPath(); g.ellipse(x,y,r,r*.72,hash2(i,1031)*3,0,7); g.fill();
+    g.fillStyle='rgba(216,206,168,.22)'; g.beginPath(); g.ellipse(x-r*.2,y-r*.25,r*.5,r*.34,0,0,7); g.fill();
   }
   // --- craters ---
   for(let i=0;i<Math.round(150*DETAIL);i++){
     const x=hash2(i,509)*WW, y=hash2(i,601)*WH, r=10+hash2(i,701)*26, a=hash2(i,809)*3;
     g.fillStyle='rgba(0,0,0,.20)'; g.beginPath(); g.ellipse(x,y,r,r*.7,a,0,7); g.fill();
     g.strokeStyle='rgba(0,0,0,.26)'; g.lineWidth=2.4; g.beginPath(); g.ellipse(x,y,r,r*.7,a,0,7); g.stroke();
-    g.fillStyle='rgba(190,214,192,.10)'; g.beginPath(); g.ellipse(x-r*.14,y-r*.2,r*.72,r*.44,a,0,7); g.fill();
+    g.fillStyle='rgba(216,206,168,.10)'; g.beginPath(); g.ellipse(x-r*.14,y-r*.2,r*.72,r*.44,a,0,7); g.fill();
   }
   // --- dry cracks ---
   g.strokeStyle='rgba(0,0,0,.20)';
@@ -5692,7 +5695,7 @@ function renderTerrain(){
     g.stroke();
   }
   // --- survey grid ---
-  g.strokeStyle='rgba(110,150,160,.05)'; g.lineWidth=1;
+  g.strokeStyle='rgba(174,158,112,.055)'; g.lineWidth=1;
   for(let x=0;x<=MAP_W;x+=2){ g.beginPath(); g.moveTo(x*TILE,0); g.lineTo(x*TILE,WH); g.stroke(); }
   for(let y=0;y<=MAP_H;y+=2){ g.beginPath(); g.moveTo(0,y*TILE); g.lineTo(WW,y*TILE); g.stroke(); }
   // --- rock shelves ---
@@ -5946,7 +5949,7 @@ function paintFog(){
 /* ===================== MAIN RENDER ===================== */
 function render(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  ctx.fillStyle='#04070c'; ctx.fillRect(0,0,VW,VH);
+  ctx.fillStyle='#0a0906'; ctx.fillRect(0,0,VW,VH);
   ctx.save(); ctx.scale(cam.z,cam.z); ctx.translate(-cam.x,-cam.y);
   const vwW=viewW(), vwH=viewH();
   if(terrainCv){
@@ -6144,11 +6147,11 @@ let mmT=0;
 function renderMM(){
   const s=mm.width/MAP_W;
   const st=Math.max(1,Math.ceil(MAP_W/140));
-  mctx.fillStyle='#04070c'; mctx.fillRect(0,0,mm.width,mm.height);
+  mctx.fillStyle='#0a0906'; mctx.fillRect(0,0,mm.width,mm.height);
   for(let x=0;x<MAP_W;x+=st) for(let y=0;y<MAP_H;y+=st){
     const i=ti(x,y); if(!explored[i]) continue;
     const v=visible[i];
-    mctx.fillStyle=blocked[i]?(v?'#2b3947':'#18222c'):(v?'#25352e':'#141d1a');
+    mctx.fillStyle=blocked[i]?(v?'#3d3a28':'#241f16'):(v?'#33331f':'#1a1a11');
     mctx.fillRect(x*s,y*s,s*st+.6,s*st+.6);
   }
   for(const e of ents){
@@ -6775,7 +6778,7 @@ const FNAMES={
            siphon:'Refinery',  forgeworks:'Workshop',  watchspire:'Bunker',
            citadel:'Proving Ground'},
   legion: {delver:'Pioneer',   warden:'Conscript Squad',breaker:'Breacher Squad',
-           bulwark:'Flak Team',sunderer:'Rocket Battery', harrower:'Heavy Tank',
+           bulwark:'Flak',     sunderer:'Rocket Battery', harrower:'Heavy Tank',
            talon:'Strike Plane',titan:'Siege Dreadnought',
            keystone:'Command Post', habitat:'Bunkhouse', musterhall:'Drill Yard',
            siphon:'Fuel Depot',forgeworks:'Tank Works',watchspire:'Pillbox',
@@ -6809,7 +6812,8 @@ function idleTitle(){
    absent falls back to name+'s'. */
 const FPLURAL={
   concord:{warden:'Riflemen', keystone:'Headquarters', musterhall:'Barracks'},
-  legion: {watchspire:'Pillboxes', forgeworks:'Tank Works', citadel:'Heavy Works'},
+  legion: {watchspire:'Pillboxes', forgeworks:'Tank Works', citadel:'Heavy Works',
+           bulwark:'Flak'},
   pact:   {forgeworks:'Scrapworks'}
 };
 function plOf(fk,k){
