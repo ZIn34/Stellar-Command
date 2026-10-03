@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#05070c">
-<title>Field Command</title>
+<title>Field Craft</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--panel:clamp(152px,29vh,224px);--panelScale:1}
@@ -433,7 +433,7 @@ body.touch .mouse-only{display:none}
 </div>
 <button id="pauseBtn" title="Pause">&#9612;&#9612;</button>
 <button id="mmOrder" title="Minimap order mode">&#10148;</button>
-<div id="rotate"><div><div class="rot">&#8635;</div>ROTATE YOUR DEVICE<br><span>Field Command plays in landscape</span></div></div>
+<div id="rotate"><div><div class="rot">&#8635;</div>ROTATE YOUR DEVICE<br><span>Field Craft plays in landscape</span></div></div>
 <div id="pause">
   <div class="pbox">
     <h2>PAUSED</h2>
@@ -474,7 +474,7 @@ body.touch .mouse-only{display:none}
                fill="#e0c87f"/>
       <path d="M19 46 L32 37.5 L45 46 L45 51.5 L32 43 L19 51.5 Z" fill="#c7b583"/>
     </svg>
-    <h1>FIELD <b>COMMAND</b></h1>
+    <h1>FIELD <b>CRAFT</b></h1>
     <p class="tag">Combined arms for the supply roads of the eastern corridor</p>
     <div class="rows">
       <div class="col"><h2>SIDES</h2><div id="modes"></div>
@@ -5364,7 +5364,19 @@ function makeBldSpr(type,owner){
   const d=BDEF[type], PAD=20, _fk=facKeyOf(owner);
   const t={c:facAcc(owner)};              // shadows TEAM[owner]: doctrine accent
   const _lt=hx=>facLight(hx,_fk);
-  const _sh=hx=>facShade(hx,_fk);
+  /* Per-structure value. Applied inside the shader, so it reaches the
+     bodies and panels too - they are all drawn from _sh() literals, which
+     is why lifting HULL_* on its own changed almost nothing. */
+  const _TONE={keystone:1.2,citadel:1.1,forgeworks:.98,musterhall:.88,
+               siphon:.8,habitat:.72,watchspire:1.1}[type]||1;
+  const _tone=hx=>{
+    if(_TONE===1) return hx;
+    const p=parseInt(hx.slice(1),16);
+    const ch=[p>>16&255,p>>8&255,p&255]
+      .map(v=>Math.max(0,Math.min(255,Math.round(v*_TONE))));
+    return '#'+((1<<24)|(ch[0]<<16)|(ch[1]<<8)|ch[2]).toString(16).slice(1);
+  };
+  const _sh=hx=>_tone(facShade(hx,_fk));
   const poly=(gg,pts)=>facPoly(gg,pts,_fk);
   const rr=(gg,x,y,w,h,r)=>facRR(gg,x,y,w,h,r,_fk);
   const plate=(gg,x,y,w,h,r,a,b)=>facPlate(gg,x,y,w,h,r,a,b,_fk);
@@ -5425,16 +5437,17 @@ function makeBldSpr(type,owner){
       for(let i=-1;i<=1;i++){
         const cx=i*(W*.3);
         g.fillStyle=i===0?hi:md;
-        poly(g,[[cx-W*.17,-hh+4],[cx,-hh-15],[cx+W*.17,-hh+4]]); g.fill();
+        poly(g,[[cx-W*.2,-hh+4],[cx,-hh-19],[cx+W*.2,-hh+4]]); g.fill();
         g.strokeStyle=dk; g.lineWidth=1.4; g.stroke();
       }
     } else if(type==='musterhall'){
       // a ridge along the top and loading bays biting out of the bottom
+      // a long low pitched roof, not one peak: a light band across the top
       g.fillStyle=hi;
-      poly(g,[[-hw+6,-hh+6],[0,-hh-13],[hw-6,-hh+6]]); g.fill();
-      g.strokeStyle=dk; g.lineWidth=1.5; g.stroke();
+      poly(g,[[-hw-10,-hh+10],[-hw+16,-hh-16],[hw-16,-hh-16],[hw+10,-hh+10]]); g.fill();
+      g.strokeStyle=dk; g.lineWidth=1.6; g.stroke();
       g.fillStyle=dk;
-      for(let i=0;i<3;i++){ rr(g,-hw+14+i*(W-34)/2.6,hh-2,W*.17,15,2); g.fill(); }
+      for(let i=0;i<3;i++){ rr(g,-hw+14+i*(W-34)/2.6,hh-2,W*.17,18,2); g.fill(); }
     } else if(type==='siphon'){
       // two tanks, taller than the pad: a round silhouette, not a box
       for(let i=-1;i<=1;i+=2){
@@ -5447,18 +5460,18 @@ function makeBldSpr(type,owner){
       for(let i=0;i<4;i++){
         const x=-hw+6+i*((W-12)/4);
         g.fillStyle=i%2?hi:md;
-        poly(g,[[x,-hh+8],[x,-hh-14],[x+(W-12)/4,-hh+2],[x+(W-12)/4,-hh+8]]); g.fill();
+        poly(g,[[x,-hh+10],[x,-hh-22],[x+(W-12)/4,-hh-2],[x+(W-12)/4,-hh+10]]); g.fill();
         g.strokeStyle=dk; g.lineWidth=1.2; g.stroke();
       }
     } else if(type==='citadel'){
       // gantry arms reaching out past the walls on both sides
       g.fillStyle=md; g.strokeStyle=dk; g.lineWidth=1.6;
       for(const sy of [-1,1]){
-        rr(g,-hw-16,sy*(hh*.5)-7,W+32,14,3); g.fill(); g.stroke();
+        rr(g,-hw-19,sy*(hh*.52)-8,W+38,16,3); g.fill(); g.stroke();
       }
       g.fillStyle=dk;
       for(const sx of [-1,1]) for(const sy of [-1,1]){
-        rr(g,sx*(hw+10)-6,sy*(hh*.5)-9,12,18,2); g.fill();
+        rr(g,sx*(hw+13)-7,sy*(hh*.52)-11,14,22,2); g.fill();
       }
     } else if(type==='keystone'){
       // sandbagged bastions bulging off each corner
@@ -5473,21 +5486,7 @@ function makeBldSpr(type,owner){
       g.beginPath(); g.ellipse(0,hh*.1,hw+12,hh*.72,0,0,7); g.fill(); g.stroke();
     }
   };
-  /* A different value per type as well, so they separate on brightness even
-     when the shape is too small to read at all. */
-  const TONE={keystone:1.14,citadel:1.1,forgeworks:1.0,musterhall:.94,
-              siphon:.88,habitat:.82,watchspire:1.06};
-  {
-    const k=TONE[type]||1;
-    if(k!==1){
-      const lift=hx=>{
-        const p=parseInt(hx.slice(1),16);
-        const ch=[p>>16&255,p>>8&255,p&255].map(v=>Math.max(0,Math.min(255,Math.round(v*k))));
-        return '#'+((1<<24)|(ch[0]<<16)|(ch[1]<<8)|ch[2]).toString(16).slice(1);
-      };
-      HULL_HI=lift(HULL_HI); HULL=lift(HULL); HULL_LO=lift(HULL_LO);
-    }
-  }
+  HULL_HI=_tone(HULL_HI); HULL=_tone(HULL); HULL_LO=_tone(HULL_LO);
   sil();
   if(type==='keystone'){
     /* Headquarters: a walled compound. Revetment wall, four sandbagged corner
@@ -6584,7 +6583,7 @@ function replaySave(){
 const REPLAY_FMT=2;
 function replayParse(buf){
   const dv=new DataView(buf), u8=new Uint8Array(buf);
-  if(u8[0]!==83||u8[1]!==67||u8[2]!==82||u8[3]!==49) throw new Error('Not a Field Command replay');
+  if(u8[0]!==83||u8[1]!==67||u8[2]!==82||u8[3]!==49) throw new Error('Not a Field Craft replay');
   const hl=dv.getUint32(4,true);
   const head=JSON.parse(new TextDecoder().decode(u8.subarray(8,8+hl)));
   if((head.v|0)>REPLAY_FMT)
@@ -7313,7 +7312,7 @@ function makeIconURL(size){
 (function installMeta(){
   try{
     const icon=makeIconURL(192);
-    const man={name:'Field Command',short_name:'Field Cmd',description:'Combined-arms real-time strategy',
+    const man={name:'Field Craft',short_name:'Field Craft',description:'Combined-arms real-time strategy',
       start_url:'.',scope:'.',display:'fullscreen',orientation:'landscape',
       background_color:'#05070c',theme_color:'#05070c',
       icons:[{src:icon,sizes:'192x192',type:'image/png',purpose:'any'}]};
@@ -8338,7 +8337,6 @@ window.addEventListener('resize',()=>{ if(menuOn) menuSize(); optApply(); });
 resize();
 settingsInit();
 menuInit();
-window.__art={unitSpr,bldSpr,UDEF,BDEF,FNAMES,FACOF,mkUnit,getEnts:()=>ents,setZoom,centerOn,TEAMOF};  /* TEMP HOOK */
 </script>
 </body>
 </html>
