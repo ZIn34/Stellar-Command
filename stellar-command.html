@@ -4247,6 +4247,28 @@ function aiRun(AI,ME,dt){
   const building=t=>bs.some(b=>b.type===t&&!b.done);
   const count=t=>bs.filter(b=>b.type===t).length;
   const freeWorker=()=>workers.find(w=>w.cmd.t!=='build'&&!w.isScout)||workers[0]||null;
+  /* Every timing and money threshold below was written for a standard match.
+     Blitz builds twice as fast, charges half, and is decided in about a third
+     of the time - a bot on standard numbers is still waiting for its
+     expansion timer when the game is already over, which is why it never
+     expanded there. Worse, the expansion money gate was so high relative to a
+     bot's income that it rarely landed before the end in standard either.
+
+       tGate - a moment in the match, pulled in when the pace is faster
+       mGate - an amount of aurite, scaled with what things actually cost */
+  const PACE=BLITZ?2:1;
+  const tGate=v=>v/PACE;
+  const mGate=v=>Math.max(1,Math.round(v*COST_RATE));
+  /* Worked out here rather than at the point of use, because the savings plan
+     below has to know whether an expansion is wanted before anything has had a
+     chance to spend the money on units. */
+  const expoCap=GRAND?6:(DIFF.expo===undefined?2:DIFF.expo);
+  const expoWhen=BLITZ
+    ? Math.min(tGate(DIFF.expoAt||200),45)
+    : tGate(GRAND?120:(DIFF.expoAt||200));
+  const expoNeed=mGate(DIFF.expoCost||480);
+  const wantExpo=AI.expo<expoCap&&AI.t>expoWhen&&
+                 !bs.some(b=>b.type==='keystone'&&!b.done);
   /* A capital ship, and the yard it comes out of, cost more than a bot is ever
      holding at a random moment - it spends every scrap of aurite on infantry
      as fast as it comes in. So it saves for them deliberately: one goal at a
@@ -4260,7 +4282,13 @@ function aiRun(AI,ME,dt){
   const _queuedShip=!!(_yard&&_yard.queue&&_yard.queue.length);
   const _shipCap=GRAND?6:2;
   let saveGoal=null;
-  if(bs.some(b=>b.type==='forgeworks'&&b.done)){
+  /* An expansion comes first, and it has to be saved for like anything else.
+     Halving every price in Blitz meant the bot could always afford one more
+     unit, so it sat on about thirty aurite for the whole match and never got
+     near the couple of hundred a second base costs - it was not the timer that
+     stopped it expanding there, it was never having the money at one time. */
+  if(wantExpo) saveGoal=bldCost('keystone',ME);
+  else if(bs.some(b=>b.type==='forgeworks'&&b.done)){
     if(!_yard&&!bs.some(b=>b.type==='citadel'&&!b.done)) saveGoal=bldCost('citadel',ME);
     else if(_yard&&!_queuedShip&&_ships<_shipCap) saveGoal=priceOf('unit','titan',ME);
   }
@@ -4314,7 +4342,7 @@ function aiRun(AI,ME,dt){
     // the Legion cannot repair at all, so pulling a Delver off aurite to try
     // is pure lost income - it regenerates or it dies
     if(hurt&&aiDoc(ME).repair&&!facOf(ME).noRepair&&
-       busy.length<(hurt.type==='keystone'?3:2)&&P[ME].m>70){
+       busy.length<(hurt.type==='keystone'?3:2)&&P[ME].m>mGate(70)){
       const cand=workers.find(w=>!w.isScout&&!w.pulled&&
         w.cmd.t!=='build'&&w.cmd.t!=='repair'&&dist(w,hurt)<1100);
       if(cand){ cand.cmd={t:'repair',target:hurt}; cand.target=null; }
@@ -4331,7 +4359,7 @@ function aiRun(AI,ME,dt){
   if(P[ME].cap-P[ME].sup<=(P[ME].cap>40?8:4)&&
      count('habitat')-bs.filter(b=>b.type==='habitat'&&b.done).length<2)
     put('habitat',home);
-  if(workers.length<aiWorkerTarget(ME)&&(!has('musterhall')||P[ME].m>=115)){
+  if(workers.length<aiWorkerTarget(ME)&&(!has('musterhall')||P[ME].m>=mGate(115))){
     /* This took the first Keystone with a short queue, which was almost always
        the main base - so a bot would raise an expansion and then never crew
        it, because every Delver it trained popped out at home. Train from
@@ -4351,14 +4379,14 @@ function aiRun(AI,ME,dt){
      third once it has somewhere to spend the ichor. */
   const wantSiphons=(has('citadel')||building('citadel'))?3:2;
   if(has('musterhall')&&(siphonCount===0||
-     (siphonCount<wantSiphons&&AI.t>240&&P[ME].m>=300))){
+     (siphonCount<wantSiphons&&AI.t>tGate(240)&&P[ME].m>=mGate(300)))){
     const g=nearest(ents,home.x,home.y,e=>e.kind==='res'&&e.type==='vent'&&!e.taken);
     if(g&&dist(g,home)<520&&canBuild()) startBuild('siphon',g.x,g.y,ME,[freeWorker()]);
   }
-  if(has('musterhall')&&halls<(GRAND?9:(DIFF.halls||4))&&P[ME].m>=(halls<2?190:(DIFF.hallCost||300))&&!building('musterhall')) put('musterhall',home,enemyDir);
-  if(has('musterhall')&&!has('forgeworks')&&!building('forgeworks')&&P[ME].m>=190&&P[ME].g>=75&&AI.t>(DIFF.techAt||150))
+  if(has('musterhall')&&halls<(GRAND?9:(DIFF.halls||4))&&P[ME].m>=mGate(halls<2?190:(DIFF.hallCost||300))&&!building('musterhall')) put('musterhall',home,enemyDir);
+  if(has('musterhall')&&!has('forgeworks')&&!building('forgeworks')&&P[ME].m>=mGate(190)&&P[ME].g>=mGate(75)&&AI.t>tGate(DIFF.techAt||150))
     put('forgeworks',home);
-  if(has('musterhall')&&count('watchspire')<(DIFF.spires||3)&&P[ME].m>=320&&!building('watchspire'))
+  if(has('musterhall')&&count('watchspire')<(DIFF.spires||3)&&P[ME].m>=mGate(320)&&!building('watchspire'))
     put('watchspire',home,enemyDir);
   /* Once the economy can carry it, a bot raises its own Citadel and starts
      fielding capital ships - it has to, or the player's Titan has no answer. */
@@ -4369,9 +4397,11 @@ function aiRun(AI,ME,dt){
      expansions - the same as Warlord, and one more than Veteran. Recruit bots
      were quietly out-expanding the difficulty above them, which is why the
      easy setting felt harder than the medium one. Zero has to mean zero. */
-  const expoCap=GRAND?6:(DIFF.expo===undefined?2:DIFF.expo);
-  if(AI.t>(GRAND?120:(DIFF.expoAt||200))&&AI.expo<expoCap&&
-     P[ME].m>=(DIFF.expoCost||480)&&!building('keystone')&&canBuild()){
+  /* Halving the standard timer was not enough for Blitz on its own: with
+     starts that close the match is often decided inside ninety seconds, so a
+     bot was winning or losing before its expansion timer came up. In Blitz a
+     second base is an opening move, not a mid-game one. */
+  if(wantExpo&&P[ME].m>=expoNeed&&!building('keystone')&&canBuild()){
     const spots=EXPOS.map(e=>({x:e.tx*TILE,y:e.ty*TILE}))
       .filter(e=>!ents.some(b=>!b.dead&&b.kind==='building'&&dist(b,e)<300))
       .sort((a,b)=>dist(a,home)-dist(b,home));
@@ -4402,14 +4432,14 @@ function aiRun(AI,ME,dt){
     if(!exp) { if(!bldOf(ME).some(b=>b.type==='keystone'&&dist(b,AI.lastExpo)<140)) AI.lastExpo=null; }
     else {
       const near=t=>bldOf(ME).some(b=>b.type===t&&dist(b,exp)<340);
-      if(!near('habitat')&&P[ME].m>=140&&canBuild()) put('habitat',exp);
-      else if(!near('musterhall')&&P[ME].m>=260&&canBuild()) put('musterhall',exp,enemyDir);
-      else if(!near('watchspire')&&P[ME].m>=360&&canBuild()) put('watchspire',exp,enemyDir);
+      if(!near('habitat')&&P[ME].m>=mGate(140)&&canBuild()) put('habitat',exp);
+      else if(!near('musterhall')&&P[ME].m>=mGate(260)&&canBuild()) put('musterhall',exp,enemyDir);
+      else if(!near('watchspire')&&P[ME].m>=mGate(360)&&canBuild()) put('watchspire',exp,enemyDir);
       else AI.lastExpo=null;                 // built out; the next expansion is next
     }
   }
   /* rebuild what was lost */
-  if(!has('musterhall')&&!building('musterhall')&&P[ME].m>=125) put('musterhall',home,enemyDir);
+  if(!has('musterhall')&&!building('musterhall')&&P[ME].m>=mGate(125)) put('musterhall',home,enemyDir);
 
   /* ---- army production ---- */
   /* A capital ship costs more than a bot ever happens to be holding, so it has
@@ -4430,7 +4460,7 @@ function aiRun(AI,ME,dt){
     }
     if(b.queue.length>=(DIFF.qd||2)) continue;
     if(b.type==='forgeworks'){
-      if(!savingUp&&!b.res&&P[ME].m>=420&&P[ME].g>=120){   // bank it into permanent power
+      if(!savingUp&&!b.res&&P[ME].m>=mGate(420)&&P[ME].g>=mGate(120)){   // bank it into permanent power
         const key=UP[ME].wep<=UP[ME].arm?'wep':'arm';
         if(UP[ME][key]<UPG[key].max&&tryResearch(b,key)) continue;
       }
@@ -4441,11 +4471,11 @@ function aiRun(AI,ME,dt){
             tl=us.filter(u=>u.type==='talon').length;
       // answer enemy air with air, otherwise keep the ground mix rolling
       const foeAir=ents.some(e=>!e.dead&&e.kind==='unit'&&isFoe(e.owner,ME)&&UDEF[e.type].air);
-      const want=(foeAir&&tl<4)?'talon':(tl<2&&AI.t>240?'talon':(hr<sn?'harrower':'sunderer'));
+      const want=(foeAir&&tl<4)?'talon':(tl<2&&AI.t>tGate(240)?'talon':(hr<sn?'harrower':'sunderer'));
       tryTrain(b,want); continue;
     }
     if(savingUp) continue;                      // banking for the capital ship
-    if(P[ME].m>=(workers.length<8?150:55)){
+    if(P[ME].m>=mGate(workers.length<8?150:55)){
       /* A third of the line is close-quarters, so bots bring a melee punch
          too. The gates are read off the real price rather than hard numbers -
          they were sized for a melee unit that cost ninety, and it costs a
@@ -4454,8 +4484,8 @@ function aiRun(AI,ME,dt){
       const brCost=priceOf('unit','breaker',ME).m;
       const br=us.filter(u=>u.type==='breaker').length;
       const wd=us.filter(u=>u.type==='warden').length;
-      const want=(AI.t>35&&br*2<wd&&P[ME].m>=brCost*2)?'breaker'
-                :((P[ME].m>=380&&AI.t>170)?'bulwark':'warden');
+      const want=(AI.t>tGate(35)&&br*2<wd&&P[ME].m>=brCost*2)?'breaker'
+                :((P[ME].m>=mGate(380)&&AI.t>tGate(170))?'bulwark':'warden');
       tryTrain(b,want);
     }
   }
@@ -4483,7 +4513,7 @@ function aiRun(AI,ME,dt){
   if(!target){                                   // haven't found them yet - hold and keep scouting
     AI.mode='scout';
     const spots=aiScoutSpots(ME);
-    if(AI.t>200&&army.length>=AI.threshold&&spots.length){
+    if(AI.t>tGate(200)&&army.length>=AI.threshold&&spots.length){
       const sweep=spots[(AI.scoutIdx)%spots.length];   // give up on recon, sweep in force
       aiMoveGroup(army.filter(u=>u.cmd.t==='idle'||
         (u.cmd.t==='amove'&&dist(u,sweep)>420)),sweep.x,sweep.y);
@@ -4535,7 +4565,7 @@ function aiRun(AI,ME,dt){
   }
   AI.mode='build';
   aiMoveGroup(army.filter(u=>u.cmd.t==='idle'&&dist(u,home)>360),rallyPt.x,rallyPt.y);
-  if(AI.t>=DIFF.grace&&army.length>=AI.threshold*aiDoc(ME).push&&AI.t-AI.lastPush>20){
+  if(AI.t>=tGate(DIFF.grace)&&army.length>=AI.threshold*aiDoc(ME).push&&AI.t-AI.lastPush>tGate(20)){
     AI.lastPush=AI.t;
     /* The Pact only mends near its own structures, so it masses closer to home
        and holds the ground it heals on instead of staging out in the open. */
