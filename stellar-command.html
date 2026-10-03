@@ -1178,7 +1178,8 @@ function damage(t,amt,by){
     if(t.owner===0) STATS[t.kind==='building'?'bLost':'lost']++;
     else if(by===0&&t.owner>0) STATS[t.kind==='building'?'bKilled':'killed']++;
     if(by!==undefined&&by!==null&&by!==t.owner&&P[by]){      // salvage bounty
-      const bd=DEF(t), cut=t.kind==='building'?.15:.2;
+      const bd=t.kind==='unit'?Object.assign({},UDEF[t.type],unitCost(t.type,t.owner)):DEF(t);
+      const cut=t.kind==='building'?.15:.2;
       const bm=Math.floor((bd.m||0)*cut), bg=Math.floor((bd.g||0)*cut);
       if(bm||bg){
         P[by].m+=bm; P[by].g+=bg;
@@ -1673,7 +1674,12 @@ function repairStep(u,dt){
   if(!canRepair(t,u.owner)){ u.cmd={t:'idle'}; return; }
   if(edgeDist(u,t)>workReach(u,t)){ navigate(u,t.x,t.y,dt,workStop(u,t)); return; }
   u.face=Math.atan2(t.y-u.y,t.x-u.x);
-  const d=DEF(t), pool=P[u.owner], _fr=facOf(u.owner);
+  const _rd=DEF(t), pool=P[u.owner], _fr=facOf(u.owner);
+  /* Charge and heal against what the thing cost this doctrine, not the list
+     price - otherwise the Pact pays Concord rates to mend Pact hulls. */
+  const d=(t.kind==='unit')
+    ?Object.assign({},_rd,unitCost(t.type,t.owner),{bt:unitBT(t.type,t.owner)})
+    :_rd;
   const perSec=t.maxHp/Math.max(8,d.bt||20)*(_fr.repairRate||1);   // a full rebuild takes about as long as building it
   const _rm=_fr.repairMul||1;
   const cm=(d.m||0)*.35*_rm/t.maxHp, cg=(d.g||0)*.35*_rm/t.maxHp;
@@ -1817,7 +1823,7 @@ function trainGroup(list,type){
 }
 function tryTrain(b,type){
   if(NET.role==='guest'&&b.owner===0){
-    const d=UDEF[type];
+    const d=Object.assign({},UDEF[type],unitCost(type,0));
     if(b.queue.length>=5){ say('Queue full'); SFX.play('deny'); return false; }
     if(!canAfford(0,d)){ say(P[0].m<d.m?'Not enough aurite':'Not enough ichor'); SFX.play('deny'); return false; }
     if(P[0].sup+d.sup>P[0].cap){ say('Build more habitats'); SFX.play('deny'); return false; }
@@ -1832,7 +1838,11 @@ function tryTrain(b,type){
 function cancelQueue(b,i){
   if(NET.role==='guest'&&b.owner===0){ netCmd('cancelq',{id:b.id,i}); return; }
   if(i>=b.queue.length) return;
-  const t=b.queue[i]; P[b.owner].m+=UDEF[t].m; P[b.owner].g+=UDEF[t].g;
+  /* This refunded the list price while tryTrain charged the doctrine price,
+     so a Verdant Pact player queued at 80% and cancelled at 100% - free money
+     on a loop. Refund exactly what was taken. */
+  const t=b.queue[i], back=unitCost(t,b.owner);
+  P[b.owner].m+=back.m; P[b.owner].g+=back.g;
   b.queue.splice(i,1); if(i===0) b.ptime=0; recalcSupply(b.owner);
 }
 
@@ -2319,7 +2329,7 @@ cv.addEventListener('wheel',e=>{
    selection logic works unchanged on both sides.                            */
 const NET={
   ws:null, role:null, code:null, state:'off',
-  prevT:0, nextT:0, byId:new Map(), evOut:[], seed:1, ended:false,
+  prevT:0, nextT:0, byId:new Map(), evOut:[], seed:1, ended:false, tok:null, pub:false,
   slot:0, humans:1, roomN:1, isHost:true
 };
 /* With more than one guest the old owner^1 flip no longer works, so each client
@@ -2344,7 +2354,11 @@ function netTypeOf(i){
   return {kind:'res',type:NET_R[i-NET_U.length-NET_B.length]};
 }
 function netOnline(){ return NET.role==='host'||NET.role==='guest'; }
-let SEED=1;
+let SEED=1, SEED0=1;
+/* SEED is the live generator state and every srand() call moves it on, so by
+   the time a replay was saved it no longer named the map. Keep the value the
+   match actually started from. */
+function setSeed(v){ SEED0=SEED=(v>>>0)||1; }
 function srand(){ SEED=(SEED*1664525+1013904223)>>>0; return SEED/4294967296; }
 
 /* Online play needs server.js running somewhere. When the game is served BY
@@ -2396,9 +2410,9 @@ function netConnect(then){
   NET.ws.onopen=()=>{ then&&then(); };
   NET.ws.onmessage=ev=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } netRecv(m); };
   NET.ws.onclose=()=>{
-    if(!netOnline()||NET.ended) return;
+    if(NET.ended) return;
     if(NET.role==='guest'&&gameOn) netLost();   // seat is held; offer to rejoin
-    else netDropped();
+    else netDropped();                          // handles the lobby case itself
   };
   NET.ws.onerror=()=>{
     const h=relayHost();
@@ -2411,15 +2425,26 @@ function netConnect(then){
 function netSend(o){ if(NET.ws&&NET.ws.readyState===1) NET.ws.send(JSON.stringify(o)); }
 function netRelay(d,to){ netSend(to===undefined?{t:'relay',d}:{t:'relay',d,to}); }
 function netRecv(m){
-  if(m.t==='hosted'){ NET.code=m.code; lobbySetState(m.quick?'searching':'hosting'); return; }
+  if(m.t==='hosted'){ NET.code=m.code; if(m.tok) NET.tok=m.tok;
+    lobbySetState(m.quick?'searching':'hosting'); return; }
   if(m.t==='searching'){ lobbySetState('searching'); return; }
   if(m.t==='rooms'){ lobbyRooms(m.rooms); return; }
   if(m.t==='error'){ lobbyError(m.msg||'Error'); return; }
   if(m.t==='peerleft'){ netDropped(); return; }
   if(m.t==='peergone'){ say('Commander '+((m.slot|0)+1)+' dropped - their forces fight on'); return; }
-  if(m.t==='peerback'){ say('Commander '+((m.slot|0)+1)+' reconnected'); return; }
+  if(m.t==='peerback'){
+    say('Commander '+((m.slot|0)+1)+' reconnected');
+    // they may have missed being told they were knocked out - let it re-send
+    if(NET.role==='host'&&NET.told) NET.told[m.slot|0]=0;
+    return;
+  }
   if(m.t==='roster'){
     NET.slot=m.slot|0; NET.isHost=!!m.host; NET.roomN=m.n|0; NET.code=m.code||NET.code;
+    /* Quick Play rooms are public by nature but never set NET.pub, so the host
+       was told 'Code only' about a room every browser could see. The server
+       knows, so take it from there. */
+    if(m.pub!==undefined) NET.pub=!!m.pub;
+    if(m.tok) NET.tok=m.tok;
     lobbyRoster(m);
     return;
   }
@@ -2433,6 +2458,7 @@ function netRecv(m){
         Object.prototype.hasOwnProperty.call(FACTIONS,f))?f:'concord')
       :null;
     NET.lostAt=null;
+    if(m.tok) NET.tok=m.tok;
     if(m.rejoin) say('Reconnected as Commander '+(NET.slot+1)+'.');
     lobbyClose();
     startOnline(m.seed>>>0,!!m.grand,m.mode||'duel');
@@ -2454,7 +2480,19 @@ function netData(d){
   if(d.k==='over'&&NET.role==='guest'){ NET.ended=true; endGame(d.w?'VICTORY':'DEFEAT',d.w?'#7dffb0':'#ff6b52'); return; }
 }
 function netDropped(){
-  if(!netOnline()||NET.ended) return;
+  if(NET.ended) return;
+  /* NET.role is only set once a match starts, so this used to return without
+     doing anything at all for a player still in the lobby: a guest whose host
+     walked out sat on the spinner forever, waiting on a room the server had
+     already deleted. Say so and let them pick another game. */
+  if(!netOnline()){
+    if(NET.state&&NET.state!=='error'){
+      NET.code=null; NET.roomN=0; NET.lostAt=null;
+      SFX.play('deny');
+      lobbyError('The host left the lobby. Pick another game, or host your own.');
+    }
+    return;
+  }
   NET.ended=true;
   if(gameOn){ say('Opponent left the match'); endGame('VICTORY','#7dffb0'); }
   NET.role=null;
@@ -2466,16 +2504,21 @@ function netLost(){
   document.getElementById('lobTitle').textContent='CONNECTION LOST';
   document.getElementById('lobMsg').textContent=
     'The match is still running. Rejoin to pick up where you left off.';
+  /* Only the look changes here. Overwriting this button's handler used to
+     stick for the rest of the page's life, so after one dropped match a later
+     host's 'START NOW' rejoined the old dead game instead of starting theirs.
+     The single handler in lobbyInit decides which job it is doing. */
   const b=document.getElementById('lobStart');
   b.style.display='block'; b.textContent='RECONNECT';
-  b.onclick=()=>{ SFX.play('click'); netRejoin(); };
 }
 function netRejoin(){
   const code=NET.lostAt||NET.code; if(!code) return;
   lobbySetState('linking');
   document.getElementById('lobMsg').textContent='Rejoining match '+code+'...';
   NET.ws=null; NET.ended=false;
-  netConnect(()=>netSend({t:'join',code:code}));
+  /* Send the seat token so the server puts us back in our own army. Without
+     it, two players dropping at once came back into each other's forces. */
+  netConnect(()=>netSend({t:'join',code:code,tok:NET.tok,fac:facKey}));
 }
 function netQuit(){
   if(netOnline()){ NET.ended=true; netSend({t:'cancel'}); }
@@ -2660,7 +2703,8 @@ function netHostApply(c,from){
     case 'cancelb': {
       const b=bld(c.id);
       if(b&&!b.done){ const d=BDEF[b.type];
-        P[1].m+=Math.floor(d.m*.75); P[1].g+=Math.floor(d.g*.75);
+        // every other case honours the issuing slot; this one paid slot 1
+        P[ME].m+=Math.floor(d.m*.75); P[ME].g+=Math.floor(d.g*.75);
         if(b.geyser) b.geyser.taken=null; b.dead=true; markNavDirty(); }
       break;
     }
@@ -2678,7 +2722,7 @@ function netHostApply(c,from){
 /* ---------- match lifecycle ---------- */
 function startOnline(seed,grand,mode){
   tutEnd();
-  SEED=seed>>>0;
+  setSeed(seed);
   setMapScale(!!grand);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
   ROCK_CLUSTERS=(TERRAINS[NET.terrain]||TERRAINS.open).rocks;
@@ -2724,14 +2768,29 @@ function netCheckEnd(){
      they are done - announcing a winner here handed a "victory" to anyone still
      alive, even with two rivals left standing. */
   for(let i=0;i<H;i++){
-    if(upright(i)||NET.told[i]) continue;
-    NET.told[i]=1;
-    if(i===0) endGame('ELIMINATED','#ff6b52',
-      {keepRunning:true, spectate:true, sub:'Your forces are gone. The battle continues.'});
-    else netRelay({k:'out'},i);
+    if(upright(i)){ NET.told[i]=0; continue; }
+    if(i===0){
+      if(!NET.told[0]){
+        NET.told[0]=1e9;
+        endGame('ELIMINATED','#ff6b52',
+          {keepRunning:true, spectate:true, sub:'Your forces are gone. The battle continues.'});
+      }
+      continue;
+    }
+    /* This was sent exactly once. If that player happened to be disconnected
+       at the moment, the relay dropped it into an empty seat and the latch
+       meant it was never retried - they reconnected into a match they had
+       already lost, with no idea. Keep offering it. */
+    if(gameTime<(NET.told[i]||0)) continue;
+    NET.told[i]=gameTime+6;
+    netRelay({k:'out'},i);
   }
   if(ts.length>1) return;              // still contested - nobody has won yet
   NET.ended=true;
+  /* Tell the relay the match is over. Nothing used to mark a finished room, so
+     it stayed joinable for as long as the host's socket lived and handed any
+     reconnect a dead world to walk around in. */
+  netSend({t:'finished'});
   for(let i=1;i<H;i++) netRelay({k:'over',w:upright(i)},i);
   endGame(upright(0)?'VICTORY':'DEFEAT',upright(0)?'#7dffb0':'#ff6b52');
 }
@@ -3048,7 +3107,7 @@ function buildInfo(){
         '<div class="bar"><i style="width:'+(f*100)+'%;background:'+hpColor(f)+'"></i></div>';
       if(e.kind==='unit'){
         s+='<span class="k">DMG</span> '+Math.round(dmgOf(e))+' &nbsp; <span class="k">RNG</span> '+(Math.round(d.rng/TILE*10)/10)+
-          ' &nbsp; <span class="k">SPD</span> '+d.sp+'<br>';
+          ' &nbsp; <span class="k">SPD</span> '+Math.round(d.sp*facOf(e.owner).sp)+'<br>';
         if(isBot(e.owner)&&ELITE.hp>1) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
           Math.round((ELITE.dmg-1)*100)+'% damage</span><br>';
         if(d.worker) s+='<span class="k">Cargo</span> '+(e.carry?e.carry+' '+(e.carryType==='m'?'aurite':'ichor'):'empty')+'<br>';
@@ -3070,7 +3129,7 @@ function buildInfo(){
     }
     s+='</div></div>';
     if(e.kind==='building'&&e.done&&e.queue&&e.queue.length){
-      const f2=e.ptime/(UDEF[e.queue[0]].bt/TRAIN_RATE);
+      const f2=clamp(e.ptime/(unitBT(e.queue[0],e.owner)/TRAIN_RATE),0,1);
       s+='<div class="bar" style="width:210px"><i style="width:'+(f2*100)+'%;background:#4bd6ff"></i></div><div id="queue">';
       e.queue.forEach(function(q,i){ s+='<div class="qi" data-q="'+i+'">'+iconTag('unit',q,e.owner)+'</div>'; });
       s+='</div>';
@@ -4766,7 +4825,8 @@ function replayUI(){
    Layout: 'SCR1' | headerLen | header JSON | per frame: count + Int32 payload. */
 function replaySave(){
   if(!REC.frames.length){ say('Nothing recorded'); SFX.play('deny'); return; }
-  const head={v:1, seed:SEED>>>0, scale:scaleKey, mode:modeKey, terrain:terrainKey,
+  const head={v:1, seed:SEED0>>>0, scale:GRAND?'grand':'standard', mode:modeKey,
+    terrain:terrainKey, facof:FACOF.slice(0,4),
     rocks:ROCK_CLUSTERS, nplay:NPLAY, teamof:TEAMOF.slice(0,4), step:REC.step,
     frames:REC.frames.length, when:new Date().toISOString()};
   const hb=new TextEncoder().encode(JSON.stringify(head));
@@ -4823,7 +4883,10 @@ function replayLoad(file){
     ROCK_CLUSTERS=(r.head.rocks!==undefined)?r.head.rocks:0;
     DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};
     NET.role=null;
-    SEED=(r.head.seed>>>0)||1;
+    setSeed(r.head.seed);
+    /* and the doctrines that were on the field, or the replay reports
+       every unit with Concord stats and Concord names. */
+    if(r.head.facof&&r.head.facof.length===4) FACOF=r.head.facof.slice();
     menuOn=false;
     document.getElementById('menu').style.display='none';
     init();                                  // regenerates terrain from the seed
@@ -4862,7 +4925,7 @@ function startSimWorker(){
               "else if(e.data==='stop'){clearInterval(t);t=null;}};";
     simWorker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
     simWorker.onmessage=function(){
-      if(!gameOn||paused||over) return;
+      if(!gameOn||paused||over||REPLAY.on) return;
       const now=performance.now();
       if(now-lastFrameAt<150) return;               // the render loop is healthy
       let dt=(now-last)/1000; last=now;
@@ -5371,10 +5434,36 @@ function goFullscreen(){
 /* ===================== ONLINE LOBBY UI ===================== */
 function lobbyEl(){ return document.getElementById('lobby'); }
 function lobbyOpen(){ lobbyEl().style.display='flex'; }
-function lobbyClose(){ lobbyEl().style.display='none'; }
+function lobbyClose(){ lobbyPollStop(); lobbyEl().style.display='none'; }
+/* A refused join used to tear down the room list and relabel the whole screen
+   'NO CONNECTION', when all that had happened was the row went stale - the
+   room filled up or the host cancelled between the listing and the click.
+   Stay in the browser, say what happened, and pull a fresh list. */
 function lobbyError(msg){
+  if(NET.state==='browse'){
+    document.getElementById('lobMsg').textContent=msg+' - refreshing the list.';
+    netSend({t:'list'});
+    return;
+  }
   lobbySetState('error');
   document.getElementById('lobMsg').textContent=msg;
+}
+/* Rooms come and go in seconds, so the browser keeps itself current instead
+   of showing whatever was true when it opened. */
+let lobPoll=null;
+function lobbyPollStop(){ if(lobPoll){ clearInterval(lobPoll); lobPoll=null; } }
+function lobbyPollStart(){
+  lobbyPollStop();
+  lobPoll=setInterval(()=>{
+    if(NET.state!=='browse'||lobbyEl().style.display==='none'){ lobbyPollStop(); return; }
+    netSend({t:'list'});
+  },4000);
+}
+/* Everything a fresh lobby action must forget - above all NET.lostAt, which
+   is what turns the start button into a reconnect. */
+function lobbyFresh(){
+  lobbyPollStop();
+  NET.lostAt=null; NET.ended=false; NET.pub=false; NET.mode=null; NET.roomN=0;
 }
 /* Who is in the room so far, and - for the host - the choice between waiting
    for more commanders or starting now with bots filling the empty seats. */
@@ -5411,8 +5500,12 @@ function lobbyRoster(m){
 /* Any room that has not started and is not full is joinable - no code needed. */
 function lobbyBrowse(){
   lobbySetState('browse');
-  document.getElementById('lobRooms').innerHTML='<div class="none">Looking for games...</div>';
-  netConnect(()=>netSend({t:'list'}));
+  const el=document.getElementById('lobRooms');
+  el.textContent='';
+  const w=document.createElement('div');
+  w.className='none'; w.textContent='Looking for games...';
+  el.appendChild(w);
+  netConnect(()=>{ netSend({t:'list'}); lobbyPollStart(); });
 }
 function lobbyRooms(list){
   const el=document.getElementById('lobRooms'); if(!el) return;
@@ -5516,6 +5609,12 @@ function lobbySetState(st){
 }
 function lobbyCancel(){
   netSend({t:'cancel'});
+  /* Clearing NET.role while a match was still running underneath this overlay
+     dropped the guest into simTick's HOST branch, where it began
+     authoritatively simulating the stale snapshot world on its own. If there
+     is a game back there, leave it properly. */
+  if(gameOn){ lobbyFresh(); lobbyClose(); leaveMatch(); return; }
+  lobbyFresh();
   NET.role=null; NET.code=null;
   lobbyClose();
 }
@@ -5537,12 +5636,13 @@ function lobbyInit(){
   };
   document.getElementById('btnQuick').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
+    lobbyFresh(); NET.pub=true;            // quick rooms are public by nature
     lobbySetState('searching');
     netConnect(()=>netSend({t:'quick',mode:modeKey,fac:facKey}));
   };
   const doHost=pub=>{
     SFX.unlock(); SFX.play('click'); musicSync();
-    NET.pub=pub;
+    lobbyFresh(); NET.pub=pub;
     lobbySetState('hosting');
     document.getElementById('lobCode').textContent='----';
     netConnect(()=>netSend({t:'host',mode:modeKey,fac:facKey,pub:pub}));
@@ -5551,10 +5651,12 @@ function lobbyInit(){
   document.getElementById('btnHostPub').onclick=()=>doHost(true);
   document.getElementById('btnBrowse').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
+    lobbyFresh();
     lobbyBrowse();
   };
   document.getElementById('btnJoin').onclick=()=>{
     SFX.unlock(); SFX.play('click'); musicSync();
+    lobbyFresh();
     lobbySetState('joining');
     netConnect(()=>{});
   };
@@ -5567,7 +5669,10 @@ function lobbyInit(){
     document.getElementById('lobTitle').textContent='SERVER SET';
     document.getElementById('lobMsg').textContent=h+' saved — pick Quick Play, Host or Join.';
   };
-  document.getElementById('lobStart').onclick=()=>{ SFX.play('click'); netBegin(); };
+  document.getElementById('lobStart').onclick=()=>{
+    SFX.play('click');
+    if(NET.lostAt) netRejoin(); else netBegin();
+  };
   document.getElementById('lobSrvGo').onclick=srvGo;
   document.getElementById('lobSrvReset').onclick=()=>{
     setRelay('');                                  // drop it and fall back to the built-in host
@@ -5816,7 +5921,7 @@ function tutStep(dt){
 }
 function startTutorial(){
   NET.role=null;
-  SEED=(Math.random()*4294967295)>>>0;
+  setSeed((Math.random()*4294967295)>>>0);
   scaleKey='standard';
   setMapScale(false);
   diffKey='recruit'; DIFF=DIFFS.recruit||DIFFS.veteran;
@@ -5841,7 +5946,7 @@ function startTutorial(){
 function startGame(key){
   tutEnd();
   NET.role=null;
-  SEED=(Math.random()*4294967295)>>>0;
+  setSeed((Math.random()*4294967295)>>>0);
   setMapScale(scaleKey==='grand');
   diffKey=key; DIFF=DIFFS[key]||DIFFS.veteran;
   ELITE={hp:DIFF.hp,dmg:DIFF.dmg};

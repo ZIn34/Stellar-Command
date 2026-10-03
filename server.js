@@ -155,26 +155,38 @@ function pick(tbl,v,dflt){
 }
 function okMode(m){ return pick(MODE_OK,m,'duel'); }
 function okFac(f){ return pick(FAC_OK,f,'concord'); }
+/* A duel seats two, not four. The room used to list and admit against MAXP
+   whatever the mode, so a 1v1 advertised '1 / 4 waiting' and could be
+   overfilled in the round trip before the host's client called begin. */
+const MODE_SEATS={duel:2,team:4,ffa:4};
+function capOf(room){ return MODE_SEATS[room&&room.mode]||MAXP; }
+function liveCount(room){ return room.players.filter(Boolean).length; }
 function openRoom(c,quick,mode,pub){
   const code=newCode();
-  const room={code,players:[c],quick:!!quick,born:Date.now(),started:false,
+  const room={code,players:[c],quick:!!quick,born:Date.now(),seen:Date.now(),
+              started:false,done:false,
+              toks:[c.id],                    // which seat each player may reclaim
               pub:!!pub,                      // listed in the browser, or code-only
               mode:okMode(mode)};
   rooms.set(code,room); c.room=room;
-  send(c,{t:'hosted',code,quick:!!quick});
+  send(c,{t:'hosted',code,quick:!!quick,tok:c.id});
   roster(room);
   return room;
 }
 function hostOf(room){ return room.players[0]; }
 function roster(room){
+  room.seen=Date.now();
+  const cap=capOf(room);
   room.players.forEach((c,i)=>{
-    send(c,{t:'roster',code:room.code,n:room.players.length,max:MAXP,slot:i,
-            host:i===0,mode:room.mode});
+    if(!c) return;
+    send(c,{t:'roster',code:room.code,n:liveCount(room),max:cap,slot:i,
+            host:i===0,mode:room.mode,pub:!!room.pub,tok:c.id});
   });
 }
 function addPlayer(room,c){
-  if(room.started||room.players.length>=MAXP) return false;
-  room.players.push(c); c.room=room; roster(room); return true;
+  if(room.started||room.done||room.players.length>=capOf(room)) return false;
+  room.players.push(c); room.toks[room.players.length-1]=c.id;
+  c.room=room; roster(room); return true;
 }
 /* The host decides when to go: everyone in gets a slot, the rest become bots. */
 function begin(room,mode,grand,seed,terrain){
@@ -183,9 +195,11 @@ function begin(room,mode,grand,seed,terrain){
   room.players.forEach((pl,i)=>{ if(pl&&pl.fac&&i<4) facs[i]=okFac(pl.fac); });
   room.cfg={mode:mode,grand:!!grand,seed:seed,terrain:terrain,count:room.players.length,facs:facs};
   room.players.forEach((c,i)=>{
+    if(!c) return;
+    room.toks[i]=c.id;
     send(c,{t:'start',role:i===0?'host':'guest',code:room.code,
             slot:i,count:room.players.length,mode:mode,grand:!!grand,seed:seed,
-            terrain:terrain,facs:facs});
+            terrain:terrain,facs:facs,tok:c.id});
   });
 }
 function handle(c,text){
@@ -194,7 +208,8 @@ function handle(c,text){
   if(m.t==='quick'){
     if(c.room) return;
     for(const room of rooms.values()){
-      if(room.quick&&!room.started&&room.players.length<MAXP&&room.players.indexOf(c)<0){
+      if(room.quick&&!room.started&&!room.done&&
+         room.players.length<capOf(room)&&room.players.indexOf(c)<0){
         if(addPlayer(room,c)) return;
       }
     }
@@ -207,17 +222,26 @@ function handle(c,text){
     if(c.room) return;
     const room=rooms.get(String(m.code||'').trim());
     if(!room){ send(c,{t:'error',msg:'No game with that code'}); return; }
+    if(room.done){ send(c,{t:'error',msg:'That game is already over'}); return; }
     if(room.started){                          // rejoin a seat that opened up
-      const seat=room.players.indexOf(null);
+      /* Handing out the first empty seat put a returning player in someone
+         else's army whenever two dropped at once. Each seat remembers the
+         token of whoever held it, so a reconnect reclaims its own. */
+      let seat=-1;
+      if(m.tok) for(let i=0;i<room.players.length;i++)
+        if(!room.players[i]&&room.toks[i]===m.tok){ seat=i; break; }
+      if(seat<0) seat=room.players.indexOf(null);
       if(seat<0){ send(c,{t:'error',msg:'That game is full'}); return; }
-      room.players[seat]=c; c.room=room; c.fac=okFac(m.fac||c.fac);
+      room.players[seat]=c; room.toks[seat]=c.id;
+      c.room=room; c.fac=okFac(m.fac||c.fac); room.seen=Date.now();
       const g=room.cfg||{};
       send(c,{t:'start',role:'guest',code:room.code,slot:seat,count:g.count||room.players.length,
               mode:g.mode,grand:!!g.grand,seed:g.seed,terrain:g.terrain,facs:g.facs,rejoin:true});
       for(const o of room.players) if(o&&o!==c) send(o,{t:'peerback',slot:seat});
       return;
     }
-    if(room.players.length>=MAXP){ send(c,{t:'error',msg:'That game is already full'}); return; }
+    if(room.done){ send(c,{t:'error',msg:'That game is already over'}); return; }
+    if(room.players.length>=capOf(room)){ send(c,{t:'error',msg:'That game is already full'}); return; }
     if(room.players.indexOf(c)>=0){ send(c,{t:'error',msg:'That is your own code'}); return; }
     c.fac=okFac(m.fac);
     addPlayer(room,c);
@@ -234,16 +258,25 @@ function handle(c,text){
     // open rooms only: started or full ones cannot be joined
     const out=[];
     for(const room of rooms.values()){
-      if(room.started) continue;
+      if(room.started||room.done) continue;
       if(!room.pub) continue;                 // a code-only room stays unlisted
+      const cap=capOf(room);
       const n=room.players.filter(Boolean).length;
-      if(!n||n>=MAXP) continue;
+      if(!n||n>=cap) continue;
       if(room.players.indexOf(c)>=0) continue;
-      out.push({code:room.code,n:n,max:MAXP,mode:room.mode||'duel',quick:!!room.quick,
+      out.push({code:room.code,n:n,max:cap,mode:room.mode||'duel',quick:!!room.quick,
                 age:Math.round((Date.now()-room.born)/1000)});
     }
     out.sort((a,b)=>b.n-a.n||a.age-b.age);
     send(c,{t:'rooms',rooms:out.slice(0,40)});
+    return;
+  }
+  if(m.t==='finished'){
+    /* A finished match used to stay joinable forever: room.started kept the
+       sweep away and nothing marked it over, so a reconnect was handed a
+       dead world. The host tells us, and the room stops taking players. */
+    const room=c.room;
+    if(room&&hostOf(room)===c){ room.done=true; room.seen=Date.now(); }
     return;
   }
   if(m.t==='cancel'){ leaveRoom(c); return; }
@@ -284,11 +317,20 @@ function dropClient(c){
 }
 setInterval(()=>{                            // sweep abandoned lobbies
   const now=Date.now();
-  for(const [code,room] of rooms) if(!room.started&&now-room.born>10*60*1000){
-    const h=hostOf(room);
-    if(h) send(h,{t:'error',msg:'Lobby timed out'});
-    for(const o of room.players) if(o) o.room=null;
-    rooms.delete(code);
+  for(const [code,room] of rooms){
+    const idle=now-(room.seen||room.born);
+    /* This used to tell the host alone and null every other player's room out
+       from under them, so each guest sat on a spinner for a room that no
+       longer existed. Everybody hears about it, and the clock runs from the
+       last sign of life rather than from when the room was opened. */
+    if(!room.started&&idle>10*60*1000){
+      for(const o of room.players) if(o){ o.room=null; send(o,{t:'error',msg:'Lobby timed out'}); }
+      rooms.delete(code); continue;
+    }
+    if(room.done&&idle>5*60*1000){            // a finished match, long since over
+      for(const o of room.players) if(o) o.room=null;
+      rooms.delete(code);
+    }
   }
 },60*1000);
 
