@@ -22,10 +22,18 @@ function playOne(seatArmies, seed) {
   run('scaleKey="' + SCALE + '"; modeKey="duel"; terrainKey="open"');
   run('facKey="' + seatArmies[0] + '"');
   run('startGame("' + DIFF + '")');
-  // both seats are bots, and both are the army we asked for
+  /* startGame picks the armies for seats 1-3 at random and then builds the
+     world, so the starting workers are spawned with whatever army it chose -
+     their maxHp is baked in at spawn. Setting the armies and rebuilding means
+     every unit on the field belongs to the army being tested. */
   run('FACOF=["' + seatArmies[0] + '","' + seatArmies[1] + '","concord","concord"]');
   run('clearDefs()');
+  run('init()');
   run('BOTS=[true,true,false,false]');
+  const seated = run('[FACOF[0],FACOF[1]]');
+  if (seated[0] !== seatArmies[0] || seated[1] !== seatArmies[1]) {
+    throw new Error('seats did not take: ' + JSON.stringify(seated));
+  }
 
   let t = 0, winner = null, reason = 'cap';
   while (t < CAP_SECONDS) {
