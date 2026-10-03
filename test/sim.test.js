@@ -1643,20 +1643,20 @@ function asArmy(f) {
 
 test('prose written in Allied names is rewritten into each army\'s own', () => {
   asArmy('legion');
-  eq(run('facText("Train a Rifleman.")'), 'Train a Conscript Squad.', 'a unit');
+  eq(run('facText("Train a Rifleman.")'), 'Train a Conscript.', 'a unit');
   eq(run('facText("Raise a Bunker.")'), 'Raise a Pillbox.', 'a building');
   asArmy('pact');
-  eq(run('facText("Train a Rifleman.")'), 'Train a Gun Gang.', 'a unit, militia');
+  eq(run('facText("Train a Rifleman.")'), 'Train a Gun Man.', 'a unit, militia');
 });
 
 test('irregular plurals survive the rewrite', () => {
   // 'Riflemen' shares no stem with 'Rifleman', so a bare +s rule mangles it,
   // and 'Pillbox'+'s' is not a word
   asArmy('legion');
-  eq(run('facText("five Riflemen")'), 'five Conscript Squads', 'Riflemen');
+  eq(run('facText("five Riflemen")'), 'five Conscripts', 'Riflemen');
   eq(run('facText("Bunkers can shoot air")'), 'Pillboxes can shoot air', 'Pillboxes');
   asArmy('pact');
-  eq(run('facText("five Riflemen")'), 'five Gun Gangs', 'Riflemen, militia');
+  eq(run('facText("five Riflemen")'), 'five Gun Men', 'Riflemen, militia');
 });
 
 test('a name is never rewritten twice in one pass', () => {

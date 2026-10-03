@@ -1611,7 +1611,7 @@ function titanTick(u,dt){
           c.cmd={t:'amove',x:u.x+Math.cos(a)*120,y:u.y+Math.sin(a)*120};
           u.brood.push(c);
           if(u.owner===0||seen(u))
-            fx.push({x:c.x,y:c.y,t:0,dur:.5,r:16,k:'ping',c:'#9ff06a'});
+            fx.push({x:c.x,y:c.y,t:0,dur:.5,r:16,k:'ping',c:'#ff4f3a'});
         }
       }
     }
@@ -1639,7 +1639,7 @@ function venomTick(e,dt){
   if(e.owner===0||isAlly(e.owner)) e.hurtAt=gameTime;
   if(Math.random()<dt*3.2)
     fx.push({x:e.x+rnd(-7,7),y:e.y-(e.kind==='building'?e.h*.3:e.r),
-             t:0,dur:.5,r:3.4,k:'hit',c:'#9ff06a'});
+             t:0,dur:.5,r:3.4,k:'hit',c:'#ff4f3a'});
   if(e.hp<=0&&!e.dead) damage(e,0,v.by);   // let the usual death path run
 }
 /* Being shot is an order. Auto-acquire only ever looked for something inside
@@ -3873,14 +3873,14 @@ function buildInfo(){
           if(_st.ward) notes.push('Shields allies within '+Math.round(_st.ward.range/TILE)+
             ' tiles for -'+Math.round(_st.ward.cut*100)+'% damage');
           if(_st.mends) notes.push('Mends nearby structures');
-          if(_st.brood) notes.push('Births a '+nameOf(_st.brood.type,e.owner)+
+          if(_st.brood) notes.push('Deploys a '+nameOf(_st.brood.type,e.owner)+
             ' every '+_st.brood.every+'s, up to '+_st.brood.cap);
           if(_st.boom) notes.push('Detonates for '+_st.boom.dmg+' when destroyed');
-          if(_st.mend) notes.push('Knits itself back together');
+          if(_st.mend) notes.push('Patches itself back together');
           if(notes.length) s+='<span style="color:#ffcf5a">'+notes.join('<br>')+'</span><br>';
         }
         if(e.venom&&e.venom.until>gameTime)
-          s+='<span style="color:#9ff06a">Bleeding '+e.venom.dps.toFixed(1)+'/s</span><br>';
+          s+='<span style="color:#ff6b52">Bleeding '+e.venom.dps.toFixed(1)+'/s</span><br>';
         const names={idle:'Idle',move:'Moving',amove:'Attack-move',attack:'Attacking',gather:'Extracting',build:'Constructing',repair:'Repairing',hold:'Holding position'};
         s+='<span class="k">Order</span> '+(names[e.cmd.t]||e.cmd.t);
       } else {
@@ -5918,7 +5918,7 @@ function drawUnit(u){
     ctx.beginPath(); ctx.arc(u.x,u.y,d.r+1.5,0,7); ctx.fill(); ctx.restore();
   }
   if(u.venom&&u.venom.until>gameTime){     // and a wound that is still bleeding
-    ctx.save(); ctx.globalAlpha=.75; ctx.fillStyle='#9ff06a';
+    ctx.save(); ctx.globalAlpha=.75; ctx.fillStyle='#ff4f3a';
     ctx.beginPath(); ctx.arc(u.x+d.r*.7,u.y-d.r*.7-lift,2.6,0,7); ctx.fill(); ctx.restore();
   }
   if(d.worker&&u.carry>0){
@@ -6777,13 +6777,13 @@ const FNAMES={
            keystone:'Headquarters', habitat:'Billet',  musterhall:'Barracks',
            siphon:'Refinery',  forgeworks:'Workshop',  watchspire:'Bunker',
            citadel:'Proving Ground'},
-  legion: {delver:'Pioneer',   warden:'Conscript Squad',breaker:'Breacher Squad',
+  legion: {delver:'Pioneer',   warden:'Conscript',     breaker:'Breacher',
            bulwark:'Flak',     sunderer:'Rocket Battery', harrower:'Heavy Tank',
            talon:'Strike Plane',titan:'Siege Dreadnought',
            keystone:'Command Post', habitat:'Bunkhouse', musterhall:'Drill Yard',
            siphon:'Fuel Depot',forgeworks:'Tank Works',watchspire:'Pillbox',
            citadel:'Heavy Works'},
-  pact:   {delver:'Digger',    warden:'Gun Gang',      breaker:'Brawler',
+  pact:   {delver:'Digger',    warden:'Gun Man',       breaker:'Brawler',
            bulwark:'Scrap Gunner', sunderer:'Mortar Truck', harrower:'Scrap Tank',
            talon:'Scrapwing',  titan:'Scrap Leviathan',
            keystone:'Depot',   habitat:'Camp',         musterhall:'Muster Yard',
@@ -6814,7 +6814,7 @@ const FPLURAL={
   concord:{warden:'Riflemen', keystone:'Headquarters', musterhall:'Barracks'},
   legion: {watchspire:'Pillboxes', forgeworks:'Tank Works', citadel:'Heavy Works',
            bulwark:'Flak'},
-  pact:   {forgeworks:'Scrapworks'}
+  pact:   {forgeworks:'Scrapworks', warden:'Gun Men'}
 };
 function plOf(fk,k){
   const F=FPLURAL[fk]; if(F&&F[k]) return F[k];
@@ -8006,8 +8006,8 @@ const TUT_STEPS=[
      const c=priceOf('unit','titan',0);
      const mine={
        concord:'It barely fights. What it does is hang over your army and halve the damage coming in, and mend the buildings beneath it.',
-       legion:'A walking furnace: enormous splash, and when it finally dies it takes everything around it with it.',
-       pact:'A walking grove. It keeps birthing '+nameOf('warden',0)+'s for free, for ever, and knits itself back together.'
+       legion:'A siege engine: enormous splash, and when it finally dies it takes everything around it with it.',
+       pact:'A mobile fortress. It keeps deploying '+plOf(FACOF[0],'warden')+' for free, for ever, and patches itself back together.'
      }[facKey]||'';
      return dv('Select the '+nameOf('citadel',0)+' and order one. '+c.m+' supply and '+c.g+
                ' fuel, ten manpower, and no limit on how many you own. '+mine,
