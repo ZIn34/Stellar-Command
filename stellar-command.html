@@ -813,7 +813,7 @@ const FSTYLE={
     watchspire:{entrench:true},
     /* AEGIS BASTION - a flying command ship. It barely fights; what it does is
        keep everything under it alive, and mend the buildings it hangs over. */
-    titan:{air:true, rng:184, dmgMul:.72, cd:1.5,
+    titan:{air:true, rng:184, dmgMul:.72, cd:1.5, splash:92,
            // hold: how firmly it gathers loose allies back under the umbrella
            ward:{range:300, cut:.5, hold:46}, mends:{range:270, rate:78}}
   },
@@ -838,7 +838,7 @@ const FSTYLE={
     talon:   {venom:true},
     /* HOLLOW MOTHER - a walking grove. It keeps birthing Thornlings for free
        and knits itself back together, so it wins by never running out. */
-    titan:{venom:true, rng:142, dmgMul:.9, cd:1.5,
+    titan:{venom:true, rng:142, dmgMul:.9, cd:1.5, splash:104,
            brood:{type:'warden', every:4.2, cap:14}, mend:.105}
   }
 };
@@ -1562,11 +1562,18 @@ function damage(t,amt,by,src){
     for(const e of ents) if(e.target===t) e.target=null;
   }
 }
-function splashAt(x,y,rad,amt,owner,src){
+function splashAt(x,y,rad,amt,owner,src,venom){
   for(const o of around(x,y,rad+40)){
     if(o.dead||!isFoe(o.owner,owner)) continue;
     const d=Math.hypot(o.x-x,o.y-y);
-    if(d<rad+hitRadius(o)) damage(o,amt*(1-.5*d/(rad+hitRadius(o))),owner,src||null);
+    if(d<rad+hitRadius(o)){
+      const hit=amt*(1-.5*d/(rad+hitRadius(o)));
+      damage(o,hit,owner,src||null);
+      /* A Pact weapon that splashes still has to poison, or giving the Hollow
+         Mother a spread would quietly have cost it the one thing that makes
+         it a Pact ship - the splash branch never touched venomApply. */
+      if(venom) venomApply(o,hit,owner);
+    }
   }
 }
 function fire(a,t){
@@ -1602,7 +1609,8 @@ function stepShots(dt){
     s.t+=dt;
     if(s.t>=s.dur){
       s.done=true;
-      if(s.splash) splashAt(s.tx,s.ty,s.splash,s.dmg,s.owner,(s.src&&!s.src.dead)?s.src:null),
+      if(s.splash) splashAt(s.tx,s.ty,s.splash,s.dmg,s.owner,
+                            (s.src&&!s.src.dead)?s.src:null,s.venom),
         fx.push({x:s.tx,y:s.ty,t:0,dur:.4,r:s.splash,k:'boom'});
       else if(s.target&&!s.target.dead){
         damage(s.target,s.dmg,s.owner,(s.src&&!s.src.dead)?s.src:null);
