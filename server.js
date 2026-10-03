@@ -166,6 +166,7 @@ function openRoom(c,quick,mode,pub){
   const room={code,players:[c],quick:!!quick,born:Date.now(),seen:Date.now(),
               started:false,done:false,
               toks:[c.id],                    // which seat each player may reclaim
+              teams:[0,1,0,1],                // host can rearrange these for 2v2
               pub:!!pub,                      // listed in the browser, or code-only
               mode:okMode(mode)};
   rooms.set(code,room); c.room=room;
@@ -180,7 +181,9 @@ function roster(room){
   room.players.forEach((c,i)=>{
     if(!c) return;
     send(c,{t:'roster',code:room.code,n:liveCount(room),max:cap,slot:i,
-            host:i===0,mode:room.mode,pub:!!room.pub,tok:c.id});
+            host:i===0,mode:room.mode,pub:!!room.pub,tok:c.id,
+            teams:room.teams.slice(0,4),
+            facs:room.players.slice(0,4).map(p=>(p&&p.fac)||null)});
   });
 }
 function addPlayer(room,c){
@@ -193,13 +196,15 @@ function begin(room,mode,grand,seed,terrain){
   room.started=true;
   const facs=['concord','concord','concord','concord'];
   room.players.forEach((pl,i)=>{ if(pl&&pl.fac&&i<4) facs[i]=okFac(pl.fac); });
-  room.cfg={mode:mode,grand:!!grand,seed:seed,terrain:terrain,count:room.players.length,facs:facs};
+  const teams=(mode==='ffa')?[0,1,2,3]:room.teams.slice(0,4);
+  room.cfg={mode:mode,grand:!!grand,seed:seed,terrain:terrain,
+            count:room.players.length,facs:facs,teams:teams};
   room.players.forEach((c,i)=>{
     if(!c) return;
     room.toks[i]=c.id;
     send(c,{t:'start',role:i===0?'host':'guest',code:room.code,
             slot:i,count:room.players.length,mode:mode,grand:!!grand,seed:seed,
-            terrain:terrain,facs:facs,tok:c.id});
+            terrain:terrain,facs:facs,teams:teams,tok:c.id});
   });
 }
 function handle(c,text){
@@ -236,7 +241,8 @@ function handle(c,text){
       c.room=room; c.fac=okFac(m.fac||c.fac); room.seen=Date.now();
       const g=room.cfg||{};
       send(c,{t:'start',role:'guest',code:room.code,slot:seat,count:g.count||room.players.length,
-              mode:g.mode,grand:!!g.grand,seed:g.seed,terrain:g.terrain,facs:g.facs,rejoin:true});
+              mode:g.mode,grand:!!g.grand,seed:g.seed,terrain:g.terrain,facs:g.facs,
+              teams:g.teams,tok:c.id,rejoin:true});
       for(const o of room.players) if(o&&o!==c) send(o,{t:'peerback',slot:seat});
       return;
     }
@@ -269,6 +275,23 @@ function handle(c,text){
     }
     out.sort((a,b)=>b.n-a.n||a.age-b.age);
     send(c,{t:'rooms',rooms:out.slice(0,40)});
+    return;
+  }
+  if(m.t==='fac'){
+    /* Anyone may change their own doctrine while the room is still open, so
+       you pick your legion with your team in front of you. */
+    const room=c.room;
+    if(room&&!room.started){ c.fac=okFac(m.fac); roster(room); }
+    return;
+  }
+  if(m.t==='seat'){
+    // only the host arranges the sides, and only before the match begins
+    const room=c.room;
+    if(!room||room.started||hostOf(room)!==c) return;
+    const i=m.slot|0;
+    if(i<0||i>3) return;
+    room.teams[i]=(m.team|0)?1:0;
+    roster(room);
     return;
   }
   if(m.t==='finished'){

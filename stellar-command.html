@@ -349,6 +349,20 @@ body.touch .mouse-only{display:none}
 #lobSeats .seat.open{color:#4d6b83;border-style:dashed}
 #lobSeats .seat b{font-weight:400;letter-spacing:2px}
 #lobSeats .seat i{font-style:normal;font-size:9.5px;color:#7c9cb4}
+/* a room you can arrange: sides on the left, your own doctrine on the right */
+#lobSeats .seat .sideBtn{font:inherit;font-size:9.5px;letter-spacing:1px;
+  background:rgba(12,26,40,.8);border:1px solid #27506f;color:#9fc4de;
+  border-radius:5px;padding:2px 8px;cursor:default}
+#lobSeats .seat .sideBtn.can{cursor:pointer}
+#lobSeats .seat .sideBtn.can:hover{border-color:#4bd6ff;color:#dff1ff}
+#lobSeats .seat .sideBtn.tA{border-color:#4bd6ff;color:#8fe4ff}
+#lobSeats .seat .sideBtn.tB{border-color:#ff8a6b;color:#ffb49c}
+#lobSeats .facPick{display:flex;gap:4px;margin-left:auto}
+#lobSeats .facPick button{font:inherit;font-size:9px;letter-spacing:1px;
+  background:rgba(12,26,40,.8);border:1px solid #27506f;color:#7c9cb4;
+  border-radius:5px;padding:2px 6px;cursor:pointer}
+#lobSeats .facPick button.on{border-color:#ffcf5a;color:#ffd98a}
+#lobSeats .facPick button:hover{border-color:#4bd6ff}
 #lobStart{display:none;margin:8px auto 0;font-family:inherit;font-size:12px;letter-spacing:3px;
   padding:8px 22px;cursor:pointer;color:#04121c;border:0;border-radius:6px;
   background:linear-gradient(180deg,#8dffc0,#2fbf7a)}
@@ -2346,6 +2360,7 @@ cv.addEventListener('wheel',e=>{
 const NET={
   ws:null, role:null, code:null, state:'off',
   prevT:0, nextT:0, byId:new Map(), evOut:[], seed:1, ended:false, tok:null, pub:false,
+  teams:null, seatFacs:null,
   slot:0, humans:1, roomN:1, isHost:true
 };
 /* With more than one guest the old owner^1 flip no longer works, so each client
@@ -2461,6 +2476,8 @@ function netRecv(m){
        knows, so take it from there. */
     if(m.pub!==undefined) NET.pub=!!m.pub;
     if(m.tok) NET.tok=m.tok;
+    if(Array.isArray(m.teams)) NET.teams=m.teams.slice(0,4).map(v=>(v|0)?1:0);
+    if(Array.isArray(m.facs)) NET.seatFacs=m.facs.slice(0,4);
     lobbyRoster(m);
     return;
   }
@@ -2475,6 +2492,9 @@ function netRecv(m){
       :null;
     NET.lostAt=null;
     if(m.tok) NET.tok=m.tok;
+    /* The host arranged the sides in the room, so take them from the wire
+       rather than falling back to the fixed 0/1/0/1 pairing. */
+    NET.teams=Array.isArray(m.teams)?m.teams.slice(0,4).map(v=>v|0):null;
     if(m.rejoin) say('Reconnected as Commander '+(NET.slot+1)+'.');
     lobbyClose();
     startOnline(m.seed>>>0,!!m.grand,m.mode||'duel');
@@ -2752,6 +2772,11 @@ function startOnline(seed,grand,mode){
     const t=FACOF.slice(), g=NET.slot, tmp=t[0]; t[0]=t[g]; t[g]=tmp; FACOF=t;
   }
   setupSides(mode||'duel',NET.humans||2);
+  if(NET.teams&&NET.teams.length===4&&(mode||'duel')!=='ffa'){
+    const t=NET.teams.slice();
+    // a side needs somebody on it, or there is no match to play
+    if(t.some(v=>v!==t[0])) TEAMOF=t;
+  }
   // Teams are defined in real slots; a guest sees itself as 0, so swap its own
   // slot into place or allies and enemies come out inverted on its screen.
   if(NET.slot){
@@ -3739,6 +3764,20 @@ const FBUILD={
    themselves: read each colour's brightness, then look that brightness up in
    the doctrine's own lo-mid-hi ramp. Iron reads as iron, wood as wood, and
    the shading the art already had survives it. */
+/* Reshaping the hulls was not enough, because every bright panel, window,
+   glow and running light took the TEAM colour - so all three doctrines wore
+   the same cyan over the top and still read as the original art. Pull the
+   accent most of the way to the doctrine's own and leave enough of the team
+   colour in it to tell two Legion players apart. */
+function facAcc(owner){
+  const base=(TEAM[owner]||TEAM[0]).c, f=FBUILD[facKeyOf(owner)];
+  return (!f||f===FBUILD.concord)?base:mixHex(base,f.acc,.72);
+}
+/* The same for the few hard-coded highlights - the glints and lamp cores. */
+function facLight(hx,fk){
+  const f=FBUILD[fk]; if(!f||fk==='concord') return hx;
+  return mixHex(hx,f.acc,.78);
+}
 function facShade(hx,fk){
   const f=FBUILD[fk]; if(!f||fk==='concord') return hx;
   const p=parseInt(hx.slice(1),16);
@@ -3912,9 +3951,11 @@ const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
 
 /* ---------- units (drawn facing +x) ---------- */
 function makeUnitSpr(type,owner){
-  const d=UDEF[type], t=TEAM[owner], R=d.r;
+  const d=UDEF[type], R=d.r;
   const _H=hullSet(owner), HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;
   const _fk=facKeyOf(owner), _fs=FBUILD[_fk].scale;
+  const t={c:facAcc(owner)};              // shadows TEAM[owner]: doctrine accent
+  const _sh=hx=>facShade(hx,_fk), _lt=hx=>facLight(hx,_fk);
   const poly=(gg,pts)=>facPoly(gg,pts,_fk);
   const rr=(gg,x,y,w,h,r)=>facRR(gg,x,y,w,h,r,_fk);
   const plate=(gg,x,y,w,h,r,a,b)=>facPlate(gg,x,y,w,h,r,a,b,_fk);
@@ -3934,9 +3975,9 @@ function makeUnitSpr(type,owner){
     g.fillStyle=t.c;
     poly(g,[[-R*.2,-R*.6],[R*.3,-R*.66],[R*.3,-R*.3],[-R*.2,-R*.28]]); g.fill();
     poly(g,[[-R*.2, R*.6],[R*.3, R*.66],[R*.3, R*.3],[-R*.2, R*.28]]); g.fill();
-    g.fillStyle='#8fe4ff';
+    g.fillStyle=_lt('#8fe4ff');
     poly(g,[[R*.85,-2.8],[R*1.75,0],[R*.85,2.8]]); g.fill();
-    glow(g,()=>{ g.fillStyle='#cdefff'; g.beginPath(); g.arc(R*.3,0,1.9,0,7); g.fill(); },'#9ee9ff',5);
+    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath(); g.arc(R*.3,0,1.9,0,7); g.fill(); },_lt('#9ee9ff'),5);
   } else if(type==='warden'){
     plate(g,-R*1.05,-R*.5,R*.6,R,2.5,HULL,HULL_LO);
     g.fillStyle=DARK; rr(g,-R*.1,-1.5,R*2.05,3,1.4); g.fill();
@@ -3982,7 +4023,7 @@ function makeUnitSpr(type,owner){
     g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
     g.fillStyle=t.c;
     poly(g,[[-R*.55,-R*.2],[R*.1,-R*.17],[R*.1,R*.17],[-R*.55,R*.2]]); g.fill();
-    glow(g,()=>{ g.fillStyle='#cdefff'; g.beginPath(); g.arc(R*.5,0,R*.16,0,7); g.fill(); },t.c,7);
+    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath(); g.arc(R*.5,0,R*.16,0,7); g.fill(); },t.c,7);
     g.fillStyle=t.c; rr(g,-R*.95,-2,R*.3,4,1.4); g.fill();
   } else if(type==='harrower'){
     g.fillStyle=DARK;                                   // outrigger legs
@@ -4005,14 +4046,14 @@ function makeUnitSpr(type,owner){
     g.fillStyle=t.c;
     rr(g,-R*.9,-R*.34,R*.24,R*.68,1.5); g.fill();
     const cg=g.createRadialGradient(0,0,1,0,0,R*.42);
-    cg.addColorStop(0,'#e9f6ff'); cg.addColorStop(.5,t.c); cg.addColorStop(1,'rgba(0,0,0,0)');
+    cg.addColorStop(0,_lt('#e9f6ff')); cg.addColorStop(.5,t.c); cg.addColorStop(1,'rgba(0,0,0,0)');
     glow(g,()=>{ g.fillStyle=cg; g.beginPath(); g.arc(-R*.05,0,R*.4,0,7); g.fill(); },t.c,9);
   } else {
     const brawler=false;
     g.fillStyle=DARK;
     rr(g,-R*.95,-R-1,R*1.9,brawler?6.5:5,2); g.fill();
     rr(g,-R*.95, R-(brawler?5.5:4),R*1.9,brawler?6.5:5,2); g.fill();
-    g.strokeStyle='#0a1017'; g.lineWidth=1;
+    g.strokeStyle=_sh('#0a1017'); g.lineWidth=1;
     for(let i=-3;i<=3;i++){ g.beginPath();
       g.moveTo(i*R*.27,-R-1); g.lineTo(i*R*.27,-R+4);
       g.moveTo(i*R*.27, R-4); g.lineTo(i*R*.27, R+1); g.stroke(); }
@@ -4033,7 +4074,7 @@ function makeUnitSpr(type,owner){
       g.fillStyle=HULL; rr(g,R*1.7,-4,R*.4,8,1.6); g.fill();
     }
     const tg=g.createRadialGradient(-R*.08,-R*.16,1,0,0,R*.5);
-    tg.addColorStop(0,'#7d94ab'); tg.addColorStop(1,'#33445a');
+    tg.addColorStop(0,_sh('#7d94ab')); tg.addColorStop(1,_sh('#33445a'));
     g.fillStyle=tg; g.beginPath(); g.arc(0,0,R*.48,0,7); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.4; g.beginPath(); g.arc(0,0,R*.48,0,7); g.stroke();
     glow(g,()=>{ g.fillStyle=t.c; g.beginPath(); g.arc(-R*.12,0,1.9,0,7); g.fill(); },t.c,5);
@@ -4058,7 +4099,9 @@ function unitSpr(type,owner){ const k='u'+type+owner+facKeyOf(owner); return SPR
 
 /* ---------- buildings ---------- */
 function makeBldSpr(type,owner){
-  const d=BDEF[type], t=TEAM[owner], PAD=20, _fk=facKeyOf(owner);
+  const d=BDEF[type], PAD=20, _fk=facKeyOf(owner);
+  const t={c:facAcc(owner)};              // shadows TEAM[owner]: doctrine accent
+  const _lt=hx=>facLight(hx,_fk);
   const _sh=hx=>facShade(hx,_fk);
   const poly=(gg,pts)=>facPoly(gg,pts,_fk);
   const rr=(gg,x,y,w,h,r)=>facRR(gg,x,y,w,h,r,_fk);
@@ -4084,7 +4127,7 @@ function makeBldSpr(type,owner){
     dg.addColorStop(0,_sh('#7f97b0')); dg.addColorStop(1,_sh('#243244'));
     g.fillStyle=dg; g.beginPath(); g.arc(0,0,20,0,7); g.fill();
     glow(g,()=>{ g.strokeStyle=t.c; g.lineWidth=3; g.beginPath(); g.arc(0,0,13,0,7); g.stroke(); },t.c,10);
-    glow(g,()=>{ g.fillStyle='#e9f6ff'; g.beginPath(); g.arc(0,0,5,0,7); g.fill(); },t.c,12);
+    glow(g,()=>{ g.fillStyle=_lt('#e9f6ff'); g.beginPath(); g.arc(0,0,5,0,7); g.fill(); },t.c,12);
     win(-hw+8,-6,5,12); win(hw-13,-6,5,12);
   } else if(type==='habitat'){
     body(2,10); trim(4,9);
@@ -4160,17 +4203,19 @@ function bldSpr(type,owner){ const k='b'+type+owner+facKeyOf(owner); return SPR[
 
 /* ---------- watchspire turret head (rotates at runtime) ---------- */
 function makeHeadSpr(owner){
-  const t=TEAM[owner], S=40, c=newCv(S*SS,S*SS), g=c.getContext('2d');
+  const _fk=facKeyOf(owner);
+  const t={c:facAcc(owner)}, S=40, c=newCv(S*SS,S*SS), g=c.getContext('2d');
   g.scale(SS,SS); g.translate(S/2,S/2); g.lineJoin='round';
   g.fillStyle=DARK; rr(g,2,-6,17,3.4,1.5); g.fill(); rr(g,2,2.6,17,3.4,1.5); g.fill();
   const gr=g.createRadialGradient(-2,-3,1,0,0,10);
-  gr.addColorStop(0,HULL_HI); gr.addColorStop(1,'#1d2836');
+  const _hs=hullSet(owner);
+  gr.addColorStop(0,_hs.hi); gr.addColorStop(1,_hs.lo);
   g.fillStyle=gr; g.beginPath(); g.arc(0,0,9,0,7); g.fill();
   g.strokeStyle=t.c; g.lineWidth=1.8; g.beginPath(); g.arc(0,0,9,0,7); g.stroke();
   glow(g,()=>{ g.fillStyle=t.c; g.beginPath(); g.arc(2,0,2.4,0,7); g.fill(); },t.c,6);
   return c;
 }
-function headSpr(owner){ const k='h'+owner; return SPR[k]||(SPR[k]=makeHeadSpr(owner)); }
+function headSpr(owner){ const k='h'+owner+facKeyOf(owner); return SPR[k]||(SPR[k]=makeHeadSpr(owner)); }
 
 /* ---------- HUD icons ---------- */
 function iconOf(kind,type,owner){
@@ -5570,6 +5615,7 @@ function lobbyPollStart(){
 function lobbyFresh(){
   lobbyPollStop();
   NET.lostAt=null; NET.ended=false; NET.pub=false; NET.mode=null; NET.roomN=0;
+  NET.teams=null; NET.seatFacs=null;
 }
 /* Who is in the room so far, and - for the host - the choice between waiting
    for more commanders or starting now with bots filling the empty seats. */
@@ -5584,18 +5630,59 @@ function lobbyRoster(m){
   lobbySetState(NET.isHost?'hosting':'waiting');
   const pubNote=NET.pub?'Listed in Public Rooms - anyone can drop in. ':'Code only - share it to let people in. ';
   document.getElementById('lobMsg').textContent=NET.isHost
-    ? (pubNote+(cap>2 ? 'Wait for more commanders, or start now and let bots take the empty seats.'
-                      : 'Waiting for an opponent.'))
-    : 'You are in. Waiting for the host to start.';
-  let html='';
+    ? (pubNote+(key==='team'?'Click a side to move that seat. ':'')+
+       (cap>2 ? 'Wait for more commanders, or start now and let bots take the empty seats.'
+              : 'Waiting for an opponent.'))
+    : 'You are in - pick your legion. Waiting for the host to start.';
+  /* The room is where you settle the match: the host drags seats between the
+     two sides, and everyone picks their own doctrine with the line-up in
+     front of them. Built out of nodes because none of it is trusted text. */
+  const teams=(NET.teams&&NET.teams.length===4)?NET.teams:[0,1,0,1];
+  const facs=NET.seatFacs||[];
+  const pairs=(key==='team');
+  seats.textContent='';
   for(let i=0;i<cap;i++){
     const filled=i<n;
-    const who=i===0?'HOST':('COMMANDER '+(i+1));
-    const tag=filled?(i===NET.slot?'you':'ready'):'bot seat';
-    html+='<div class="seat'+(i===NET.slot&&filled?' me':'')+(filled?'':' open')+'">'+
-          '<b>'+(filled?who:'OPEN')+'</b><i>'+tag+'</i></div>';
+    const row=document.createElement('div');
+    row.className='seat'+(i===NET.slot&&filled?' me':'')+(filled?'':' open');
+    if(pairs){
+      const sb=document.createElement('button');
+      sb.className='sideBtn '+(teams[i]?'tB':'tA')+(NET.isHost?' can':'');
+      sb.textContent=teams[i]?'SIDE B':'SIDE A';
+      if(NET.isHost){
+        sb.title='Click to move this seat to the other side';
+        sb.onclick=()=>{ SFX.play('click');
+          netSend({t:'seat',slot:i,team:teams[i]?0:1}); };
+      }
+      row.appendChild(sb);
+    }
+    const nm=document.createElement('b');
+    nm.textContent=filled?(i===0?'HOST':('COMMANDER '+(i+1))):'OPEN';
+    row.appendChild(nm);
+    const tag=document.createElement('i');
+    const fk=(typeof facs[i]==='string'&&FACTIONS[facs[i]])?facs[i]:null;
+    tag.textContent=(filled?(i===NET.slot?'you':'ready'):'bot seat')+
+      (fk?' - '+FACTIONS[fk].n:'');
+    row.appendChild(tag);
+    if(i===NET.slot&&filled){
+      const pick=document.createElement('div');
+      pick.className='facPick';
+      Object.keys(FACTIONS).forEach(k=>{
+        const b=document.createElement('button');
+        b.textContent=FACTIONS[k].n.split(' ').pop();
+        if(k===facKey) b.classList.add('on');
+        b.title=FACTIONS[k].d;
+        b.onclick=()=>{ SFX.play('click'); facKey=k; FACOF[0]=k;
+          if(window.manRender) manRender();
+          idleTitle();
+          netSend({t:'fac',fac:k});
+          lobbyRoster(m); };
+        pick.appendChild(b);
+      });
+      row.appendChild(pick);
+    }
+    seats.appendChild(row);
   }
-  seats.innerHTML=html;
   seats.style.display='block';
   if(NET.isHost&&n>=2){ startBtn.style.display='block'; startBtn.textContent=
     (n>=cap?'START':'START NOW ('+n+' of '+cap+')'); }
