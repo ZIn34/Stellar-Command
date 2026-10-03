@@ -284,6 +284,15 @@ body.touch .mouse-only{display:none}
 .setpage[hidden]{display:none}
 .setnote{font-size:9.5px;color:#6f8ca4;line-height:1.5;margin:6px 0 10px}
 #keyList{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+/* What a selected group of production buildings is actually doing. */
+#prodSum{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 0 7px;
+  padding:5px 8px;border:1px solid #27506f;border-radius:5px;background:rgba(8,20,32,.7)}
+#prodSum b{font-size:11px;font-weight:400;letter-spacing:1px;color:#8fe4ff}
+#prodSum span{font-size:9.5px;letter-spacing:.5px;color:#9fb6c9}
+#prodSum .hallsIdle{color:#ffb43a}
+.port .qn{position:absolute;top:-3px;right:-3px;min-width:13px;height:13px;line-height:13px;
+  text-align:center;font-size:9px;font-weight:400;border-radius:7px;padding:0 2px;
+  background:#0a1a28;border:1px solid #4bd6ff;color:#dff1ff}
 .srow{display:flex;justify-content:space-between;align-items:center;margin:11px 0;
   font-size:10.5px;letter-spacing:2px;color:#7c9cb4}
 .setbox .tog{display:inline-block;width:42px;height:21px;border-radius:11px;border:1px solid #2d5a80;background:#0d1a28;
@@ -3723,6 +3732,27 @@ function buildCard(){
 }
 
 /* ===================== SELECTION INFO ===================== */
+/* What a selected group of production buildings is doing, as data. Kept apart
+   from the rendering so it can be checked without a browser, and so the panel
+   body stays readable. Null when nothing in the selection produces. */
+function groupProduction(list){
+  const halls=(list||[]).filter(e=>!e.dead&&e.kind==='building'&&e.done&&DEF(e).trains);
+  if(!halls.length) return null;
+  const byType=new Map();
+  let total=0, soonest=null, busy=0;
+  for(const b of halls){
+    const q=(b.queue&&b.queue.length)?b.queue:null;
+    if(!q) continue;
+    busy++;
+    for(const t of q){ byType.set(t,(byType.get(t)||0)+1); total++; }
+    const left=Math.max(0,unitBT(q[0],b.owner)/TRAIN_RATE-(b.ptime||0));
+    if(soonest===null||left<soonest) soonest=left;
+  }
+  const parts=[];
+  byType.forEach((n,t)=>parts.push(n+'× '+nameOf(t,halls[0].owner)));
+  return {halls:halls.length, busy:busy, idle:halls.length-busy,
+          total:total, byType:byType, parts:parts, soonest:soonest};
+}
 function buildInfo(){
   sel=sel.filter(s=>!s.dead);
   if(!sel.length){ infoT.textContent='NO SELECTION'; bodyEl.innerHTML=''; return; }
@@ -3804,11 +3834,29 @@ function buildInfo(){
     });
   } else {
     infoT.textContent=sel.length+' SELECTED';
-    let s='<div id="portraits">';
+    /* With a control group of halls selected there was no way to tell what any
+       of them were building, or which were standing idle - which is most of
+       the reason to group them in the first place. */
+    const pr=groupProduction(sel);
+    let s='';
+    if(pr){
+      s+='<div id="prodSum">';
+      s+=pr.total
+        ? '<b>'+pr.total+' in production</b><span>'+pr.parts.join(', ')+'</span>'+
+          (pr.soonest!==null?'<span>next in '+pr.soonest.toFixed(1)+'s</span>':'')
+        : '<b>nothing in production</b>';
+      if(pr.idle) s+='<span class="hallsIdle">'+pr.idle+' of '+pr.halls+' idle</span>';
+      s+='</div>';
+    }
+    s+='<div id="portraits">';
     sel.slice(0,44).forEach(function(e,i){
       const f=Math.max(0,e.hp/e.maxHp);
+      // how many that one has on the slab, so an idle hall stands out
+      const qn=(e.kind==='building'&&e.queue&&e.queue.length)?e.queue.length:0;
       s+='<div class="port" data-i="'+i+'">'+
-        (e.kind==='res'?'◆':iconTag(e.kind==='unit'?'unit':'bld',e.type,e.owner))+'<span class="hb"><i style="width:'+(f*100)+'%;background:'+hpColor(f)+'"></i></span></div>';
+        (e.kind==='res'?'◆':iconTag(e.kind==='unit'?'unit':'bld',e.type,e.owner))+
+        (qn?'<b class="qn">'+qn+'</b>':'')+
+        '<span class="hb"><i style="width:'+(f*100)+'%;background:'+hpColor(f)+'"></i></span></div>';
     });
     bodyEl.innerHTML=s+'</div>';
     bodyEl.querySelectorAll('.port').forEach(function(el){
@@ -3961,9 +4009,16 @@ function aiScoutSpots(ME){
   const home=aiHome(ME); if(!home) return [];
   const spots=myFoeStarts(ME).map(b=>({x:b.tx*TILE,y:b.ty*TILE}))
     .concat(EXPOS.map(e=>({x:e.tx*TILE,y:e.ty*TILE})));
-  const ref=myFoeStarts(ME)[0]||BASES[1];
-  return spots.sort((a,b)=>Math.hypot(a.x-ref.tx*TILE,a.y-ref.ty*TILE)
-                          -Math.hypot(b.x-ref.tx*TILE,b.y-ref.ty*TILE));
+  /* This ranked the scouting by distance from myFoeStarts()[0] - and that list
+     is in slot order, so slot 0 is the player. Every bot in a free-for-all
+     therefore searched around the PLAYER's start first, found the player
+     first, and picked the player as its nearest known target. Three bots
+     ganging up on you without any of them deciding to.
+
+     Each one sorts from its own base instead, so it runs into whichever
+     neighbour it actually lives next to. */
+  return spots.sort((a,b)=>Math.hypot(a.x-home.x,a.y-home.y)
+                          -Math.hypot(b.x-home.x,b.y-home.y));
 }
 function aiScout(AI,ME,dt){
   const spots=aiScoutSpots(ME);
@@ -4179,7 +4234,17 @@ function aiRun(AI,ME,dt){
     savingUp=(AI.t-(AI.saveBestAt||AI.t))<70;
   } else if(canPayGoal||!saveGoal){ AI.saveSince=0; AI.saveBest=0; AI.saveBestAt=0; }
   const canBuild=()=>workers.length>0;
-  const fs0=myFoeStarts(ME)[0]||BASES[1];
+  /* Same slot-order trap: this faced every bot's defences toward the player.
+     Point them at the nearest enemy start to their own base. */
+  const _foes=myFoeStarts(ME);
+  let fs0=_foes[0]||BASES[1];
+  if(_foes.length>1&&home){
+    let fd=1e18;
+    for(const b of _foes){
+      const d=Math.hypot(b.tx*TILE-home.x,b.ty*TILE-home.y);
+      if(d<fd){ fd=d; fs0=b; }
+    }
+  }
   const enemyDir=aiKnownBases(AI)[0]||{x:fs0.tx*TILE,y:fs0.ty*TILE};
   const put=(type,anchor,bias)=>{
     if(!canBuild()||!canAfford(ME,BDEF[type])) return false;
@@ -4256,7 +4321,13 @@ function aiRun(AI,ME,dt){
   if(has('forgeworks')&&!has('citadel')&&!building('citadel')&&canBuild()&&
      canAfford(ME,bldCost('citadel',ME)))
     put('citadel',home);
-  if(AI.t>(GRAND?120:(DIFF.expoAt||200))&&AI.expo<(GRAND?6:(DIFF.expo||2))&&P[ME].m>=(DIFF.expoCost||480)&&!building('keystone')&&canBuild()){
+  /* `DIFF.expo||2` read Recruit's expo:0 as 'unset' and handed it two
+     expansions - the same as Warlord, and one more than Veteran. Recruit bots
+     were quietly out-expanding the difficulty above them, which is why the
+     easy setting felt harder than the medium one. Zero has to mean zero. */
+  const expoCap=GRAND?6:(DIFF.expo===undefined?2:DIFF.expo);
+  if(AI.t>(GRAND?120:(DIFF.expoAt||200))&&AI.expo<expoCap&&
+     P[ME].m>=(DIFF.expoCost||480)&&!building('keystone')&&canBuild()){
     const spots=EXPOS.map(e=>({x:e.tx*TILE,y:e.ty*TILE}))
       .filter(e=>!ents.some(b=>!b.dead&&b.kind==='building'&&dist(b,e)<300))
       .sort((a,b)=>dist(a,home)-dist(b,home));

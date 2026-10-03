@@ -760,6 +760,68 @@ test('the shield lookup is fast enough for a Grand War brawl', () => {
 });
 
 
+console.log('\ngrouped production');
+
+test('a group of halls reports what it is building and what is idle', () => {
+  /* Selecting a control group of production buildings told you nothing about
+     what any of them were doing - which is most of the reason to group them. */
+  arena('legion');
+  run('P[0].m=9000; P[0].g=4000');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  // plenty of housing, or the orders get refused on population and prove nothing
+  run('for(var i=0;i<8;i++) mkBuilding("habitat",0,k.x-400+(i%4)*90,k.y-300+((i/4)|0)*90,true)');
+  run('var halls=[]');
+  run('for(var i=0;i<5;i++) halls.push(mkBuilding("musterhall",0,k.x+260+(i%3)*150,k.y-200+((i/3)|0)*140,true))');
+  run('recalcSupply(0)');
+  run('tryTrain(halls[0],"warden"); tryTrain(halls[0],"warden"); tryTrain(halls[0],"breaker")');
+  run('tryTrain(halls[1],"bulwark"); tryTrain(halls[1],"warden")');
+  run('tryTrain(halls[2],"breaker")');
+  tickOn(10);
+  const pr = run('groupProduction(halls)');
+  const queued = run('halls.reduce(function(n,b){return n+((b.queue&&b.queue.length)||0);},0)');
+  const busy = run('halls.filter(function(b){return b.queue&&b.queue.length;}).length');
+  eq(pr.halls, 5, 'it counted the halls');
+  eq(pr.total, queued, 'the total matches the real queues (' + queued + ')');
+  eq(pr.busy, busy, 'and how many are working');
+  eq(pr.idle, 5 - busy, 'and how many are standing idle');
+  ok(pr.soonest !== null && pr.soonest >= 0, 'with the soonest completion (' +
+     (pr.soonest === null ? 'none' : pr.soonest.toFixed(1) + 's') + ')');
+  ok(pr.parts.join(', ').indexOf('Ravager') >= 0,
+     "broken down in this doctrine's own names: " + pr.parts.join(', '));
+});
+
+test('a group of halls with nothing queued says so', () => {
+  arena('concord');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var halls=[]');
+  run('for(var i=0;i<3;i++) halls.push(mkBuilding("musterhall",0,k.x+260+i*150,k.y-200,true))');
+  tickOn(3);
+  const pr = run('groupProduction(halls)');
+  eq(pr.total, 0, 'nothing in production');
+  eq(pr.idle, 3, 'all three idle');
+  eq(pr.soonest, null, 'and nothing to wait for');
+});
+
+test('a selection with nothing that produces reports nothing', () => {
+  arena('concord');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var us=[]');
+  run('for(var i=0;i<4;i++) us.push(mkUnit("warden",0,k.x+200+i*30,k.y+200))');
+  tickOn(3);
+  eq(run('groupProduction(us)'), null, 'no production summary for a group of units');
+  eq(run('groupProduction([])'), null, 'nor for an empty selection');
+});
+
+test('the panel renders the summary from that data', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  ok(/const pr=groupProduction\(sel\);/.test(whole), 'the panel asks for the data');
+  ok(/in production/.test(whole), 'and prints the count');
+  ok(/hallsIdle/.test(whole), 'and flags the idle halls');
+  ok(/class="qn"/.test(whole), 'with a per-building badge on the portraits');
+});
+
+
 console.log('\nsiege retaliation');
 
 test('a squad sieging a building turns on units that attack it', () => {
@@ -855,6 +917,90 @@ test('the shipyard step walks the same build chain as the others', () => {
   ok(run('(function(){var f=tutFocus(); return !!(f&&f.x!==undefined);})()'),
      'then a patch of ground to put it on');
   run('placing=null; cardMode="main"');
+});
+
+
+console.log('\ndifficulty and free-for-all');
+
+test('Recruit is not allowed to out-expand Veteran', () => {
+  /* `DIFF.expo||2` read Recruit's expo:0 as "unset" and handed it two
+     expansions - the same as Warlord and one more than Veteran. The easy
+     setting was quietly building a bigger economy than the medium one. */
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  // strip block comments, or the note explaining the old bug matches it
+  const code = whole.replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(!/DIFF\.expo\s*\|\|/.test(code), 'zero no longer reads as unset');
+  ok(/DIFF\.expo===undefined\?2:DIFF\.expo/.test(code), 'it tests for undefined explicitly');
+  const cap = {};
+  for (const d of ['recruit', 'veteran', 'warlord']) {
+    run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("' + d + '")');
+    cap[d] = run('(GRAND?6:(DIFF.expo===undefined?2:DIFF.expo))');
+  }
+  eq(cap.recruit, 0, 'Recruit expands not at all');
+  ok(cap.veteran > cap.recruit, 'Veteran expands more than Recruit');
+  ok(cap.warlord > cap.veteran, 'and Warlord more than Veteran');
+});
+
+test('every difficulty knob orders the three settings correctly', () => {
+  const k = {};
+  for (const d of ['recruit', 'veteran', 'warlord']) {
+    run('startGame("' + d + '")');
+    k[d] = run('({dec:DIFF.dec,grace:DIFF.grace,thr:DIFF.thr,wk:DIFF.wk,' +
+               'halls:DIFF.halls,qd:DIFF.qd,spires:DIFF.spires,' +
+               'expoAt:DIFF.expoAt,techAt:DIFF.techAt})');
+  }
+  // harder settings think more often, open earlier, and work more patches
+  ok(k.recruit.dec > k.veteran.dec && k.veteran.dec > k.warlord.dec, 'decision interval');
+  ok(k.recruit.grace > k.veteran.grace && k.veteran.grace > k.warlord.grace, 'grace period');
+  ok(k.recruit.wk < k.veteran.wk && k.veteran.wk < k.warlord.wk, 'worker saturation');
+  ok(k.recruit.halls <= k.veteran.halls && k.veteran.halls <= k.warlord.halls, 'production halls');
+  ok(k.recruit.techAt > k.veteran.techAt && k.veteran.techAt > k.warlord.techAt, 'tech timing');
+});
+
+test('a bot ranks its scouting from its own base, not from slot zero', () => {
+  /* myFoeStarts() is in slot order, so ranking from its first entry meant
+     every bot in a free-for-all searched around the PLAYER's start first. */
+  const src = run('String(aiScoutSpots)');
+  ok(/home\.x/.test(src) && /home\.y/.test(src),
+     'the sort is relative to its own home');
+  ok(!/myFoeStarts\(ME\)\[0\]/.test(src), 'no slot-order reference left in it');
+  // and the first place each bot looks really is its own nearest neighbour
+  run('scaleKey="standard"; modeKey="ffa"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  for (let o = 1; o < run('NPLAY'); o++) {
+    const first = run('aiScoutSpots(' + o + ')[0]');
+    const home = run('(function(){var h=aiHome(' + o + '); return {x:h.x,y:h.y};})()');
+    const mine = Math.hypot(first.x - home.x, first.y - home.y);
+    const toPlayer = run('(function(){var b=BASES[0]; var h=aiHome(' + o + ');' +
+                         'return Math.hypot(b.tx*TILE-h.x,b.ty*TILE-h.y);})()');
+    ok(mine <= toPlayer + 1,
+       'bot ' + o + ' looks somewhere at least as close as the player (' +
+       Math.round(mine) + ' vs ' + Math.round(toPlayer) + 'px)');
+  }
+});
+
+test('the free-for-all starts are evenly paired', () => {
+  run('scaleKey="standard"; modeKey="ffa"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  const n = run('NPLAY');
+  const pos = [];
+  for (let i = 0; i < n; i++) pos.push(run('({x:BASES[' + i + '].tx,y:BASES[' + i + '].ty})'));
+  const tally = {};
+  for (let i = 0; i < n; i++) {
+    let near = -1, nd = 1e18;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const d = Math.hypot(pos[j].x - pos[i].x, pos[j].y - pos[i].y);
+      if (d < nd) { nd = d; near = j; }
+    }
+    tally[near] = (tally[near] || 0) + 1;
+  }
+  // nobody should be everyone else's closest target
+  const worst = Math.max.apply(null, Object.keys(tally).map(k => tally[k]));
+  ok(worst <= 1,
+     'no start is more than one player\'s nearest neighbour: ' + JSON.stringify(tally));
 });
 
 
