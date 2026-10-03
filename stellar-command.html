@@ -854,12 +854,12 @@ const UDEF={
   titan:   {n:'Land Battleship',    hp:4500,sp:54,  dmg:156,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true}
 };
 const BDEF={
-  keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
-  habitat:   {n:'Billet',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
+  keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'H'},
+  habitat:   {n:'Billet',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'B'},
   musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker'],hk:'R'},
-  siphon:    {n:'Refinery',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
-  forgeworks:{n:'Workshop', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'F'},
-  watchspire:{n:'Bunker', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
+  siphon:    {n:'Refinery',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'F'},
+  forgeworks:{n:'Workshop', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'W'},
+  watchspire:{n:'Bunker', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'K'},
   // the only place a Titan can be built, and it needs a Workshop first
   citadel:   {n:'Proving Ground',    hp:1300,w:112,h:112,m:350,g:150,bt:62,sight:7,
               trains:['titan'],req:'forgeworks',hk:'G'}
@@ -6762,8 +6762,8 @@ const SCALES={
 };
 /* Each doctrine calls the same roster by its own names. Hotkeys stay pinned to
    the underlying type so a rename can never shuffle or collide with them. */
-const HK={delver:'D',warden:'W',bulwark:'B',sunderer:'S',harrower:'H',talon:'T',
-          breaker:'E',titan:'C'};
+const HK={delver:'S',warden:'R',bulwark:'G',sunderer:'H',harrower:'T',talon:'W',
+          breaker:'F',titan:'B'};
 const FNAMES={
   /* One roster, three armies. Only the names differ - every type keeps its
      own statline, role and hotkey, so muscle memory carries between armies.
@@ -7491,20 +7491,20 @@ const KEY_ACTS=[
   /* v + t instead of a fixed label: the name comes from the roster when the
      row is drawn, so this list reads in the army you are playing and can
      never fall out of step with a rename again. */
-  {id:'u_delver',  v:'TRAIN', t:'delver',  def:'d'},
-  {id:'u_warden',  v:'TRAIN', t:'warden',  def:'w'},
-  {id:'u_bulwark', v:'TRAIN', t:'bulwark', def:'b'},
-  {id:'u_sunderer',v:'TRAIN', t:'sunderer',def:'s'},
-  {id:'u_harrower',v:'TRAIN', t:'harrower',def:'h'},
-  {id:'u_breaker', v:'TRAIN', t:'breaker', def:'e'},
-  {id:'u_talon',   v:'TRAIN', t:'talon',   def:'t'},
-  {id:'u_titan',   v:'TRAIN', t:'titan',   def:'c'},
-  {id:'b_keystone',  v:'BUILD', t:'keystone',  def:'k'},
-  {id:'b_habitat',   v:'BUILD', t:'habitat',   def:'h'},
+  {id:'u_delver',  v:'TRAIN', t:'delver',  def:'s'},
+  {id:'u_warden',  v:'TRAIN', t:'warden',  def:'r'},
+  {id:'u_bulwark', v:'TRAIN', t:'bulwark', def:'g'},
+  {id:'u_sunderer',v:'TRAIN', t:'sunderer',def:'h'},
+  {id:'u_harrower',v:'TRAIN', t:'harrower',def:'t'},
+  {id:'u_breaker', v:'TRAIN', t:'breaker', def:'f'},
+  {id:'u_talon',   v:'TRAIN', t:'talon',   def:'w'},
+  {id:'u_titan',   v:'TRAIN', t:'titan',   def:'b'},
+  {id:'b_keystone',  v:'BUILD', t:'keystone',  def:'h'},
+  {id:'b_habitat',   v:'BUILD', t:'habitat',   def:'b'},
   {id:'b_musterhall',v:'BUILD', t:'musterhall',def:'r'},
-  {id:'b_siphon',    v:'BUILD', t:'siphon',    def:'s'},
-  {id:'b_forgeworks',v:'BUILD', t:'forgeworks',def:'f'},
-  {id:'b_watchspire',v:'BUILD', t:'watchspire',def:'t'},
+  {id:'b_siphon',    v:'BUILD', t:'siphon',    def:'f'},
+  {id:'b_forgeworks',v:'BUILD', t:'forgeworks',def:'w'},
+  {id:'b_watchspire',v:'BUILD', t:'watchspire',def:'k'},
   {id:'b_citadel',   v:'BUILD', t:'citadel',   def:'g'}
 ];
 function keyActLabel(a){
@@ -7759,12 +7759,16 @@ function tutPlaceSpot(type){
 /* Raising a building is four separate actions, and pointing at the last one is
    no use if you have not done the first. This walks the chain: the Sapper that
    will build it, then the build menu, then the building, then the ground. */
-function tutBuildFocus(type,hk){
+/* The live letter for a card button, whatever it is bound to now. */
+function hkU(type){ return hkOf('unit',type,HK[type]||''); }
+function hkB(type){ return hkOf('bld',type,(BDEF[type]||{}).hk||''); }
+function hkAct(id,fb){ const k=keyFor(id); return k?keyLabel(k):(fb||''); }
+function tutBuildFocus(type){
   if(placing===type){ const p=tutPlaceSpot(type); return p||null; }
   const ws=sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker&&!e.dead);
   if(!ws.length){ const w=mineU(u=>UDEF[u.type].worker)[0]; return w?{ent:w}:null; }
-  if(cardMode==='build') return {el:'#card .btn[data-hk="'+hk+'"]'};
-  return {el:'#card .btn[data-hk="B"]'};
+  if(cardMode==='build') return {el:'#card .btn[data-hk="'+hkB(type)+'"]'};
+  return {el:'#card .btn[data-hk="'+hkAct('c_B','B')+'"]'};
 }
 function tutNearestRes(type){
   const h=tutHome(); if(!h) return null;
@@ -7815,7 +7819,7 @@ const TUT_STEPS=[
         'Tap your Headquarters, then tap Sapper three times. More miners means more income - keep them coming all game.'),
    enter:()=>{ TUT.baseD=mineU(u=>u.type==='delver').length; },
    focus:()=>{ const k=mineB(b=>b.type==='keystone')[0];
-     return (sel.length===1&&sel[0]===k)?{el:'#card .btn[data-hk="D"]'}:(k?{ent:k}:null); },
+     return (sel.length===1&&sel[0]===k)?{el:'#card .btn[data-hk="'+hkU('delver')+'"]'}:(k?{ent:k}:null); },
    prog:()=>Math.max(0,mineU(u=>u.type==='delver').length-(TUT.baseD||0))+' / 3 trained',
    ok:()=>mineU(u=>u.type==='delver').length>=(TUT.baseD||0)+3},
   /* Selection has to come first. The idle button hands you a pile of
@@ -7837,18 +7841,18 @@ const TUT_STEPS=[
   /* It asks for one, because one is what the ring is pointing at - asking for
      "some" while highlighting a single unit just reads as broken. */
   {b:'Raise a Billet.',
-   h:dv('Press B for the build menu, pick Billet, then click a clear patch of ground. It lifts your population cap.',
+   h:()=>dv('Press '+hkAct('c_B','B')+' for the build menu, pick '+nameOf('habitat',0)+', then click a clear patch of ground. It lifts your population cap.',
         'Tap Build in the bottom panel, pick Billet, then tap a clear patch of ground. It lifts your population cap.'),
-   focus:()=>tutBuildFocus('habitat','H'),
+   focus:()=>tutBuildFocus('habitat'),
    prog:()=>{ const b=mineB(x=>x.type==='habitat')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='habitat') return 'pick your ground';
      return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='habitat'&&b.done).length>=1},
   {b:'Raise a Barracks.',
-   h:dv('Same again with R. This is what trains your soldiers, so put it somewhere safe.',
-        'Tap Build again and pick Barracks. This is what trains your soldiers, so put it somewhere safe.'),
-   focus:()=>tutBuildFocus('musterhall','R'),
+   h:()=>dv('Same again with '+hkB('musterhall')+'. This is what trains your soldiers, so put it somewhere safe.',
+        'Tap Build again and pick '+nameOf('musterhall',0)+'. This is what trains your soldiers, so put it somewhere safe.'),
+   focus:()=>tutBuildFocus('musterhall'),
    prog:()=>{ const b=mineB(x=>x.type==='musterhall')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='musterhall') return 'pick your ground';
@@ -7858,19 +7862,19 @@ const TUT_STEPS=[
    h:dv('Click the finished Barracks and pick Rifleman from the panel at the bottom.',
         'Tap the finished Barracks, then tap Rifleman in the panel at the bottom.'),
    focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
-     return (sel.length===1&&sel[0]===h)?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
+     return (sel.length===1&&sel[0]===h)?{el:'#card .btn[data-hk="'+hkU('warden')+'"]'}:(h?{ent:h}:null); },
    ok:()=>mineU(u=>u.type==='warden').length>=1||
        mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
   {b:'Attack-move your Rifleman out.',
-   h:dv('Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
+   h:()=>dv('Select it, press '+hkAct('c_A','A')+', then click across the map. Attack-move walks there and engages anything on the way.',
         'Select it, tap Attack in the panel, then tap across the map. Attack-move walks there and engages anything on the way.'),
    focus:()=>{ const w=mineU(u=>u.type==='warden')[0];
-     return (sel.length&&sel.every(e=>e.kind==='unit'))?{el:'#card .btn[data-hk="A"]'}:(w?{ent:w}:null); },
+     return (sel.length&&sel.every(e=>e.kind==='unit'))?{el:'#card .btn[data-hk="'+hkAct('c_A','A')+'"]'}:(w?{ent:w}:null); },
    ok:()=>(TUT.acts.amove||0)>=1},
   {b:'Raise a Bunker near your Headquarters.',
-   h:dv('Build menu, then W. Towers hit hard, outrange your infantry and never get stat bonuses used against them - they are your best answer to a rush.',
+   h:()=>dv('Build menu, then '+hkB('watchspire')+'. These hit hard, outrange your infantry and never get stat bonuses used against them - they are your best answer to a rush.',
         'Tap Build and pick Bunker. Towers hit hard, outrange your infantry and are your best answer to a rush.'),
-   focus:()=>tutBuildFocus('watchspire','T'),
+   focus:()=>tutBuildFocus('watchspire'),
    prog:()=>{ const b=mineB(x=>x.type==='watchspire')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='watchspire') return 'pick your ground';
@@ -7956,16 +7960,16 @@ const TUT_STEPS=[
    focus:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done)[0];
      if(sp) return {ent:sp};                       // built - now crew it
      if(placing==='siphon'){ const v=tutNearestRes('vent'); return v?{ent:v}:null; }
-     return tutBuildFocus('siphon','S'); },
+     return tutBuildFocus('siphon'); },
    prog:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
      if(!sp.length) return 'no Refinery yet';
      return mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length+' / 1 crewed'; },
    ok:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
      return sp.length>0&&mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length>=1; }},
   {b:'Raise a Workshop.',
-   h:dv('Build menu, then F. It costs fuel and unlocks the heavy units - Howitzers, Battle Tanks and Warplanes - plus upgrades.',
+   h:()=>dv('Build menu, then '+hkB('forgeworks')+'. It costs fuel and unlocks the heavy units - Howitzers, Battle Tanks and Warplanes - plus upgrades.',
         'Tap Build and pick Workshop. It unlocks the heavy units and your upgrades.'),
-   focus:()=>tutBuildFocus('forgeworks','F'),
+   focus:()=>tutBuildFocus('forgeworks'),
    prog:()=>{ const b=mineB(x=>x.type==='forgeworks')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='forgeworks') return 'pick your ground';
@@ -7978,24 +7982,24 @@ const TUT_STEPS=[
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="A"]'}:(f?{ent:f}:null); },
    ok:()=>UP[0].wep+UP[0].arm>=1||mineB(b=>b.type==='forgeworks'&&b.res).length>0},
   {b:'Build a Warplane.',
-   h:dv('From the Workshop, press T. Warplanes fly straight over rock and anything in the way, and only anti-air can touch them.',
+   h:()=>dv('From the '+nameOf('forgeworks',0)+', press '+hkU('talon')+'. Warplanes fly straight over rock and anything in the way, and only anti-air can touch them.',
         'From the Workshop, tap Warplane. Warplanes fly over everything, and only anti-air can touch them.'),
    focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
-     return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="T"]'}:(f?{ent:f}:null); },
+     return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="'+hkU('talon')+'"]'}:(f?{ent:f}:null); },
    ok:()=>mineU(u=>u.type==='talon').length>=1||
        mineB(b=>b.type==='forgeworks'&&b.queue&&b.queue.length>0).length>0},
   /* The biggest commitment in the game, and nothing used to mention it, so a
      new commander would never find out the Citadel existed. Two steps: raise
      the yard, then order the ship. */
   {b:()=>'Raise a '+nameOf('citadel',0)+'.',
-   h:()=>dv('Build menu, then G. It is the only place your capital ship can be built, and it needs the Workshop you just put up. Here is a training allowance to pay for it.',
+   h:()=>dv('Build menu, then '+hkB('citadel')+'. It is the only place your capital ship can be built, and it needs the '+nameOf('forgeworks',0)+' you just put up. Here is a training allowance to pay for it.',
             'Tap Build and pick the '+nameOf('citadel',0)+'. It is the only place your capital ship can be built. Here is a training allowance to pay for it.'),
    enter:()=>{
      // the ship costs more than a training run would ever bank
      P[0].m=Math.max(P[0].m,2600); P[0].g=Math.max(P[0].g,2200);
      say('Command has released funds - raise the '+nameOf('citadel',0)+'.');
    },
-   focus:()=>tutBuildFocus('citadel','G'),
+   focus:()=>tutBuildFocus('citadel'),
    prog:()=>{ const b=mineB(x=>x.type==='citadel')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='citadel') return 'pick your ground';
