@@ -814,7 +814,8 @@ const FSTYLE={
     /* AEGIS BASTION - a flying command ship. It barely fights; what it does is
        keep everything under it alive, and mend the buildings it hangs over. */
     titan:{air:true, rng:184, dmgMul:.72, cd:1.5,
-           ward:{range:300, cut:.5}, mends:{range:270, rate:78}}
+           // hold: how firmly it gathers loose allies back under the umbrella
+           ward:{range:300, cut:.5, hold:46}, mends:{range:270, rate:78}}
   },
   legion:{
     /* Brawlers. Almost no reach, and they hit like a truck for it - the
@@ -1411,6 +1412,27 @@ function titanTick(u,dt){
       }
     }
   }
+  /* The shield is only worth anything if the army is under it, so the Bastion
+     keeps its escort close: anything of yours drifting just outside the bubble
+     is drawn back to the edge. It never overrides an order you gave - a unit
+     told to move, gather, build or repair is left alone - so it gathers
+     stragglers rather than fighting you for control of your own army. */
+  if(st.ward&&st.ward.hold){
+    const R=st.ward.range, grab=R*1.8;
+    for(const e of around(u.x,u.y,grab+40)){
+      if(e.dead||e===u||e.kind!=='unit') continue;
+      if(!isAlly2(e.owner,u.owner)) continue;
+      if(UDEF[e.type].worker) continue;              // the Delvers have jobs
+      const c=e.cmd;
+      if(c&&(c.t==='move'||c.t==='gather'||c.t==='build'||c.t==='repair')) continue;
+      const dx=e.x-u.x, dy=e.y-u.y, d=Math.hypot(dx,dy)||.01;
+      if(d<=R-14||d>grab) continue;
+      const pull=Math.min(st.ward.hold, st.ward.hold*(d-(R-14))/120)*dt;
+      const nx=e.x-dx/d*pull, ny=e.y-dy/d*pull;
+      if(!tileBlocked(nx,e.y)) e.x=nx;
+      if(!tileBlocked(e.x,ny)) e.y=ny;
+    }
+  }
   if(st.brood){
     u.broodT=(u.broodT||st.brood.every)-dt;
     if(u.broodT<=0){
@@ -1873,7 +1895,18 @@ function separate(){
       if(o.kind==='unit'){
         const dx=u.x-o.x, dy=u.y-o.y; const d=Math.hypot(dx,dy)||.01;
         const mind=u.r+o.r;
-        if(d<mind){ const f=(mind-d)/mind*.55; px+=dx/d*f*mind; py+=dy/d*f*mind; }
+        if(d<mind){
+          /* A short-ranged doctrine has to stand body to body to fight at all,
+             and at full strength the crowd turned every melee into a shoving
+             match that slid across the map, dragging the enemy with it.
+             Anything actually trading blows braces, and a shove between
+             opposing units is gentler than one between your own - you should
+             not be able to push an enemy line around by walking into it. */
+          let f=(mind-d)/mind*.55;
+          if(u.braced) f*=.22;
+          if(isFoe(o.owner,u.owner)) f*=.4;
+          px+=dx/d*f*mind; py+=dy/d*f*mind;
+        }
       } else if(o.kind==='building'&&o.hp>0){
         const hw=o.w/2+u.r, hh=o.h/2+u.r;
         const dx=u.x-o.x, dy=u.y-o.y;
@@ -1939,6 +1972,8 @@ function updateUnit(u,dt){
     if(u.target&&c.t==='idle') u.retreat={x:u.x,y:u.y};
   }
   if(u.target&&u.target.dead) u.target=null;
+  // standing and fighting, so a crowd should not shove it off its mark
+  u.braced=!!(u.target&&!u.target.dead&&inRange(u,u.target));
 
   // hard attack order
   if(c.t==='attack'){
