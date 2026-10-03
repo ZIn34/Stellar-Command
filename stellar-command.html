@@ -7504,7 +7504,9 @@ const KEY_ACTS=[
   {id:'b_citadel',   v:'BUILD', t:'citadel',   def:'g'}
 ];
 function keyActLabel(a){
-  return a.t?(a.v+' '+nameOf(a.t,0).toUpperCase()):a.n;
+  if(!a.t) return a.n;
+  const nm=a.pl?plOf(FACOF[0],a.t):nameOf(a.t,0);
+  return a.v+' '+nm.toUpperCase();
 }
 const KEY_DEF={};
 KEY_ACTS.forEach(a=>{ KEY_DEF[a.id]=a.def; });
