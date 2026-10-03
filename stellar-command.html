@@ -386,7 +386,7 @@ body.touch .mouse-only{display:none}
   <div class="res" title="Population"><span style="color:#8fb0c8">POP</span><b id="supply">0/0</b></div>
   <button id="snd" title="Sound on/off (Ctrl+M)">&#128266;</button>
 </div>
-<button id="pauseBtn" title="Pause (Esc)">&#9612;&#9612;</button>
+<button id="pauseBtn" title="Pause">&#9612;&#9612;</button>
 <button id="mmOrder" title="Minimap order mode">&#10148;</button>
 <div id="rotate"><div><div class="rot">&#8635;</div>ROTATE YOUR DEVICE<br><span>Stellar Command plays in landscape</span></div></div>
 <div id="pause">
@@ -675,6 +675,7 @@ function applyCosmetics(){
   const pal=COSM_BY[COSM.palette]; const use=(pal&&owns(pal.id))?pal:COSM_BY.pal_azure;
   TEAM[0].c=use.c; TEAM[0].dk=use.dk;
   for(const k in SPR) delete SPR[k];            // sprites regenerate in the new colours
+  for(const k in ICO) delete ICO[k];            // and the panel icons cut from them
   if(typeof clearDefs==='function') clearDefs();  // and so do the doctrine statlines
   for(const k in ICO) delete ICO[k];
 }
@@ -3186,8 +3187,14 @@ window.addEventListener('keydown',e=>{
     settingsClose(); e.preventDefault(); return;
   }
   if(k==='escape'){
-    if(placing||pending||cardMode==='build'){ placing=null; pending=null; cardMode='main'; refreshUI(); }
-    else togglePause();
+    /* Escape is a cancel key, the way it is in StarCraft: it backs out of
+       placement, a pending order and the build submenu, and failing that it
+       drops the selection. It no longer opens the pause menu - that is what
+       the pause button is for. */
+    if(placing||pending||cardMode==='build'){
+      placing=null; pending=null; cardMode='main'; SFX.play('click');
+    } else if(sel.length){ setSel([]); SFX.play('click'); }
+    refreshUI();
     e.preventDefault(); return;
   }
   if(paused) return;
@@ -3501,8 +3508,31 @@ function buildInfo(){
         if(isBot(e.owner)&&ELITE.hp>1) s+='<span style="color:#ff9b7f">Legion hardening +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
           Math.round((ELITE.dmg-1)*100)+'% damage</span><br>';
         if(d.worker) s+='<span class="k">Cargo</span> '+(e.carry?e.carry+' '+(e.carryType==='m'?'aurite':'ichor'):'empty')+'<br>';
+        /* What this doctrine's version of the unit does that the others do
+           not - it is the whole reason the statline differs. */
+        const _st=d.style;
+        if(_st){
+          const notes=[];
+          if(_st.charge) notes.push('Charges: plants, then sprints in for '+
+            Math.round((CHARGE_HIT-1)*100)+'% more');
+          if(_st.venom) notes.push('Every hit keeps bleeding for '+VENOM_FOR+'s');
+          if(_st.entrench) notes.push('Dug in after '+ENTRENCH_AT+'s still: +'+
+            Math.round((ENTRENCH_DMG-1)*100)+'% damage'+
+            (((e.stillT||0)>=ENTRENCH_AT)?' (active)':''));
+          if(_st.ward) notes.push('Shields allies within '+Math.round(_st.ward.range/TILE)+
+            ' tiles for -'+Math.round(_st.ward.cut*100)+'% damage');
+          if(_st.mends) notes.push('Mends nearby structures');
+          if(_st.brood) notes.push('Births a '+nameOf(_st.brood.type,e.owner)+
+            ' every '+_st.brood.every+'s, up to '+_st.brood.cap);
+          if(_st.boom) notes.push('Detonates for '+_st.boom.dmg+' when destroyed');
+          if(_st.mend) notes.push('Knits itself back together');
+          if(notes.length) s+='<span style="color:#ffcf5a">'+notes.join('<br>')+'</span><br>';
+        }
+        if(e.venom&&e.venom.until>gameTime)
+          s+='<span style="color:#9ff06a">Bleeding '+e.venom.dps.toFixed(1)+'/s</span><br>';
         const names={idle:'Idle',move:'Moving',amove:'Attack-move',attack:'Attacking',gather:'Extracting',build:'Constructing',repair:'Repairing',hold:'Holding position'};
-        s+='<span class="k">Order</span> '+(names[e.cmd.t]||e.cmd.t);
+        s+='<span class="k">Order</span> '+
+          (e.windT>0?'Winding up':(e.chgT>0?'Charging':(names[e.cmd.t]||e.cmd.t)));
       } else {
         if(!e.done){
           const busy=(gameTime-(e.lastBuildT===undefined?-99:e.lastBuildT))<.4;
@@ -3511,7 +3541,7 @@ function buildInfo(){
             '<div class="bar"><i style="width:'+(e.prog*100)+'%;background:'+(busy?'#4bd6ff':'#ffb43a')+'"></i></div>';
         }
         else {
-          if(BDEF[e.type].supply) s+='<span class="k">Supply</span> +'+BDEF[e.type].supply+'<br>';
+          if(BDEF[e.type].supply) s+='<span class="k">Supply</span> +'+supplyOf(e.type,e.owner)+'<br>';
           if(BDEF[e.type].dmg) s+='<span class="k">DMG</span> '+BDEF[e.type].dmg+'<br>';
           if(BDEF[e.type].dropoff) s+='<span class="k">Role</span> Cargo drop-off';
         }
@@ -3911,6 +3941,11 @@ function aiRun(AI,ME,dt){
     put('forgeworks',home);
   if(has('musterhall')&&count('watchspire')<(DIFF.spires||3)&&P[ME].m>=320&&!building('watchspire'))
     put('watchspire',home,enemyDir);
+  /* Once the economy can carry it, a bot raises its own Citadel and starts
+     fielding capital ships - it has to, or the player's Titan has no answer. */
+  if(has('forgeworks')&&!has('citadel')&&!building('citadel')&&
+     P[ME].m>=620&&P[ME].g>=260&&canBuild())
+    put('citadel',home);
   if(AI.t>(GRAND?120:(DIFF.expoAt||200))&&AI.expo<(GRAND?6:(DIFF.expo||2))&&P[ME].m>=(DIFF.expoCost||480)&&!building('keystone')&&canBuild()){
     const spots=EXPOS.map(e=>({x:e.tx*TILE,y:e.ty*TILE}))
       .filter(e=>!ents.some(b=>!b.dead&&b.kind==='building'&&dist(b,e)<300))
@@ -3954,6 +3989,11 @@ function aiRun(AI,ME,dt){
   /* ---- army production ---- */
   for(const b of bs){
     if(!b.done||!BDEF[b.type].trains||b.type==='keystone') continue;
+    if(b.type==='citadel'){
+      // one at a time, and only when it can pay without starving the army
+      if(!b.queue.length&&P[ME].m>=720&&P[ME].g>=640) tryTrain(b,'titan');
+      continue;
+    }
     if(b.queue.length>=(DIFF.qd||2)) continue;
     if(b.type==='forgeworks'){
       if(!b.res&&P[ME].m>=420&&P[ME].g>=120){        // bank it into permanent power
@@ -4670,7 +4710,10 @@ function headSpr(owner){ const k='h'+owner+facKeyOf(owner); return SPR[k]||(SPR[
 /* ---------- HUD icons ---------- */
 function iconOf(kind,type,owner){
   owner=owner||0;
-  const k=kind+type+owner;
+  /* The cache key had no doctrine in it, so once an icon had been generated
+     every doctrine kept showing that one - the stats panel and the command
+     card both showed Concord hulls whatever you were playing. */
+  const k=kind+type+owner+facKeyOf(owner);
   if(ICO[k]) return ICO[k];
   const src=kind==='unit'?unitSpr(type,owner):bldSpr(type,owner);
   const S=64, c=newCv(S,S), g=c.getContext('2d');
@@ -5933,7 +5976,9 @@ function menuInit(){
     ['bld','musterhall','Trains Wardens. Unlocks Forgeworks and Watchspires.'],
     ['bld','siphon','Built on an ichor vent to draw ichor.'],
     ['bld','forgeworks','Trains the heavy units and researches your upgrades.'],
-    ['bld','watchspire','Automated defence turret.']
+    ['bld','watchspire','Automated defence turret.'],
+    ['bld','citadel','Unlocks your capital ship. Needs a Forgeworks.'],
+    ['unit','titan','Capital ship. 10 pop, no build limit - each doctrine fields a different one.']
   ];
   /* Redrawn whenever you pick a doctrine, so the roster you are reading is
      the one you are about to command - names, prices and population alike. */
@@ -6492,17 +6537,39 @@ function tutSpawnRaiders(n,air){
     u.cmd={t:'amove',x:home.x,y:home.y};
   }
 }
+/* The last lesson used to be two lonely buildings with nobody home, which
+   taught you nothing about an actual attack. It is a working base now - a core,
+   housing, production, towers - with a garrison, and the enemy commander is
+   switched on so it trains, repairs and fights back for it. */
 function tutSpawnOutpost(){
   const home=tutHome();
   const bx=BASES[1]?BASES[1].tx*TILE:WW-home.x, by=BASES[1]?BASES[1].ty*TILE:WH-home.y;
   const made=[];
-  for(const t of ['habitat','musterhall']){
-    let done=false;
-    for(let r=0;r<420&&!done;r+=28) for(let a=0;a<6.283;a+=0.35){
+  const place=t=>{
+    for(let r=0;r<520;r+=26) for(let a=0;a<6.283;a+=0.3){
       const x=snap(bx+Math.cos(a)*r), y=snap(by+Math.sin(a)*r);
-      if(canPlace(t,x,y,1)){ made.push(mkBuilding(t,1,x,y,true)); done=true; break; }
+      if(canPlace(t,x,y,1)){ made.push(mkBuilding(t,1,x,y,true)); return true; }
     }
+    return false;
+  };
+  for(const t of ['keystone','habitat','habitat','musterhall','musterhall',
+                  'forgeworks','watchspire','watchspire']) place(t);
+  // a garrison that is already standing on it
+  const core=made[0]||{x:bx,y:by};
+  for(let i=0;i<7;i++){
+    const a=i*(6.283/7), sp=tutOpenSpot(core.x+Math.cos(a)*150,core.y+Math.sin(a)*150);
+    const u=mkUnit(i<5?'warden':'bulwark',1,sp.x,sp.y);
+    if(u) u.cmd={t:'amove',x:core.x,y:core.y};
   }
+  for(let i=0;i<4;i++){
+    const a=i*1.57, sp=tutOpenSpot(core.x+Math.cos(a)*90,core.y+Math.sin(a)*90);
+    const w=mkUnit('delver',1,sp.x,sp.y);
+    if(w){ const n=findMineralNear(w,w); if(n) setGather(w,n); }
+  }
+  // and somebody is home to command it
+  BOTS[1]=true;
+  P[1].m=Math.max(P[1].m,700); P[1].g=Math.max(P[1].g,250);
+  recalcSupply(1);
   return made;
 }
 const mineU=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='unit'&&(!f||f(e)));
@@ -6513,6 +6580,31 @@ function tutFocus(){
   const st=TUT_STEPS[TUT.i];
   if(!TUT.on||!st||!st.focus) return null;
   try{ return st.focus()||null; }catch(e){ return null; }
+}
+/* A clear spot near your Keystone that the thing you are placing will fit on,
+   so the tutorial can show you WHERE and not just what. */
+function tutPlaceSpot(type){
+  const k=tutHome(); if(!k) return null;
+  const t=type||placing;
+  if(!t) return null;
+  for(let r=2;r<=9;r++){
+    for(let a=0;a<12;a++){
+      const ang=a*(6.283/12)+r*.37;
+      const x=snap(k.x+Math.cos(ang)*r*TILE*1.5), y=snap(k.y+Math.sin(ang)*r*TILE*1.5);
+      if(canPlace(t,x,y,0)) return {x:x,y:y,r:54};
+    }
+  }
+  return null;
+}
+/* Raising a building is four separate actions, and pointing at the last one is
+   no use if you have not done the first. This walks the chain: the Delver that
+   will build it, then the build menu, then the building, then the ground. */
+function tutBuildFocus(type,hk){
+  if(placing===type){ const p=tutPlaceSpot(type); return p||null; }
+  const ws=sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker&&!e.dead);
+  if(!ws.length){ const w=mineU(u=>UDEF[u.type].worker)[0]; return w?{ent:w}:null; }
+  if(cardMode==='build') return {el:'#card .btn[data-hk="'+hk+'"]'};
+  return {el:'#card .btn[data-hk="B"]'};
 }
 function tutNearestRes(type){
   const h=tutHome(); if(!h) return null;
@@ -6577,16 +6669,20 @@ const TUT_STEPS=[
   {b:'Raise a Habitat.',
    h:dv('Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
         'Tap Build in the bottom panel, pick Habitat, then tap a clear patch of ground. It lifts your population cap.'),
-   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="H"]'}:{el:'#card .btn[data-hk="B"]'},
+   focus:()=>tutBuildFocus('habitat','H'),
    prog:()=>{ const b=mineB(x=>x.type==='habitat')[0];
-     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
+     if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
+     if(placing==='habitat') return 'pick your ground';
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
    ok:()=>mineB(b=>b.type==='habitat'&&b.done).length>=1},
   {b:'Raise a Barracks.',
    h:dv('Same again with R. This is what trains your soldiers, so put it somewhere safe.',
         'Tap Build again and pick Barracks. This is what trains your soldiers, so put it somewhere safe.'),
-   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="R"]'}:{el:'#card .btn[data-hk="B"]'},
+   focus:()=>tutBuildFocus('musterhall','R'),
    prog:()=>{ const b=mineB(x=>x.type==='musterhall')[0];
-     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
+     if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
+     if(placing==='musterhall') return 'pick your ground';
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
    ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
   {b:'Train a Warden.',
    h:dv('Click the finished Barracks and pick Warden from the panel at the bottom.',
@@ -6604,9 +6700,11 @@ const TUT_STEPS=[
   {b:'Raise a Watchspire near your Keystone.',
    h:dv('Build menu, then W. Towers hit hard, outrange your infantry and never get stat bonuses used against them - they are your best answer to a rush.',
         'Tap Build and pick Watchspire. Towers hit hard, outrange your infantry and are your best answer to a rush.'),
-   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="T"]'}:{el:'#card .btn[data-hk="B"]'},
+   focus:()=>tutBuildFocus('watchspire','T'),
    prog:()=>{ const b=mineB(x=>x.type==='watchspire')[0];
-     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
+     if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
+     if(placing==='watchspire') return 'pick your ground';
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
    ok:()=>mineB(b=>b.type==='watchspire'&&b.done).length>=1},
   {b:'Build a squad: five Wardens.',
    h:dv('Queue them from the Barracks. Hold the button to stack the queue, and select several Barracks at once to build from all of them.',
@@ -6643,9 +6741,9 @@ const TUT_STEPS=[
    h:dv('The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then right-click it with a Delver.',
         'The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then tap it with a Delver.'),
    focus:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done)[0];
-     if(sp) return {ent:sp};
-     if(cardMode==='build') return {el:'#card .btn[data-hk="S"]'};
-     const v=tutNearestRes('vent'); return v?{ent:v}:{el:'#card .btn[data-hk="B"]'}; },
+     if(sp) return {ent:sp};                       // built - now crew it
+     if(placing==='siphon'){ const v=tutNearestRes('vent'); return v?{ent:v}:null; }
+     return tutBuildFocus('siphon','S'); },
    prog:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
      if(!sp.length) return 'no Siphon yet';
      return mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length+' / 1 crewed'; },
@@ -6654,9 +6752,11 @@ const TUT_STEPS=[
   {b:'Raise a Forgeworks.',
    h:dv('Build menu, then F. It costs ichor and unlocks the heavy units - Sunderers, Harrowers and Talons - plus upgrades.',
         'Tap Build and pick Forgeworks. It unlocks the heavy units and your upgrades.'),
-   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="F"]'}:{el:'#card .btn[data-hk="B"]'},
+   focus:()=>tutBuildFocus('forgeworks','F'),
    prog:()=>{ const b=mineB(x=>x.type==='forgeworks')[0];
-     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
+     if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
+     if(placing==='forgeworks') return 'pick your ground';
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
    ok:()=>mineB(b=>b.type==='forgeworks'&&b.done).length>=1},
   {b:'Research an upgrade.',
    h:dv('Click the Forgeworks, then A for Weapons or D for Plating. Both are permanent and apply to your whole army - the best use of a big bank.',
@@ -6671,10 +6771,10 @@ const TUT_STEPS=[
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="T"]'}:(f?{ent:f}:null); },
    ok:()=>mineU(u=>u.type==='talon').length>=1||
        mineB(b=>b.type==='forgeworks'&&b.queue&&b.queue.length>0).length>0},
-  {b:'Destroy the Legion outpost.',
-   h:dv('Their forward post is lightly held. Select your army, press A and click their base - buildings first cuts their reinforcements.',
-        'Their forward post is lightly held. Select your army, tap Attack, then tap their base.'),
-   enter:()=>{ tutSpawnOutpost(); say('Legion outpost located. Level it.'); },
+  {b:'Take their base. It is defended.',
+   h:dv('A full enemy base, garrisoned, with a commander who will train more and repair what you break. Select your army, press A and click their base - kill the production first or they will just keep coming.',
+        'A full enemy base, garrisoned and defended. Select your army, tap Attack, then tap their base - kill the production first or they will keep coming.'),
+   enter:()=>{ tutSpawnOutpost(); say('Enemy base located. It is held - go and take it.'); },
    focus:()=>{ const b=tutFoeBlds()[0]; return b?{ent:b}:null; },
    prog:()=>tutFoeBlds().length+' buildings standing',
    ok:()=>tutFoeBlds().length===0},
@@ -6739,7 +6839,12 @@ function startTutorial(){
   ELITE={hp:1,dmg:1};
   modeKey='duel';
   ROCK_CLUSTERS=0;                       // training stays clear
-  FACOF=['concord','concord','concord','concord'];   // learn on the even doctrine
+  /* You learn in the doctrine you chose, because they no longer play alike -
+     a Legion player taught to hold a line at range has been taught wrong. The
+     enemy runs something else so you see a second army while you train. */
+  const _me=(FACTIONS[facKey]?facKey:'concord');
+  const _foe=_me==='legion'?'pact':(_me==='pact'?'concord':'legion');
+  FACOF=[_me,_foe,_foe,_foe];
   setupSides('duel',1);
   BOTS=[false,false,false,false];      // nobody attacks you while you learn
   TUT.on=true; TUT.i=0; TUT.t=0; TUT.acts={}; TUT.baseW=0; TUT.baseD=0;
