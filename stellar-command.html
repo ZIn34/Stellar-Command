@@ -10,7 +10,7 @@
 <title>Field Command</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--panel:clamp(152px,29vh,224px)}
+:root{--panel:clamp(152px,29vh,224px);--panelScale:1}
 html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#0a0907;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
   font-family:"Consolas","DejaVu Sans Mono",monospace;color:#e8e4d9;user-select:none}
 #cv{position:absolute;top:0;left:0;width:100%;height:calc(100% - var(--panel));display:block;cursor:crosshair;
@@ -26,14 +26,16 @@ html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#0a090
 #snd{pointer-events:auto;background:none;border:0;color:#e8e4d9;font-size:15px;cursor:pointer;
   padding:0 2px;line-height:1;opacity:.85}
 #snd:hover{opacity:1}
-#panel{position:absolute;bottom:0;left:0;right:0;height:var(--panel);display:flex;gap:8px;padding:7px;
+#panel{position:absolute;bottom:0;left:0;right:0;
+  height:calc(var(--panel) / var(--panelScale));zoom:var(--panelScale);
+  display:flex;gap:8px;padding:7px;
   background:linear-gradient(180deg,#1c1912,#12100b);border-top:2px solid #453e2d}
 /* align-self stops the flex row stretching it: the panel is a flex container
    with the default align-items:stretch, which forced the wrapper to the full
    panel height while its width stayed capped - so the square minimap canvas
    inside was drawn tall. It only looked right before because the old fixed
    panel height happened to match the width. */
-#mmWrap{width:min(clamp(120px,23vw,200px),calc(var(--panel) - 16px));aspect-ratio:1;align-self:center;flex:0 0 auto;border:2px solid #564e39;border-radius:4px;
+#mmWrap{width:calc(var(--panel) / var(--panelScale) - 16px);aspect-ratio:1;align-self:center;flex:0 0 auto;border:2px solid #564e39;border-radius:4px;
   background:#0b0a07;overflow:hidden;position:relative}
 #mm{width:100%;height:100%;display:block;cursor:pointer;touch-action:none}
 #alert{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:7;display:none;
@@ -539,7 +541,7 @@ body.touch .mouse-only{display:none}
       </div>
       <div class="setpage" data-page="display" hidden>
         <label>COMMAND PANEL SIZE<span id="vPanel">100%</span></label><input type="range" id="sPanel" min="60" max="170">
-        <p class="setnote">The strip along the bottom: the minimap, what is selected and the command buttons. Larger is easier to hit on a small screen; smaller leaves more battlefield.</p>
+        <p class="setnote">The strip along the bottom: the minimap, what is selected and the command buttons. The text and icons scale with it, so larger is easier to read and to hit; smaller leaves more battlefield.</p>
         <div class="srow"><span>HEALTH BARS</span>
           <span class="seg"><button data-hp="damaged">HURT</button><button data-hp="always">ALL</button><button data-hp="never">OFF</button></span></div>
         <div class="srow"><span>CONTROL HINTS</span><button id="tHints" class="tog"></button></div>
@@ -7620,8 +7622,9 @@ function optApply(){
      the whole bottom of the layout together. */
   {
     const p=clamp(OPT.panel===undefined?100:OPT.panel,60,170)/100;
-    document.documentElement.style.setProperty('--panel',
-      'clamp('+Math.round(152*p)+'px,'+(29*p).toFixed(1)+'vh,'+Math.round(224*p)+'px)');
+    const base=clamp(window.innerHeight*.29,152,224);   // the old clamp, in px
+    document.documentElement.style.setProperty('--panel',Math.round(base*p)+'px');
+    document.documentElement.style.setProperty('--panelScale',String(p));
     const pv=document.getElementById('vPanel');
     if(pv) pv.textContent=Math.round(p*100)+'%';
     resize();
@@ -8231,7 +8234,7 @@ function startGame(key){
   document.getElementById('menu').style.display='none';
   init();
 }
-window.addEventListener('resize',()=>{ if(menuOn) menuSize(); });
+window.addEventListener('resize',()=>{ if(menuOn) menuSize(); optApply(); });
 resize();
 settingsInit();
 menuInit();
