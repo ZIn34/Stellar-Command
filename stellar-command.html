@@ -431,7 +431,7 @@ body.touch .mouse-only{display:none}
   <div class="pbox">
     <h2>PAUSED</h2>
     <button id="resumeBtn" class="pmain">RESUME</button>
-    <button id="audioBtn">AUDIO SETTINGS</button>
+    <button id="audioBtn">SETTINGS</button>
     <button id="leaveBtn">LEAVE MATCH</button>
     <p class="phint">Esc resumes &nbsp;·&nbsp; leaving returns to the title screen</p>
   </div>
@@ -533,6 +533,8 @@ body.touch .mouse-only{display:none}
         <p class="setnote">Hold the middle mouse button and drag to pan the camera.</p>
       </div>
       <div class="setpage" data-page="display" hidden>
+        <label>COMMAND PANEL SIZE<span id="vPanel">100%</span></label><input type="range" id="sPanel" min="60" max="170">
+        <p class="setnote">The strip along the bottom: the minimap, what is selected and the command buttons. Larger is easier to hit on a small screen; smaller leaves more battlefield.</p>
         <div class="srow"><span>HEALTH BARS</span>
           <span class="seg"><button data-hp="damaged">HURT</button><button data-hp="always">ALL</button><button data-hp="never">OFF</button></span></div>
         <div class="srow"><span>CONTROL HINTS</span><button id="tHints" class="tog"></button></div>
@@ -4399,10 +4401,27 @@ function aiRun(AI,ME,dt){
     }
   }
   const enemyDir=aiKnownBases(AI)[0]||{x:fs0.tx*TILE,y:fs0.ty*TILE};
+  /* A bot used to lay a foundation the instant it could pay for one, which
+     meant four or five going up at once within a few seconds of each other
+     - nothing a person does. A player walks one builder to one site, waits
+     for it, and starts the next. Two things enforce that: a minimum gap
+     between starting structures, and a limit on how many can be unfinished
+     at once. Both scale with the pace of the match, so Blitz still moves. */
+  const buildGap=()=>tGate(DIFF.buildGap===undefined?11:DIFF.buildGap);
+  const siteCap=()=>GRAND?4:2;
+  const sitesOpen=()=>bs.filter(b=>!b.done).length;
+  const startB=(type,x,y,crew)=>{
+    if(AI.t<(AI.nextBuild||0)) return false;
+    if(sitesOpen()>=siteCap()) return false;
+    const okS=startBuild(type,x,y,ME,crew);
+    if(okS) AI.nextBuild=AI.t+buildGap();
+    return !!okS;
+  };
   const put=(type,anchor,bias)=>{
     if(!canBuild()||!canAfford(ME,bldCost(type,ME))) return false;
+    if(AI.t<(AI.nextBuild||0)||sitesOpen()>=siteCap()) return false;
     const p=aiPlace(ME,type,anchor||home,bias);
-    return p?!!startBuild(type,p.x,p.y,ME,[freeWorker()]):false;
+    return p?startB(type,p.x,p.y,[freeWorker()]):false;
   };
 
   /* ---- finish what has already been started ----
@@ -4482,7 +4501,7 @@ function aiRun(AI,ME,dt){
   if(has('musterhall')&&(siphonCount===0||
      (siphonCount<wantRefinerys&&AI.t>tGate(240)&&P[ME].m>=mGate(300)))){
     const g=nearest(ents,home.x,home.y,e=>e.kind==='res'&&e.type==='vent'&&!e.taken);
-    if(g&&dist(g,home)<520&&canBuild()) startBuild('siphon',g.x,g.y,ME,[freeWorker()]);
+    if(g&&dist(g,home)<520&&canBuild()) startB('siphon',g.x,g.y,[freeWorker()]);
   }
   if(has('musterhall')&&halls<(GRAND?9:(DIFF.halls||4))&&P[ME].m>=mGate(halls<2?190:(DIFF.hallCost||300))&&!building('musterhall')) put('musterhall',home,enemyDir);
   if(has('musterhall')&&!has('forgeworks')&&!building('forgeworks')&&P[ME].m>=mGate(190)&&P[ME].g>=mGate(75)&&AI.t>tGate(DIFF.techAt||150))
@@ -4520,7 +4539,7 @@ function aiRun(AI,ME,dt){
           if(canPlace('keystone',px,py,ME)) at={x:px,y:py};
         }
       }
-      if(at&&startBuild('keystone',at.x,at.y,ME,[freeWorker()])){
+      if(at&&startB('keystone',at.x,at.y,[freeWorker()])){
         AI.expo++; AI.lastExpo=at; break;
       }
     }
@@ -6755,15 +6774,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:8, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
@@ -7511,7 +7530,7 @@ function lobbyInit(){
 
 /* ===================== SETTINGS ===================== */
 const OPT={master:1, music:.7, sfx:.5, edge:true, scroll:1, edgeSpd:1, edgeZone:22,
-  dragPan:1, zoomSpd:1, invZoom:false,
+  dragPan:1, zoomSpd:1, invZoom:false, panel:100,
   hpBars:'damaged', hints:true, lowFx:false, keys:{}};
 /* Every rebindable action in one place. The card entries are the buttons the
    command panel builds from the unit and building tables, so rebinding one
@@ -7577,6 +7596,17 @@ function optApply(){
   set('vMaster',OPT.master); set('vMusic',OPT.music); set('vSfx',OPT.sfx); set('vScroll',OPT.scroll);
   set('vEdgeSpd',OPT.edgeSpd);
   set('vDragPan',OPT.dragPan||1); set('vZoomSpd',OPT.zoomSpd||1);
+  /* The panel height drives a CSS variable that the canvas, the panel and
+     everything anchored above it are all sized from, so scaling it moves
+     the whole bottom of the layout together. */
+  {
+    const p=clamp(OPT.panel===undefined?100:OPT.panel,60,170)/100;
+    document.documentElement.style.setProperty('--panel',
+      'clamp('+Math.round(152*p)+'px,'+(29*p).toFixed(1)+'vh,'+Math.round(224*p)+'px)');
+    const pv=document.getElementById('vPanel');
+    if(pv) pv.textContent=Math.round(p*100)+'%';
+    resize();
+  }
   const iz=document.getElementById('tInvZoom');
   if(iz) iz.classList.toggle('on',!!OPT.invZoom);
   const ez=document.getElementById('vEdgeZone');
@@ -7612,6 +7642,7 @@ function settingsOpen(){
   g('sEdgeZone').value=Math.round(OPT.edgeZone);
   g('sDragPan').value=Math.round((OPT.dragPan||1)*100);
   g('sZoomSpd').value=Math.round((OPT.zoomSpd||1)*100);
+  g('sPanel').value=Math.round(OPT.panel===undefined?100:OPT.panel);
   setPage(setPageNow);
   optApply();
   el.style.display='flex';
@@ -7690,6 +7721,7 @@ function settingsInit(){
   bind('sSfx','sfx',100); bind('sScroll','scroll',100);
   bind('sEdgeSpd','edgeSpd',100); bind('sEdgeZone','edgeZone',1);
   bind('sDragPan','dragPan',100); bind('sZoomSpd','zoomSpd',100);
+  bind('sPanel','panel',1);
   g('tInvZoom').onclick=()=>{ OPT.invZoom=!OPT.invZoom; SFX.play('click'); optApply(); optSave(); };
   g('keyReset').onclick=()=>{ OPT.keys={}; SFX.play('click');
     keyListRender(); refreshUI(); optSave(); say('Hotkeys restored to defaults'); };

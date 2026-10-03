@@ -51,7 +51,13 @@ function stubNode(tag) {
     tagName: (tag || 'div').toUpperCase(),
     nodeType: 1,
     children: [], childNodes: [],
-    style: {}, dataset: {},
+    /* A real CSSStyleDeclaration also has these; the game sets CSS custom
+       properties through them, so the stub needs them or loading throws. */
+    style: { _p:{},
+      setProperty(k,v){ this._p[k]=v; },
+      getPropertyValue(k){ return this._p[k]===undefined?'':this._p[k]; },
+      removeProperty(k){ const v=this._p[k]; delete this._p[k]; return v; } },
+    dataset: {},
     textContent: '', innerHTML: '', innerText: '', value: '', title: '',
     width: 1280, height: 720, checked: false, disabled: false,
     classList: {
