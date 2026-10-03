@@ -1167,6 +1167,91 @@ test('the scale travels with an online match', () => {
 });
 
 
+console.log('\nbots are harder');
+
+test('the difficulty ladder is ordered on every knob', () => {
+  const k = {};
+  for (const d of ['recruit', 'veteran', 'warlord']) {
+    run('startGame("' + d + '")');
+    k[d] = run('({dec:DIFF.dec,grace:DIFF.grace,wk:DIFF.wk,halls:DIFF.halls,qd:DIFF.qd,' +
+               'spires:DIFF.spires,expo:DIFF.expo,techAt:DIFF.techAt,up:DIFF.up||0,' +
+               'eco:DIFF.eco,hp:DIFF.hp,dmg:DIFF.dmg})');
+  }
+  ok(k.recruit.dec > k.veteran.dec && k.veteran.dec > k.warlord.dec, 'thinks more often');
+  ok(k.recruit.grace > k.veteran.grace && k.veteran.grace > k.warlord.grace, 'pushes sooner');
+  ok(k.recruit.wk < k.veteran.wk && k.veteran.wk < k.warlord.wk, 'saturates its lines');
+  ok(k.recruit.halls <= k.veteran.halls && k.veteran.halls < k.warlord.halls, 'more production');
+  ok(k.recruit.expo < k.veteran.expo && k.veteran.expo < k.warlord.expo, 'expands more');
+  ok(k.recruit.techAt > k.veteran.techAt && k.veteran.techAt > k.warlord.techAt, 'techs sooner');
+  ok(k.recruit.up < k.veteran.up && k.veteran.up < k.warlord.up, 'researches more');
+  ok(k.recruit.eco <= k.veteran.eco && k.veteran.eco < k.warlord.eco, 'brings more home');
+  ok(k.warlord.qd >= k.veteran.qd, 'queues deeper');
+});
+
+test('only the hardest setting gets a stat edge, and it is modest', () => {
+  const s = {};
+  for (const d of ['recruit', 'veteran', 'warlord']) {
+    run('startGame("' + d + '")');
+    s[d] = { hp: run('DIFF.hp'), dmg: run('DIFF.dmg'), elite: run('({hp:ELITE.hp,dmg:ELITE.dmg})') };
+  }
+  eq(s.recruit.hp, 1, 'Recruit units are stock');
+  eq(s.recruit.dmg, 1, 'in damage too');
+  eq(s.veteran.hp, 1, 'Veteran is a fair fight on stats');
+  eq(s.veteran.dmg, 1, 'in damage too');
+  ok(s.warlord.hp > 1 && s.warlord.hp <= 1.25, 'Warlord gets a modest hull edge (' + s.warlord.hp + ')');
+  ok(s.warlord.dmg > 1 && s.warlord.dmg <= 1.25, 'and a modest damage edge (' + s.warlord.dmg + ')');
+  eq(s.warlord.elite.hp, s.warlord.hp, 'and it is actually applied');
+  eq(s.warlord.elite.dmg, s.warlord.dmg, 'both ways');
+});
+
+test('a bot actually researches its upgrades now', () => {
+  /* Not one upgrade was ever researched, at any difficulty, in a whole match:
+     they were gated on holding 420 spare aurite and a bot is permanently
+     broke, so a 36% damage swing sat untouched all game. */
+  const res = run([
+    '(function(){',
+    ' scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord";',
+    ' startGame("warlord"); BOTS=[false,true,false,false];',
+    ' var forgeAt=null, firstUp=null;',
+    ' for(var i=0;i<4000;i++){',
+    '   over=false; simTick(0.1);',
+    '   if(!forgeAt&&ents.some(function(e){return !e.dead&&e.owner===1&&e.type==="forgeworks"&&e.done;}))',
+    '     forgeAt=Math.round(gameTime);',
+    '   if(!firstUp&&UP[1]&&(UP[1].wep+UP[1].arm)>0){ firstUp=Math.round(gameTime); break; }',
+    ' }',
+    ' return {forgeAt:forgeAt, firstUp:firstUp, levels:(UP[1]?UP[1].wep+UP[1].arm:0)};',
+    '})()'
+  ].join(String.fromCharCode(10)));
+  ok(res.forgeAt !== null, 'it got a Forgeworks up at ' + res.forgeAt + 's');
+  ok(res.firstUp !== null, 'and researched something by ' + res.firstUp + 's');
+});
+
+test('upgrades are a savings goal, not a leftovers purchase', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  const code = whole.replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(/wantUp/.test(code), 'there is an appetite for research');
+  ok(/saveGoal=upCost\(upKey/.test(code), 'and the bot saves for it');
+  ok(!/P\[ME\]\.m>=mGate\(420\)/.test(code), 'the old spare-cash gate is gone');
+  ok(/COST_RATE/.test(whole.slice(whole.indexOf('function upCost'), whole.indexOf('function upCost') + 400)),
+     'research follows the scale like every other price');
+});
+
+test('a harder setting really does kill faster', () => {
+  const kill = d => run([
+    '(function(){',
+    ' scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord";',
+    ' startGame("' + d + '"); BOTS=[false,true,false,false];',
+    ' for(var i=0;i<6000;i++){ simTick(0.1); if(over) return Math.round(gameTime); }',
+    ' return null;',
+    '})()'
+  ].join(String.fromCharCode(10)));
+  const vet = kill('veteran'), war = kill('warlord');
+  ok(vet !== null && war !== null, 'both finished the job');
+  ok(war < vet, 'Warlord kills sooner than Veteran (' + war + 's vs ' + vet + 's)');
+});
+
+
 console.log('\ndifficulty and free-for-all');
 
 test('Recruit is not allowed to out-expand Veteran', () => {
