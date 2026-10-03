@@ -456,10 +456,16 @@ body.touch .mouse-only{display:none}
 <div id="menu">
   <canvas id="mcv"></canvas>
   <div class="mui">
+    <!-- A unit patch: shield, star, chevron. The old crest was a science
+         fiction hexagon with an energy arrow in it. -->
     <svg class="crest" viewBox="0 0 64 64">
-      <polygon points="32,3 58,17 58,47 32,61 6,47 6,17" fill="none" stroke="#4bd6ff" stroke-width="2"/>
-      <polygon points="32,13 49,23 49,41 32,51 15,41 15,23" fill="rgba(75,214,255,.10)" stroke="#2f7fa8" stroke-width="1"/>
-      <path d="M32 20 L41 44 L32 38 L23 44 Z" fill="#4bd6ff"/>
+      <path d="M9 7 H55 V34 C55 46.5 44.6 54.6 32 59 C19.4 54.6 9 46.5 9 34 Z"
+            fill="#272a17" stroke="#c7b583" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M14 11.5 H50 V33.6 C50 43.8 41.4 50.8 32 54.6 C22.6 50.8 14 43.8 14 33.6 Z"
+            fill="none" stroke="rgba(199,181,131,.42)" stroke-width="1"/>
+      <polygon points="32,14.5 34.1,20.1 40.1,20.4 35.4,24.1 37,29.9 32,26.6 27,29.9 28.6,24.1 23.9,20.4 29.9,20.1"
+               fill="#e0c87f"/>
+      <path d="M19 46 L32 37.5 L45 46 L45 51.5 L32 43 L19 51.5 Z" fill="#c7b583"/>
     </svg>
     <h1>FIELD <b>COMMAND</b></h1>
     <p class="tag">Combined arms for the supply roads of the eastern corridor</p>
@@ -2426,13 +2432,13 @@ function tryTrain(b,type){
     const d=Object.assign({},UDEF[type],unitCost(type,0));
     if(b.queue.length>=5){ say('Queue full'); SFX.play('deny'); return false; }
     if(!canAfford(0,d)){ say(P[0].m<d.m?'Not enough supply':'Not enough fuel'); SFX.play('deny'); return false; }
-    if(P[0].sup+d.sup>P[0].cap){ say('Build more habitats'); SFX.play('deny'); return false; }
+    if(P[0].sup+d.sup>P[0].cap){ say('Build more '+plOf(FACOF[0],'habitat')); SFX.play('deny'); return false; }
     netCmd('train',{id:b.id,type}); return true;
   }
   const o=b.owner, d=Object.assign({},UDEF[type],unitCost(type,b.owner));
   if(b.queue.length>=5){ if(!o){ say('Queue full'); SFX.play('deny'); } return false; }
   if(!canAfford(o,d)){ if(!o){ say(P[o].m<d.m?'Not enough supply':'Not enough fuel'); SFX.play('deny'); } return false; }
-  if(P[o].sup+d.sup>P[o].cap){ if(!o){ say('Build more habitats'); SFX.play('deny'); } return false; }
+  if(P[o].sup+d.sup>P[o].cap){ if(!o){ say('Build more '+plOf(FACOF[0],'habitat')); SFX.play('deny'); } return false; }
   pay(o,d); b.queue.push(type); recalcSupply(o); return true;
 }
 function cancelQueue(b,i){
@@ -6995,54 +7001,83 @@ function menuFrame(){
   if(!menuOn) return;
   mt+=.016;
   const W=mcv.width, H=mcv.height;
-  const bg=mg.createLinearGradient(0,0,W*.4,H);
-  bg.addColorStop(0,'#060c16'); bg.addColorStop(.55,'#04080f'); bg.addColorStop(1,'#07121a');
+  /* The menu used to sit in space: nebulae, a starfield, a planet limb and
+     drifting aurite crystal. What is behind the menu now is the thing a field
+     headquarters actually has behind it - a map on a table. Lit canvas, a
+     survey grid, contoured high ground, dust in the light, and the radar
+     sweep, which was the one piece of the old background that already
+     belonged in this game. mstars and mshards are reused as dust and as
+     wind-blown scraps, so nothing about initialisation changes. */
+  const bg=mg.createLinearGradient(0,0,W*.45,H);
+  bg.addColorStop(0,'#15130c'); bg.addColorStop(.55,'#0d0c08'); bg.addColorStop(1,'#1a160d');
   mg.fillStyle=bg; mg.fillRect(0,0,W,H);
-  // nebula
+
+  // the lamp over the table, so the map is brightest where the panels sit
+  const lamp=mg.createRadialGradient(W*.42,H*.3,10,W*.42,H*.3,Math.max(W,H)*.75);
+  lamp.addColorStop(0,'rgba(226,206,150,.085)'); lamp.addColorStop(1,'rgba(0,0,0,0)');
+  mg.fillStyle=lamp; mg.fillRect(0,0,W,H);
+
+  // high ground, shaded and contoured
   for(let i=0;i<3;i++){
-    const x=W*(.2+i*.32)+Math.sin(mt*.15+i)*40, y=H*(.3+i*.2);
-    const g2=mg.createRadialGradient(x,y,10,x,y,Math.max(W,H)*.38);
-    g2.addColorStop(0,i%2?'rgba(30,110,150,.13)':'rgba(60,40,120,.11)');
-    g2.addColorStop(1,'rgba(0,0,0,0)');
-    mg.fillStyle=g2; mg.fillRect(0,0,W,H);
+    const x=W*(.17+i*.33)+Math.sin(mt*.09+i)*22, y=H*(.72-i*.18), r=Math.max(W,H)*(.2+i*.05);
+    const hg=mg.createRadialGradient(x-r*.2,y-r*.25,r*.04,x,y,r);
+    hg.addColorStop(0,'rgba(120,104,62,.13)'); hg.addColorStop(1,'rgba(0,0,0,0)');
+    mg.fillStyle=hg; mg.beginPath(); mg.arc(x,y,r,0,7); mg.fill();
+    mg.strokeStyle='rgba(188,168,110,.07)'; mg.lineWidth=1;
+    for(let k=1;k<=4;k++){ mg.beginPath(); mg.arc(x,y,r*k/5,0,7); mg.stroke(); }
   }
-  // stars
+
+  // survey grid, drifting as if the map were being eased across the table
+  const gs=Math.max(54,Math.min(W,H)*.075), ox=(mt*3)%gs, oy=(mt*1.6)%gs;
+  mg.strokeStyle='rgba(196,176,116,.055)'; mg.lineWidth=1;
+  mg.beginPath();
+  for(let x=-gs+ox;x<W+gs;x+=gs){ mg.moveTo(x,0); mg.lineTo(x,H); }
+  for(let y=-gs+oy;y<H+gs;y+=gs){ mg.moveTo(0,y); mg.lineTo(W,y); }
+  mg.stroke();
+  mg.strokeStyle='rgba(196,176,116,.1)'; mg.lineWidth=1.4;   // every fifth line, heavier
+  mg.beginPath();
+  for(let x=-gs*5+ox;x<W+gs*5;x+=gs*5){ mg.moveTo(x,0); mg.lineTo(x,H); }
+  for(let y=-gs*5+oy;y<H+gs*5;y+=gs*5){ mg.moveTo(0,y); mg.lineTo(W,y); }
+  mg.stroke();
+
+  // dust hanging in the lamplight
   for(const s of mstars){
-    const a=.25+.75*Math.abs(Math.sin(s.tw+mt*1.4*s.z));
-    mg.globalAlpha=a*s.z; mg.fillStyle='#dff1ff';
-    const x=(s.x*W+mt*6*s.z)%W;
-    mg.fillRect(x,s.y*H,s.z*1.7,s.z*1.7);
+    mg.globalAlpha=(.1+.5*Math.abs(Math.sin(s.tw+mt*1.1*s.z)))*s.z*.5;
+    mg.fillStyle='#e8dcb4';
+    const x=(s.x*W+mt*4*s.z)%W;
+    mg.fillRect(x,s.y*H,s.z*1.5,s.z*1.5);
   }
   mg.globalAlpha=1;
-  // planet limb bottom-left
-  const px=-W*.18, py=H*1.18, pr=Math.max(W,H)*.62;
-  const pg=mg.createRadialGradient(px+pr*.35,py-pr*.4,pr*.05,px,py,pr);
-  pg.addColorStop(0,'#1c4a5c'); pg.addColorStop(.55,'#0d2733'); pg.addColorStop(1,'#050c12');
-  mg.fillStyle=pg; mg.beginPath(); mg.arc(px,py,pr,0,7); mg.fill();
-  mg.strokeStyle='rgba(75,214,255,.30)'; mg.lineWidth=2.5;
-  mg.beginPath(); mg.arc(px,py,pr,0,7); mg.stroke();
-  mg.save(); mg.globalAlpha=.16; mg.shadowColor='#4bd6ff'; mg.shadowBlur=60;
-  mg.strokeStyle='#4bd6ff'; mg.lineWidth=6; mg.beginPath(); mg.arc(px,py,pr,0,7); mg.stroke(); mg.restore();
-  // drifting aurite shards
+
+  // scraps of paper caught in the draught
   for(const s of mshards){
-    s.a+=s.rot*.01; s.y-=s.sp*.004; if(s.y<-.1) s.y=1.1;
-    const x=s.x*W, y=s.y*H;
-    mg.save(); mg.translate(x,y); mg.rotate(s.a);
-    mg.globalAlpha=.5; mg.shadowColor='rgba(110,200,255,.8)'; mg.shadowBlur=16;
-    mg.beginPath(); mg.moveTo(0,-s.s); mg.lineTo(s.s*.34,0); mg.lineTo(0,s.s*.42); mg.lineTo(-s.s*.34,0); mg.closePath();
-    const gg=mg.createLinearGradient(-s.s*.34,-s.s,s.s*.34,s.s*.42);
-    gg.addColorStop(0,'rgba(200,240,255,.85)'); gg.addColorStop(1,'rgba(30,100,175,.55)');
-    mg.fillStyle=gg; mg.fill(); mg.restore();
+    s.a+=s.rot*.008; s.y-=s.sp*.0025; if(s.y<-.1) s.y=1.1;
+    mg.save(); mg.translate(s.x*W,s.y*H); mg.rotate(s.a);
+    mg.globalAlpha=.16; mg.fillStyle='#cdbd8e';
+    mg.fillRect(-s.s*.4,-s.s*.3,s.s*.8,s.s*.6);
+    mg.restore();
   }
   mg.globalAlpha=1;
-  // radar sweep
+
+  // the radar set in the corner
   const cx=W*.82, cy=H*.2, rr2=Math.min(W,H)*.3;
-  mg.save(); mg.globalAlpha=.11; mg.strokeStyle='#4bd6ff'; mg.lineWidth=1;
+  mg.save();
+  mg.globalAlpha=.13; mg.strokeStyle='#d9bf72'; mg.lineWidth=1;
   for(let i=1;i<=3;i++){ mg.beginPath(); mg.arc(cx,cy,rr2*i/3,0,7); mg.stroke(); }
+  mg.beginPath(); mg.moveTo(cx-rr2,cy); mg.lineTo(cx+rr2,cy);
+  mg.moveTo(cx,cy-rr2); mg.lineTo(cx,cy+rr2); mg.stroke();
   const sa=mt*.55;
-  mg.globalAlpha=.10; mg.fillStyle='#4bd6ff';
+  mg.globalAlpha=.12; mg.fillStyle='#d9bf72';
   mg.beginPath(); mg.moveTo(cx,cy); mg.arc(cx,cy,rr2,sa-.45,sa); mg.closePath(); mg.fill();
+  mg.globalAlpha=.3; mg.strokeStyle='#e8cf8a'; mg.lineWidth=1.4;   // the live trace
+  mg.beginPath(); mg.moveTo(cx,cy);
+  mg.lineTo(cx+Math.cos(sa)*rr2,cy+Math.sin(sa)*rr2); mg.stroke();
   mg.restore();
+
+  // the edges of the table fall away into the dark
+  const vg=mg.createRadialGradient(W*.45,H*.45,Math.min(W,H)*.3,W*.45,H*.45,Math.max(W,H)*.78);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.55)');
+  mg.fillStyle=vg; mg.fillRect(0,0,W,H);
   requestAnimationFrame(menuFrame);
 }
 document.getElementById('snd').onclick=function(){ SFX.toggle(); updSnd(); musicSync(); };
@@ -7443,28 +7478,34 @@ const OPT={master:1, music:.7, sfx:.5, edge:true, scroll:1, edgeSpd:1, edgeZone:
    command panel builds from the unit and building tables, so rebinding one
    changes the key AND the label printed on the button. */
 const KEY_ACTS=[
-  {id:'idle',   n:'IDLE HARVESTERS', def:'f1'},
+  {id:'idle',   v:'IDLE', t:'delver', pl:true, def:'f1'},
   {id:'army',   n:'SELECT ARMY',     def:'f2'},
   {id:'alert',  n:'JUMP TO ALERT',   def:' '},
   {id:'pause',  n:'PAUSE',           def:'p'},
   {id:'c_A',    n:'ATTACK-MOVE',     def:'a'},
   {id:'c_B',    n:'BUILD MENU',      def:'b'},
-  {id:'u_delver',  n:'TRAIN WORKER',  def:'d'},
-  {id:'u_warden',  n:'TRAIN WARDEN',  def:'w'},
-  {id:'u_bulwark', n:'TRAIN BULWARK', def:'b'},
-  {id:'u_sunderer',n:'TRAIN SUNDERER',def:'s'},
-  {id:'u_harrower',n:'TRAIN HARROWER',def:'h'},
-  {id:'u_breaker', n:'TRAIN MELEE',    def:'e'},
-  {id:'u_talon',   n:'TRAIN TALON',   def:'t'},
-  {id:'u_titan',   n:'TRAIN CAPITAL SHIP', def:'c'},
-  {id:'b_keystone',  n:'BUILD KEYSTONE',  def:'k'},
-  {id:'b_habitat',   n:'BUILD HABITAT',   def:'h'},
-  {id:'b_musterhall',n:'BUILD BARRACKS',  def:'r'},
-  {id:'b_siphon',    n:'BUILD SIPHON',    def:'s'},
-  {id:'b_forgeworks',n:'BUILD FORGEWORKS',def:'f'},
-  {id:'b_watchspire',n:'BUILD TOWER',     def:'t'},
-  {id:'b_citadel',   n:'BUILD SHIPYARD',  def:'g'}
+  /* v + t instead of a fixed label: the name comes from the roster when the
+     row is drawn, so this list reads in the army you are playing and can
+     never fall out of step with a rename again. */
+  {id:'u_delver',  v:'TRAIN', t:'delver',  def:'d'},
+  {id:'u_warden',  v:'TRAIN', t:'warden',  def:'w'},
+  {id:'u_bulwark', v:'TRAIN', t:'bulwark', def:'b'},
+  {id:'u_sunderer',v:'TRAIN', t:'sunderer',def:'s'},
+  {id:'u_harrower',v:'TRAIN', t:'harrower',def:'h'},
+  {id:'u_breaker', v:'TRAIN', t:'breaker', def:'e'},
+  {id:'u_talon',   v:'TRAIN', t:'talon',   def:'t'},
+  {id:'u_titan',   v:'TRAIN', t:'titan',   def:'c'},
+  {id:'b_keystone',  v:'BUILD', t:'keystone',  def:'k'},
+  {id:'b_habitat',   v:'BUILD', t:'habitat',   def:'h'},
+  {id:'b_musterhall',v:'BUILD', t:'musterhall',def:'r'},
+  {id:'b_siphon',    v:'BUILD', t:'siphon',    def:'s'},
+  {id:'b_forgeworks',v:'BUILD', t:'forgeworks',def:'f'},
+  {id:'b_watchspire',v:'BUILD', t:'watchspire',def:'t'},
+  {id:'b_citadel',   v:'BUILD', t:'citadel',   def:'g'}
 ];
+function keyActLabel(a){
+  return a.t?(a.v+' '+nameOf(a.t,0).toUpperCase()):a.n;
+}
 const KEY_DEF={};
 KEY_ACTS.forEach(a=>{ KEY_DEF[a.id]=a.def; });
 function keyFor(id){
@@ -7557,7 +7598,7 @@ function keyListRender(){
     const row=document.createElement('div');
     row.className='krow'+(clash[a.id]?' clash':'');
     const lab=document.createElement('span');
-    lab.textContent=a.n;
+    lab.textContent=keyActLabel(a);
     const btn=document.createElement('button');
     btn.textContent=(keyCapture===a.id)?'PRESS A KEY':keyLabel(keyFor(a.id));
     if(keyCapture===a.id) btn.classList.add('capt');
