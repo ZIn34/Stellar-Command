@@ -4287,15 +4287,23 @@ function aiRun(AI,ME,dt){
      unit, so it sat on about thirty aurite for the whole match and never got
      near the couple of hundred a second base costs - it was not the timer that
      stopped it expanding there, it was never having the money at one time. */
-  if(wantExpo) saveGoal=bldCost('keystone',ME);
+  let saveFromScratch=false;
+  if(wantExpo){ saveGoal=bldCost('keystone',ME); saveFromScratch=true; }
   else if(bs.some(b=>b.type==='forgeworks'&&b.done)){
     if(!_yard&&!bs.some(b=>b.type==='citadel'&&!b.done)) saveGoal=bldCost('citadel',ME);
     else if(_yard&&!_queuedShip&&_ships<_shipCap) saveGoal=priceOf('unit','titan',ME);
   }
   const canPayGoal=!!saveGoal&&P[ME].m>=saveGoal.m+80&&P[ME].g>=saveGoal.g+40;
   let savingUp=false;
-  if(saveGoal&&!canPayGoal&&army.length>=10&&
-     (P[ME].m>=saveGoal.m*.4||P[ME].g>=saveGoal.g*.4)){
+  /* The 40% head start stops a bot saving from an empty bank at the very
+     start of a match. An expansion is exempt: it only becomes a goal once the
+     clock has passed, and in Blitz the bot is permanently broke - half-price
+     units meant it could always afford one more, so it never reached 40% of a
+     Keystone and never began saving at all. The army floor comes down with the
+     pace too, since a Blitz army of ten arrives much later in the match than
+     the moment it needs a second base. */
+  if(saveGoal&&!canPayGoal&&army.length>=(BLITZ?6:10)&&
+     (saveFromScratch||P[ME].m>=saveGoal.m*.4||P[ME].g>=saveGoal.g*.4)){
     /* Time-boxed on progress rather than on the clock: a flat cut-off expired
        mid-save on a slower economy and the bot went back to buying infantry
        with the ship already half paid for. It saves for as long as the bank is
