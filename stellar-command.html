@@ -3059,7 +3059,13 @@ function buildCard(){
     }
   }
   while(cardButtons.length<9) cardButtons.push({empty:true});
-  const sig=cardMode+'|'+UP[0].wep+UP[0].arm+'|'+bGroup.length+'|'+cardButtons.map(o=>o.empty?'-':
+  /* The signature carried no identity, so selecting a second building of the
+     same kind produced a matching signature, skipped the DOM write and left
+     the old closures on the buttons: grouped production and Cancel both acted
+     on the building you had selected before. Name the actual members. */
+  const bIds=bGroup.map(b=>b.id+(b.done?'':':'+Math.round(b.prog*20))).join(',');
+  const selIdSig=sel.map(e=>e.id).join(',');
+  const sig=cardMode+'|'+UP[0].wep+UP[0].arm+'|'+bIds+'|'+selIdSig+'|'+cardButtons.map(o=>o.empty?'-':
     [o.name,o.ic,o.hk,o.dis?1:0,o.img?1:0,o.cost?o.cost.m+'/'+(o.cost.g||0):''].join(',')).join('|');
   if(sig===cardSig) return;
   cardSig=sig;
@@ -4711,7 +4717,8 @@ function simTick(dt){
    back recorded state is exact by construction, and a guest can record the
    stream it receives just as well as a host can record its own world. */
 const REC={frames:[], t:0, step:.5, cap:2400, on:false};
-const REPLAY={on:false, i:0, t:0, speed:1, playing:true, byId:new Map(), keep:null};
+const REPLAY={on:false, i:0, t:0, speed:1, playing:true, byId:new Map(), keep:null,
+  fromFile:false};
 function recReset(){ REC.frames=[]; REC.t=0; REC.on=true; }
 function recSnap(){
   const n=[];
@@ -4765,9 +4772,15 @@ function replaySeek(i){
   if(REC.frames.length) replayApply(REC.frames[REPLAY.i]);
   replayUI();
 }
-function replayStart(){
+function replayStart(fromFile){
   if(!REC.frames.length){ say('Nothing recorded'); return; }
-  REPLAY.keep={ents:ents, sel:sel.slice(), camx:cam.x, camy:cam.y, camz:cam.z, over:over };
+  /* Remember which door we came in by, and whether the game-over panel was
+     actually up. Closing a file-loaded replay used to restore a world that
+     init() had just built - bots and all - and slap the over panel on top of
+     it, so you were left watching a live match you never started. */
+  REPLAY.fromFile=!!fromFile;
+  REPLAY.keep={ents:ents, sel:sel.slice(), camx:cam.x, camy:cam.y, camz:cam.z, over:over,
+    overShown:document.getElementById('over').style.display==='flex' };
   REPLAY.on=true; REPLAY.playing=true; REPLAY.speed=1;
   ents=[]; sel=[]; shots=[]; fx=[];
   REPLAY.byId=new Map();
@@ -4782,10 +4795,19 @@ function replayStop(){
   if(!REPLAY.on) return;
   REPLAY.on=false;
   document.getElementById('replay').style.display='none';
-  const k=REPLAY.keep;
+  const k=REPLAY.keep, fromFile=REPLAY.fromFile;
+  REPLAY.keep=null; REPLAY.fromFile=false; REPLAY.byId=new Map();
+  if(fromFile){
+    /* Opened from the menu, so there is no match to go back to - only the
+       scratch world replayLoad built to host the playback. Bin it. */
+    ents=[]; sel=[]; shots=[]; fx=[];
+    document.getElementById('over').style.display='none';
+    leaveMatch();
+    return;
+  }
   if(k){ ents=k.ents; sel=k.sel; cam.x=k.camx; cam.y=k.camy; cam.z=k.camz; over=k.over; }
-  REPLAY.keep=null; REPLAY.byId=new Map();
-  document.getElementById('over').style.display='flex';
+  // only put the panel back if it was up when we left
+  document.getElementById('over').style.display=(k&&k.overShown)?'flex':'none';
 }
 function replayTick(dt){
   if(!REPLAY.on) return;
@@ -4895,7 +4917,7 @@ function replayLoad(file){
     REC.frames=r.frames;
     over=false;
     document.getElementById('over').style.display='none';
-    replayStart();
+    replayStart(true);
     say('Replay loaded - '+r.frames.length+' frames');
   };
   fr.onerror=()=>{ say('Could not read that file'); SFX.play('deny'); };
