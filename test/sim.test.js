@@ -1613,12 +1613,25 @@ test('hotkeys are rebindable and fall back to the defaults', () => {
   eq(run('keyFor("c_A")'), 'q', 'a binding is honoured');
   eq(run('keyIs("c_A","q")'), true, 'and the handler test agrees');
   eq(run('keyIs("c_A","a")'), false, 'the old key stops working');
-  eq(run('hkOf("bld","habitat","H")'), 'H', 'card labels come from the binding');
+  // assert the wiring, not a particular letter, so remapping the defaults
+  // does not false-fail this
+  eq(run('hkOf("bld","habitat","Z")'), run('keyLabel(KEY_DEF["b_habitat"])'),
+     'card labels come from the binding');
   run('OPT.keys={"b_habitat":"j"}');
   eq(run('hkOf("bld","habitat","H")'), 'J', 'and change with it');
   run('OPT.keys={}');
   eq(run('keyFor("c_A")'), 'a', 'clearing restores the default');
   ok(run('KEY_ACTS.length') >= 15, 'every action in the list is rebindable');
+});
+
+test('the default hotkeys are free of real conflicts', () => {
+  run('OPT.keys={}');
+  /* Train and build buttons never share a panel, so a letter used by both
+     is fine; two train buttons on the same letter is not. */
+  eq(JSON.stringify(run('keyClashes()')), '{}', 'no clash inside any one panel');
+  run('OPT.keys={"u_warden":"h"}');   // same letter as the Howitzer
+  ok(Object.keys(run('keyClashes()')).length > 0, 'a real clash is still reported');
+  run('OPT.keys={}');
 });
 
 

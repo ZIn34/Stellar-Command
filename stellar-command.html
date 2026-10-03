@@ -4893,26 +4893,11 @@ function facMarkBld(g,hw,hh,t,fk,h){
   }
 }
 /* Muzzle flash and tracer artwork, dropped in beside the game as flash.png
-   and bolt.png. Both are warm yellow, which is the whole point - powder
-   flash and tracer are the same colour whoever fires them, so they are
-   nudged toward the firing team's colour rather than hue-rotated onto it.
-   A full rotation turned the yellow cyan and lost the muzzle flash. */
-function tintImg(src,col,k){
-  const w=src.naturalWidth||src.width, h=src.naturalHeight||src.height;
-  const c=newCv(w,h), g=c.getContext('2d');
-  g.drawImage(src,0,0);
-  g.globalCompositeOperation='source-atop';
-  g.globalAlpha=k; g.fillStyle=col; g.fillRect(0,0,w,h);
-  g.globalAlpha=1; g.globalCompositeOperation='source-over';
-  return c;
-}
-/* Keyed on the colour itself, so changing palettes or sides between
-   matches needs no cache clearing. */
-const TINTED={};
-function warmTint(src,own,k){
-  const col=(TEAM[own]||TEAM[0]).c, key=k+col+(src===FLASH?'f':'b');
-  return TINTED[key]||(TINTED[key]=tintImg(src,col,k));
-}
+   and bolt.png. Both stay the yellow they were drawn: powder flash and tracer
+   are the same colour whoever fires them. An earlier version hue-rotated them
+   per side, which turned the yellow cyan and lost the muzzle flash, and a
+   later one nudged them toward the firing team's colour, which washed them
+   out. Ownership is carried by the shooter and the hit spark instead. */
 const FLASH=new Image(); let flashOK=false, flashAR=1.42;
 FLASH.onload=function(){
   flashOK=true; flashAR=FLASH.naturalWidth/FLASH.naturalHeight;
@@ -6006,7 +5991,7 @@ function render(){
     const f=s.t/s.dur;
     const x=s.x+(s.tx-s.x)*f, y=s.y+(s.ty-s.y)*f;
     if(boltOK&&!OPT.lowFx){
-      const img=warmTint(BOLT,s.owner,.24);
+      const img=BOLT;
       const ang=Math.atan2(s.ty-s.y,s.tx-s.x);
       const L=s.big?96:54, sc=L/boltLen;
       ctx.save();
@@ -6029,7 +6014,7 @@ function render(){
       poly(ctx,[[Wd*1.7,0],[-L,-Wd*.52],[-L*1.3,0],[-L,Wd*.52]]); ctx.fill();
       ctx.globalAlpha=.95; ctx.fillStyle='#fffbd4';
       poly(ctx,[[Wd*1.1,0],[-L*.44,-Wd*.3],[-L*.6,0],[-L*.44,Wd*.3]]); ctx.fill();
-      ctx.globalAlpha=.75; ctx.fillStyle=s.c;
+      ctx.globalAlpha=.9; ctx.fillStyle='#ffe23a';
       ctx.beginPath(); ctx.arc(0,0,Wd*.85,0,7); ctx.fill();
       ctx.restore();
       ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
@@ -6060,7 +6045,7 @@ function render(){
         ctx.rect(-w*.14,-h,w*(.18+.82*grow),h*2);
         ctx.clip();
         ctx.globalAlpha=p<.1?(p/.1):a2;
-        ctx.drawImage(warmTint(FLASH,f.own,.2),-w*.12,-h/2,w,h);
+        ctx.drawImage(FLASH,-w*.12,-h/2,w,h);
       } else {
         /* The same burst drawn in code: orange outer petals, a yellow
            body and a cream core, so a missing flash.png looks like a gun
@@ -6074,8 +6059,8 @@ function render(){
         poly(ctx,[[0,0],[S*1.05,-S*.6],[S*1.95,-S*.2],[S*1.95,S*.2],[S*1.05,S*.6]]); ctx.fill();
         ctx.globalAlpha=a2; ctx.fillStyle='#fffbc8';
         poly(ctx,[[S*.05,0],[S*.72,-S*.32],[S*1.3,0],[S*.72,S*.32]]); ctx.fill();
-        ctx.globalAlpha=a2*.55; ctx.fillStyle=(TEAM[f.own]||TEAM[0]).c;
-        ctx.beginPath(); ctx.arc(S*.12,0,S*.26,0,7); ctx.fill();
+        ctx.globalAlpha=a2*.6; ctx.fillStyle='#fffbc8';
+        ctx.beginPath(); ctx.arc(S*.12,0,S*.22,0,7); ctx.fill();
       }
       ctx.restore();
       ctx.globalAlpha=1;
@@ -7585,13 +7570,19 @@ function settingsOpen(){
    two buttons never share a panel - Barracks and Halftrack are both 'B' out of
    the box - so a clash is flagged rather than forbidden. */
 let keyCapture=null;
+function keyPanel(id){
+  if(id.indexOf('u_')===0) return 'unit';   // the train panel
+  if(id.indexOf('b_')===0) return 'bld';    // the build panel
+  return 'global';                          // always live
+}
 function keyClashes(){
   const seen={}, out={};
   for(const a of KEY_ACTS){
     const k=keyFor(a.id);
     if(!k) continue;
-    if(seen[k]!==undefined){ out[a.id]=1; out[seen[k]]=1; }
-    else seen[k]=a.id;
+    const slot=keyPanel(a.id)+' '+k;
+    if(seen[slot]!==undefined){ out[a.id]=1; out[seen[slot]]=1; }
+    else seen[slot]=a.id;
   }
   return out;
 }
@@ -7815,8 +7806,8 @@ const TUT_STEPS=[
      where you first actually need a worker in hand, which is the moment you
      raise your first building. So the tutorial opens with production. */
   {b:'Train three more Sappers.',
-   h:dv('Click your Headquarters and pick Sapper. More miners means more income - keep them coming all game.',
-        'Tap your Headquarters, then tap Sapper three times. More miners means more income - keep them coming all game.'),
+   h:()=>dv('Click your '+nameOf('keystone',0)+' and pick '+nameOf('delver',0)+'. More of them hauling means more income - keep them coming all game.',
+        'Tap your '+nameOf('keystone',0)+', then tap '+nameOf('delver',0)+' three times. More of them hauling means more income - keep them coming all game.'),
    enter:()=>{ TUT.baseD=mineU(u=>u.type==='delver').length; },
    focus:()=>{ const k=mineB(b=>b.type==='keystone')[0];
      return (sel.length===1&&sel[0]===k)?{el:'#card .btn[data-hk="'+hkU('delver')+'"]'}:(k?{ent:k}:null); },
@@ -7827,13 +7818,13 @@ const TUT_STEPS=[
      the first thing you are ever asked to do - you have not been shown
      how to select or command anything yet. */
   {b:()=>'Select the '+nameOf('delver',0)+' that is lit up.',
-   h:dv('Click it, or drag a box around it with the left mouse button. F2 grabs your whole army at once. Sappers mine AND build, so nothing goes up without one selected.',
-        'Tap it, or press and hold on open ground and drag a box around it. Sappers mine AND build, so nothing goes up without one selected. One finger drags the camera, two fingers pinch to zoom.'),
+   h:dv('Click it, or drag a box around it with the left mouse button. F2 grabs your whole army at once. Sappers haul AND build, so nothing goes up without one selected.',
+        'Tap it, or press and hold on open ground and drag a box around it. Sappers haul AND build, so nothing goes up without one selected. One finger drags the camera, two fingers pinch to zoom.'),
    focus:()=>{ const u=mineU(x=>UDEF[x.type].worker)[0]; return u?{ent:u}:null; },
    prog:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length+' selected',
    ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length>=1},
   {b:'Use the idle button to put them to work.',
-   h:dv('New Sappers stand around doing nothing. The amber button by the minimap counts them - click it, or press F1, then send them to a crystal.',
+   h:()=>dv('New '+plOf(FACOF[0],'delver')+' stand around doing nothing. The amber button by the minimap counts them - click it, or press F1, then send them to a supply cache.',
         'New Sappers stand around doing nothing. The amber button by the minimap counts them - tap it, then tap a crystal.'),
    focus:()=>(TUT.acts.idle||0)<1?{el:'#idle'}:(()=>{ const r=tutNearestRes('aurite'); return r?{ent:r}:null; })(),
    prog:()=>idleWorkers().length+' still idle',
@@ -7924,22 +7915,15 @@ const TUT_STEPS=[
        tutFoeUnits().length===0;
      return mineU(u=>!UDEF[u.type].worker&&(u.stillT||0)>=ENTRENCH_AT).length>=1;
    }},
-  {b:()=>facOf(0).noRepair?'Your doctrine cannot repair. Learn to live with it.'
-                          :'Repair something with a Sapper.',
-   h:()=>facOf(0).noRepair
-     ?dv('Your army has no field repair - that Headquarters stays broken. What you get instead is vehicles recovered once they are out of contact, and a Command Post that cooks off when it falls. Press on.',
-         'Your army cannot repair - that hull stays broken. Your vehicles are recovered out of contact instead. Press on.')
-     :dv('Your Headquarters has been knocked about. Select a Sapper and right-click the damaged building - repairs cost a fraction of the build price.',
-         'Your Headquarters has been knocked about. Select a Sapper, then tap the damaged building to mend it.'),
-   enter:()=>{ const k=tutHome(); if(k){ k.hp=Math.max(1,k.maxHp*.55); k.hurtAt=-999; }
-     if(facOf(0).noRepair) TUT.noFixAt=gameTime; },
+  /* Every army repairs now, so the branch that taught a doctrine to live
+     without it has gone with the trait. */
+  {b:()=>'Repair something with a '+nameOf('delver',0)+'.',
+   h:()=>dv('Your '+nameOf('keystone',0)+' has been knocked about. Select a '+nameOf('delver',0)+' and right-click the damaged building - repairs cost a fraction of the build price.',
+         'Your '+nameOf('keystone',0)+' has been knocked about. Select a '+nameOf('delver',0)+', then tap the damaged building to mend it.'),
+   enter:()=>{ const k=tutHome(); if(k){ k.hp=Math.max(1,k.maxHp*.55); k.hurtAt=-999; } },
    focus:()=>{ const k=tutHome(); return (k&&k.hp<k.maxHp)?{ent:k}:null; },
-   prog:()=>{ const k=tutHome();
-     if(facOf(0).noRepair) return 'nothing to be done about it';
-     return k?Math.round(100*k.hp/k.maxHp)+'% hull':''; },
-   // the Legion just reads it and moves on; everyone else mends the hull
-   ok:()=>{ if(facOf(0).noRepair) return gameTime-(TUT.noFixAt||gameTime)>7;
-     const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
+   prog:()=>{ const k=tutHome(); return k?Math.round(100*k.hp/k.maxHp)+'% hull':''; },
+   ok:()=>{ const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
   {b:'Put your army on a control group.',
    h:dv('Select your Riflemen and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
         'Select your Riflemen, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
@@ -7976,7 +7960,7 @@ const TUT_STEPS=[
      return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='forgeworks'&&b.done).length>=1},
   {b:'Research an upgrade.',
-   h:dv('Click the Workshop, then A for Weapons or D for Plating. Both are permanent and apply to your whole army - the best use of a big bank.',
+   h:()=>dv('Click the '+nameOf('forgeworks',0)+', then '+UPG.wep.hk+' for Weapons or '+UPG.arm.hk+' for Plating. Both are permanent and apply to your whole army - the best use of a big bank.',
         'Tap the Workshop, then Weapons or Plating. Both are permanent and apply to your whole army.'),
    focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="A"]'}:(f?{ent:f}:null); },
@@ -8009,7 +7993,7 @@ const TUT_STEPS=[
    h:()=>{
      const c=priceOf('unit','titan',0);
      const mine={
-       concord:'It barely fights. What it does is hang over your army and halve the damage coming in, and mend the buildings beneath it.',
+       concord:'It barely fights. What it does is sit in the middle of your army and halve the damage coming in, and repair the structures around it.',
        legion:'A siege engine: enormous splash, and when it finally dies it takes everything around it with it.',
        pact:'A mobile fortress. It keeps deploying '+plOf(FACOF[0],'warden')+' for free, for ever, and patches itself back together.'
      }[facKey]||'';
@@ -8039,12 +8023,12 @@ const TUT_STEPS=[
      const base=dv('Two habits win games: never stop making Sappers, and never let supply pile up. ',
                    'Two habits win games: never stop making Sappers, and never let supply pile up. ');
      const mine={
-       concord:'Your Concord mend cheaply and fight hardest from a planted line - hold ground, repair, out-tech. ',
-       legion:'Your Legion cannot repair, so trade bodies: they heal themselves out of the fight and swing harder the more they bleed. ',
-       pact:'Your Pact wins the long fight - poison everything, pull back onto your own ground, let it work. '
+       concord:'Allied Command repairs cheaply and fights hardest from a dug-in line - hold ground, repair, out-tech. ',
+       legion:'The Steel Legion trades bodies: damaged vehicles are recovered out of contact, and they hit harder the more they burn. ',
+       pact:'The Dust Militia wins the long fight - make them bleed, pull back onto your own ground, let it work. '
      }[facKey]||'';
-     const cap='Once you have a Workshop, a '+nameOf('citadel',0)+' unlocks your '+
-               nameOf('titan',0)+' - 10 pop each, and no limit on how many you field. ';
+     const cap='Once you have a '+nameOf('forgeworks',0)+', a '+nameOf('citadel',0)+' unlocks your '+
+               nameOf('titan',0)+' - ten manpower each, and no limit on how many you field. ';
      return base+mine+cap+'Good hunting, Commander.';
    },
    ok:()=>false, last:true}
