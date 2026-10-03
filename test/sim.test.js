@@ -690,6 +690,70 @@ test('a unit trading blows braces against the crowd', () => {
 });
 
 
+console.log('\nshield lookup');
+
+test('a shield soaks exactly what it used to', () => {
+  arena('concord');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('var lone=mkUnit("harrower",0,k.x+400,k.y+400)');
+  tickOn(3);
+  eq(run('wardFactor(lone)'), 1, 'nothing overhead means no reduction');
+  run('var T=mkUnit("titan",0,k.x+800,k.y+800)');
+  run('var inside=mkUnit("harrower",0,k.x+830,k.y+830)');
+  run('var outside=mkUnit("harrower",0,k.x+1400,k.y+1400)');
+  run('var foe=mkUnit("harrower",1,k.x+830,k.y+860)');
+  tickOn(3);
+  const cut = run('FSTYLE.concord.titan.ward.cut');
+  near(run('wardFactor(inside)'), 1 - cut, 0.001, 'under your own Bastion');
+  eq(run('wardFactor(outside)'), 1, 'outside the bubble');
+  eq(run('wardFactor(foe)'), 1, 'an enemy standing under your shield gets nothing');
+});
+
+test('the shield lookup costs nothing when nobody owns one', () => {
+  /* This sits inside damage(), so it runs for every bullet, blow and splash
+     victim in the game. It used to walk the spatial grid around the target on
+     every one of those calls - even with no Bastion anywhere, which is most of
+     every match. */
+  const src = run('String(wardFactor)');
+  ok(/if\(!list\.length\) return 1;/.test(src), 'it bails out before searching anything');
+  ok(!/around\(/.test(src), 'and it no longer walks the crowd around the target');
+  ok(/WARDF\.get\(t\)/.test(src), 'and it remembers the answer for the rest of the tick');
+  ok(/w\.range\*w\.range/.test(src), 'comparing squared distances rather than taking roots');
+});
+
+test('the set of shield-carrying types is derived, not hardcoded', () => {
+  const types = run('[...wardTypes()]');
+  ok(types.indexOf('titan') >= 0, 'the capital ship carries one');
+  const src = run('String(wardTypes)');
+  ok(/FSTYLE/.test(src), 'read from FSTYLE, so giving something else a shield still works');
+});
+
+test('the shield lookup is fast enough for a Grand War brawl', () => {
+  arena('concord');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('var cx=k.x+900, cy=k.y+900');
+  run('for(var i=0;i<60;i++) mkUnit("warden",0,cx-150+(i%10)*26,cy-80+((i/10)|0)*26)');
+  run('for(var i=0;i<60;i++) mkUnit("warden",1,cx+150-(i%10)*26,cy-80+((i/10)|0)*26)');
+  run('mkUnit("titan",0,cx-60,cy)');
+  tickOn(3);
+  const r = run([
+    '(function(){',
+    ' var list=ents.filter(function(e){return !e.dead&&e.kind==="unit";});',
+    ' var t0=Date.now(), n=0;',
+    ' for(var pass=0;pass<20;pass++){',
+    '   gameTime+=0.05;',
+    '   for(var rr=0;rr<20;rr++) for(var i=0;i<list.length;i++){ wardFactor(list[i]); n++; }',
+    ' }',
+    ' return {calls:n, ms:Date.now()-t0};',
+    '})()'
+  ].join('\n'));
+  const perCall = r.ms / r.calls;
+  ok(perCall < 0.002,
+     r.calls.toLocaleString() + ' lookups in ' + r.ms + 'ms (' +
+     (perCall * 1000).toFixed(2) + ' microseconds each)');
+});
+
+
 console.log('\nsiege retaliation');
 
 test('a squad sieging a building turns on units that attack it', () => {

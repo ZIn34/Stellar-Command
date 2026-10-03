@@ -324,14 +324,14 @@ body.touch .mouse-only{display:none}
   background:#08121c;color:#4bd6ff;border:1px solid #2d5a80;border-radius:6px;padding:6px}
 #lobGo{font-family:inherit;font-size:12px;letter-spacing:2px;padding:0 16px;cursor:pointer;color:#04121c;
   background:linear-gradient(180deg,#7fe4ff,#2aa8d8);border:0;border-radius:6px}
-#tut{display:none;position:absolute;left:14px;top:74px;width:266px;z-index:6;
-  background:rgba(6,13,20,.93);border:1px solid #2d5a80;border-radius:9px;padding:11px 13px;
+#tut{display:none;position:absolute;left:16px;top:74px;width:min(390px,34vw);z-index:6;
+  background:rgba(6,13,20,.95);border:1px solid #2d5a80;border-radius:11px;padding:16px 18px;
   box-shadow:0 6px 26px rgba(0,0,0,.5)}
-#tutHead{font-size:10.5px;letter-spacing:3px;color:#4bd6ff;margin-bottom:6px}
+#tutHead{font-size:12px;letter-spacing:3px;color:#4bd6ff;margin-bottom:9px}
 #tutHead span{color:#7c9cb4;letter-spacing:1px}
-#tutBody{font-size:12px;line-height:1.55;color:#dbe9f5}
-#tutHint{font-size:10.5px;line-height:1.5;color:#7c9cb4;margin-top:6px}
-#tutSkip{margin-top:9px;font-family:inherit;font-size:10px;letter-spacing:2px;padding:4px 12px;
+#tutBody{font-size:17px;line-height:1.45;color:#eaf4ff;font-weight:500}
+#tutHint{font-size:13.5px;line-height:1.6;color:#9fc0d8;margin-top:9px}
+#tutSkip{margin-top:13px;font-family:inherit;font-size:12px;letter-spacing:2px;padding:7px 16px;
   cursor:pointer;color:#9fc4dd;background:#0d1d2a;border:1px solid #2d5a80;border-radius:5px}
 #tutSkip:hover{border-color:#4bd6ff;color:#dff1ff}
 #tut.done{border-color:#7dffb0}
@@ -697,6 +697,7 @@ function applyCosmetics(){
   for(const k in SPR) delete SPR[k];            // sprites regenerate in the new colours
   for(const k in ICO) delete ICO[k];            // and the panel icons cut from them
   if(typeof clearDefs==='function') clearDefs();  // and so do the doctrine statlines
+  WARD_TYPES=null; WARDS_AT=-1; WARDF_AT=-1;      // and the shield lookup tables
   for(const k in ICO) delete ICO[k];
 }
 /* ---------- shop ---------- */
@@ -774,6 +775,10 @@ const UDEF={
   sunderer:{n:'Sunderer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
   harrower:{n:'Harrower', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
   talon:   {n:'Talon',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
+  /* The close-quarters unit. Every doctrine has one and they all fight the
+     same way - walk in and hit something - but each keeps its doctrine's own
+     habits on top, so a Concord Breaker digs in and a Pact Lasher poisons. */
+  breaker: {n:'Breaker',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:90,  g:0,  sup:2, bt:24, r:12},
   /* The capital ship. One statline, three completely different machines built
      on it - see FSTYLE for what each doctrine actually fields. Three times the
      price of the old one and three times the machine: it is meant to be a
@@ -784,7 +789,7 @@ const UDEF={
 const BDEF={
   keystone:  {n:'Keystone',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
   habitat:   {n:'Habitat',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
-  musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark'],hk:'R'},
+  musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker'],hk:'R'},
   siphon:    {n:'Siphon',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
   forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'F'},
   watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
@@ -811,6 +816,7 @@ const FSTYLE={
     harrower:{entrench:true},
     sunderer:{entrench:true},
     watchspire:{entrench:true},
+    breaker: {entrench:true},              // plants its feet and swings
     /* AEGIS BASTION - a flying command ship. It barely fights; what it does is
        keep everything under it alive, and mend the buildings it hangs over. */
     titan:{air:true, rng:184, dmgMul:.72, cd:1.5, splash:92,
@@ -818,11 +824,14 @@ const FSTYLE={
            ward:{range:300, cut:.5, hold:46}, mends:{range:270, rate:78}}
   },
   legion:{
-    /* Brawlers. Almost no reach, and they hit like a truck for it - the
-       trade-off is that everything has to be in your face to do anything. */
-    warden:  {rng:30,  dmgMul:1.6,  cd:1.0, spMul:1.1},
-    bulwark: {rng:34,  dmgMul:1.5,  cd:.56, spMul:1.08},
-    harrower:{rng:28,  dmgMul:1.65, cd:.78, spMul:1.1},
+    /* Hits harder than the others and heals itself instead of repairing. The
+       whole line used to be melee, which left the doctrine with no answer to
+       anything that outranged it - that job belongs to the Flenser now. */
+    warden:  {dmgMul:1.18},
+    bulwark: {dmgMul:1.14},
+    harrower:{dmgMul:1.16},
+    // the Legion's is the nastiest of the three, as it should be
+    breaker: {dmgMul:1.35, spMul:1.1},
     /* CATACLYSM ENGINE - a walking siege furnace. Enormous area damage, and
        when it finally goes down it takes the neighbourhood with it. */
     titan:{rng:210, dmgMul:1.35, cd:2.3, spMul:.82, splash:152,
@@ -836,6 +845,7 @@ const FSTYLE={
     harrower:{venom:true, dmgMul:.9},
     sunderer:{venom:true},
     talon:   {venom:true},
+    breaker: {venom:true, dmgMul:.92},     // every swing leaves a wound
     /* HOLLOW MOTHER - a walking grove. It keeps birthing Thornlings for free
        and knits itself back together, so it wins by never running out. */
     titan:{venom:true, rng:142, dmgMul:.9, cd:1.5, splash:104,
@@ -843,6 +853,10 @@ const FSTYLE={
   }
 };
 const VENOM_DPS=.32, VENOM_FOR=4.5;      // share of the hit, bled out over seconds
+// what a capital ship's blast does to everything that is not its actual target
+const TITAN_SPLASH_SHARE=.3;
+// how long a capital ship must be left alone before it starts knitting again
+const TITAN_MEND_CALM=20;
 const ENTRENCH_AT=1.5, ENTRENCH_DMG=1.28;
 /* Faction stat overrides are folded into the definition itself, so range,
    damage, cooldown, the info panel and the field manual all read the same
@@ -1376,18 +1390,66 @@ let PYRE_D=0;
 /* A Bastion hanging overhead soaks part of every hit aimed at anything under
    it. Stacking two does not stack the cut - the best one applies - so a second
    Bastion buys you coverage, not invulnerability. */
+/* Which unit types could carry a ward at all. Derived from FSTYLE rather than
+   assuming it is only the capital ship, so giving something else a shield
+   later cannot silently break the fast path below. */
+let WARD_TYPES=null;
+function wardTypes(){
+  if(WARD_TYPES) return WARD_TYPES;
+  WARD_TYPES=new Set();
+  for(const fk in FSTYLE){
+    const d=FSTYLE[fk];
+    for(const t in d) if(d[t]&&d[t].ward) WARD_TYPES.add(t);
+  }
+  return WARD_TYPES;
+}
+/* Every shield on the field, gathered once a tick. */
+let WARDS=[], WARDS_AT=-1;
+function wardList(){
+  if(WARDS_AT===gameTime) return WARDS;
+  WARDS_AT=gameTime; WARDS=[];
+  const types=wardTypes();
+  for(const e of ents){
+    if(e.dead||e.kind!=='unit'||!types.has(e.type)) continue;
+    const st=styleFor(e);
+    if(st&&st.ward) WARDS.push(e);
+  }
+  return WARDS;
+}
+/* How much of a hit a Bastion overhead soaks.
+
+   This runs inside damage(), so it is called for every bullet, every melee
+   blow and every splash victim in the game. It used to walk the spatial grid
+   over a 300px neighbourhood on each of those calls - and it did that even
+   when nobody owned a Bastion at all, which is most of every match. At Grand
+   War scale, with hundreds of units trading, that was a lot of searching for
+   something that was not there.
+
+   Now: bail out immediately when no shield exists, walk the handful of shields
+   instead of the crowd around the target, compare squared distances, and
+   remember the answer for the rest of the tick since a unit usually takes
+   several hits in one. (A shield that moves mid-tick is read from its position
+   at the start of it - a few pixels, and only ever at the bubble's edge.) */
+let WARDF=null, WARDF_AT=-1;
 function wardFactor(t){
   if(!t||t.kind==='res') return 1;
+  const list=wardList();
+  if(!list.length) return 1;
+  if(WARDF_AT!==gameTime){ WARDF_AT=gameTime; WARDF=new Map(); }
+  const seen=WARDF.get(t);
+  if(seen!==undefined) return seen;
   let cut=0;
-  for(const e of around(t.x,t.y,300)){
-    if(e.dead||e.kind!=='unit'||e===t) continue;
+  for(const e of list){
+    if(e.dead||e===t) continue;
     if(!isAlly2(e.owner,t.owner)) continue;
-    const st=styleFor(e);
-    if(!st||!st.ward) continue;
-    if(Math.hypot(e.x-t.x,e.y-t.y)>st.ward.range) continue;
-    if(st.ward.cut>cut) cut=st.ward.cut;
+    const w=styleFor(e).ward;
+    const dx=e.x-t.x, dy=e.y-t.y;
+    if(dx*dx+dy*dy>w.range*w.range) continue;
+    if(w.cut>cut) cut=w.cut;
   }
-  return 1-cut;
+  const f=1-cut;
+  WARDF.set(t,f);
+  return f;
 }
 /* Same-side test that works for a building or a unit without caring which. */
 function isAlly2(a,b){ return a===b||(TEAMOF[a]!==undefined&&TEAMOF[a]===TEAMOF[b]); }
@@ -1396,7 +1458,12 @@ function isAlly2(a,b){ return a===b||(TEAMOF[a]!==undefined&&TEAMOF[a]===TEAMOF[
 function titanTick(u,dt){
   const st=styleFor(u);
   if(!st) return;
-  if(st.mend&&u.hp<u.maxHp) u.hp=Math.min(u.maxHp,u.hp+u.maxHp*st.mend*dt);
+  /* It knits itself back together, but only well out of a fight. Four seconds
+     was not nearly long enough - any lull in an engagement was enough for it
+     to undo the damage and it was effectively immortal. Twenty seconds means
+     it heals between battles, never during one. */
+  if(st.mend&&u.hp<u.maxHp&&gameTime-hurtAtOf(u)>TITAN_MEND_CALM)
+    u.hp=Math.min(u.maxHp,u.hp+u.maxHp*st.mend*dt);
   if(st.mends){
     u.mendT=(u.mendT||0)-dt;
     if(u.mendT<=0){
@@ -1455,6 +1522,10 @@ function titanTick(u,dt){
 /* A Pact hit leaves a wound that keeps bleeding. The stacks do not add up
    forever - a fresh hit refreshes the clock and keeps the worse rate - so the
    doctrine wins long fights without one volley deleting anything. */
+/* `u.hurtAt||-999` read a hurtAt of exactly 0 as 'never hurt', because zero is
+   falsy - so anything damaged on the very first tick of a match counted as
+   having been calm forever and healed straight through. */
+function hurtAtOf(e){ return (e&&e.hurtAt!==undefined)?e.hurtAt:-999; }
 function venomApply(t,amt,by){
   if(!t||t.dead) return;
   const dps=amt*VENOM_DPS;
@@ -1562,18 +1633,34 @@ function damage(t,amt,by,src){
     for(const e of ents) if(e.target===t) e.target=null;
   }
 }
-function splashAt(x,y,rad,amt,owner,src,venom){
+/* A capital ship's blast radius is enormous, and every weapon's splash used to
+   land at between full and half damage right out to the edge. On a 150px
+   radius that meant one shot deleted every light unit standing in it - a
+   single Titan could erase a couple of hundred basic units. The thing it is
+   aiming at still takes the whole hit; everyone else catches a share of it,
+   and that share falls away steeply from the middle.
+
+   `share` is per-weapon so this does not quietly nerf the Sunderer, whose
+   small radius was never the problem. */
+function splashAt(x,y,rad,amt,owner,src,venom,share,primary){
+  const sh=(share===undefined)?1:share;
   for(const o of around(x,y,rad+40)){
     if(o.dead||!isFoe(o.owner,owner)) continue;
+    const reach=rad+hitRadius(o);
     const d=Math.hypot(o.x-x,o.y-y);
-    if(d<rad+hitRadius(o)){
-      const hit=amt*(1-.5*d/(rad+hitRadius(o)));
-      damage(o,hit,owner,src||null);
-      /* A Pact weapon that splashes still has to poison, or giving the Hollow
-         Mother a spread would quietly have cost it the one thing that makes
-         it a Pact ship - the splash branch never touched venomApply. */
-      if(venom) venomApply(o,hit,owner);
+    if(d>=reach) continue;
+    let hit;
+    if(o===primary) hit=amt;                       // what it was shooting at
+    else {
+      const k=1-d/reach;                           // 1 in the middle, 0 at the rim
+      hit=amt*sh*(sh<1?k*k:(1-.5*d/reach));        // steep only where a share applies
     }
+    if(hit<=0) continue;
+    damage(o,hit,owner,src||null);
+    /* A Pact weapon that splashes still has to poison, or giving the Hollow
+       Mother a spread would quietly have cost it the one thing that makes it
+       a Pact ship - the splash branch never touched venomApply. */
+    if(venom) venomApply(o,hit,owner);
   }
 }
 function fire(a,t){
@@ -1597,6 +1684,8 @@ function fire(a,t){
     shots.push({x:sx,y:sy,tx:t.x,ty:t.y,t:0,dur:Math.max(.06,Math.hypot(t.x-sx,t.y-sy)/900),
       c:TEAM[a.owner].c,big:!!d.splash,target:t,dmg,splash:d.splash||0,owner:a.owner,
       src:a,                               // so the target knows who to shoot back at
+      // a capital ship's blast is shared out; ordinary artillery is not
+      share:(a.type==='titan')?TITAN_SPLASH_SHARE:1,
       venom:!!(d.style&&d.style.venom)});
   } else {
     damage(t,dmg,a.owner,a);
@@ -1610,7 +1699,8 @@ function stepShots(dt){
     if(s.t>=s.dur){
       s.done=true;
       if(s.splash) splashAt(s.tx,s.ty,s.splash,s.dmg,s.owner,
-                            (s.src&&!s.src.dead)?s.src:null,s.venom),
+                            (s.src&&!s.src.dead)?s.src:null,s.venom,
+                            s.share,(s.target&&!s.target.dead)?s.target:null),
         fx.push({x:s.tx,y:s.ty,t:0,dur:.4,r:s.splash,k:'boom'});
       else if(s.target&&!s.target.dead){
         damage(s.target,s.dmg,s.owner,(s.src&&!s.src.dead)?s.src:null);
@@ -1951,8 +2041,15 @@ function updateUnit(u,dt){
     if(u.regT<=0){
       u.regT=.5;
       let rate=0, grove=false;
-      if(_fh.regen&&gameTime-(u.hurtAt||-999)>4) rate=_fh.regen;
-      if(_fh.groveRegen&&gameTime-(u.hurtAt||-999)>1.5&&
+      /* A capital ship has to be properly out of the fight before anything
+         mends it. On the doctrine's ordinary timers - four seconds for the
+         Legion, a second and a half for a Pact unit standing on its own
+         ground - a Titan parked by its own base healed through every lull in
+         an engagement and was effectively unkillable. */
+      const calm=(u.type==='titan')?TITAN_MEND_CALM:0;
+      const quiet=gameTime-hurtAtOf(u);
+      if(_fh.regen&&quiet>Math.max(4,calm)) rate=_fh.regen;
+      if(_fh.groveRegen&&quiet>Math.max(1.5,calm)&&
          around(u.x,u.y,_fh.groveRange||240).some(
            e=>!e.dead&&e.kind==='building'&&e.done&&e.owner===u.owner)){
         if(_fh.groveRegen>rate){ rate=_fh.groveRegen; grove=true; }
@@ -4204,7 +4301,14 @@ function aiRun(AI,ME,dt){
       tryTrain(b,want); continue;
     }
     if(savingUp) continue;                      // banking for the capital ship
-    if(P[ME].m>=(workers.length<8?150:55)) tryTrain(b,(P[ME].m>=380&&AI.t>170)?'bulwark':'warden');
+    if(P[ME].m>=(workers.length<8?150:55)){
+      // a third of the line is close-quarters, so bots bring a melee punch too
+      const br=us.filter(u=>u.type==='breaker').length;
+      const wd=us.filter(u=>u.type==='warden').length;
+      const want=(AI.t>120&&br*2<wd&&P[ME].m>=200)?'breaker'
+                :((P[ME].m>=380&&AI.t>170)?'bulwark':'warden');
+      tryTrain(b,want);
+    }
   }
 
   /* ---- military: defend home, mass up, commit, pull back if it goes badly ---- */
@@ -4598,7 +4702,7 @@ BOLT.src='bolt.png';
 const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
   bulwark:{d:1.95,off:.68,s:1.5}, sunderer:{d:2.05,off:0,s:2.3},
   harrower:{d:1.45,off:0,s:2.0}, watchspire:{d:1.1,off:0,s:1.6},
-  titan:{d:1.6,off:0,s:2.8} };
+  titan:{d:1.6,off:0,s:2.8}, breaker:{d:1.5,off:0,s:1.2} };
 
 /* ---------- units (drawn facing +x) ---------- */
 function makeUnitSpr(type,owner){
@@ -4615,7 +4719,27 @@ function makeUnitSpr(type,owner){
   if(_fs!==1) g.scale(_fs,_fs);
   const hullGrad=()=>{ const gr=g.createLinearGradient(0,-R,0,R);
     gr.addColorStop(0,HULL_HI); gr.addColorStop(.55,HULL); gr.addColorStop(1,HULL_LO); return gr; };
-  if(type==='titan'){
+  if(type==='breaker'){
+    /* Short, broad and front-heavy: a slab of plate with the weight out in
+       front. The doctrine shape functions make the Concord's a milled wedge,
+       the Legion's a notched cleaver and the Pact's a rounded claw. */
+    g.fillStyle=DARK;                                   // braced legs
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
+      g.save(); g.translate(sg[0]*R*.3,sg[1]*R*.62); g.rotate(sg[1]*.5);
+      rr(g,-R*.3,-3,R*.6,6,2.6); g.fill(); g.restore();
+    });
+    poly(g,[[R*.95,0],[R*.3,-R*.8],[-R*.75,-R*.62],[-R*.9,0],[-R*.75,R*.62],[R*.3,R*.8]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
+    g.fillStyle=HULL_HI;                                // the business end
+    poly(g,[[R*1.5,0],[R*.55,-R*.62],[R*.45,-R*.2],[R*.45,R*.2],[R*.55,R*.62]]); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
+    g.fillStyle=_sh('#33445a');                         // cleaver edge
+    poly(g,[[R*1.5,0],[R*.9,-R*.3],[R*.9,R*.3]]); g.fill();
+    g.fillStyle=t.c;                                    // shoulder flashes
+    for(let i=-1;i<=1;i+=2){ rr(g,-R*.45,i*R*.42-2,R*.5,4,1.6); g.fill(); }
+    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath();
+      g.arc(-R*.1,0,R*.17,0,7); g.fill(); },t.c,7);
+  } else if(type==='titan'){
     /* A capital ship: a long spined core with a heavy ring around the middle
        and four outriggers. facPoly and facRR rebuild the same point list in
        each doctrine's own language, so this one silhouette comes out milled
@@ -6049,17 +6173,18 @@ const SCALES={
 };
 /* Each doctrine calls the same roster by its own names. Hotkeys stay pinned to
    the underlying type so a rename can never shuffle or collide with them. */
-const HK={delver:'D',warden:'W',bulwark:'B',sunderer:'S',harrower:'H',talon:'T'};
+const HK={delver:'D',warden:'W',bulwark:'B',sunderer:'S',harrower:'H',talon:'T',
+          breaker:'E',titan:'C'};
 const FNAMES={
-  concord:{titan:'Aegis Bastion',citadel:'Ascendant Gate',
+  concord:{titan:'Aegis Bastion',citadel:'Ascendant Gate',breaker:'Breaker',
            delver:'Delver',warden:'Warden',bulwark:'Bulwark',sunderer:'Sunderer',
            harrower:'Harrower',talon:'Talon',keystone:'Keystone',habitat:'Habitat',
            musterhall:'Barracks',siphon:'Siphon',forgeworks:'Forgeworks',watchspire:'Watchspire'},
-  legion: {titan:'Cataclysm Engine',citadel:'Bloodforge',
+  legion: {titan:'Cataclysm Engine',citadel:'Bloodforge',breaker:'Flenser',
            delver:'Scav',warden:'Ravager',bulwark:'Marauder',sunderer:'Basilisk',
            harrower:'Devourer',talon:'Shrike',keystone:'Spire Core',habitat:'Warren',
            musterhall:'Blood Pit',siphon:'Leech',forgeworks:'Furnace',watchspire:'Impaler'},
-  pact:   {titan:'Hollow Mother',citadel:'Worldheart',
+  pact:   {titan:'Hollow Mother',citadel:'Worldheart',breaker:'Lasher',
            delver:'Tiller',warden:'Thornling',bulwark:'Bramble',sunderer:'Lobber',
            harrower:'Gorger',talon:'Driftwing',keystone:'Heartroot',habitat:'Bower',
            musterhall:'Grove',siphon:'Taproot',forgeworks:'Kiln',watchspire:'Bristle'}
@@ -6193,6 +6318,7 @@ function menuInit(){
     ['unit','bulwark','Heavy infantry: twice a Warden in every stat.'],
     ['unit','sunderer','Tracked artillery. Splash damage, needs a Forgeworks.'],
     ['unit','harrower','Assault walker. Brutal up close, very hard to kill.'],
+    ['unit','breaker','Close-quarters. No reach at all, hits hard when it gets there.'],
     ['unit','talon','Gunship. Flies over terrain and hits ground or air.'],
     ['bld','keystone','Command hub. Trains Delvers, accepts cargo, +10 pop.'],
     ['bld','habitat','+8 population. Build these before you stall.'],
@@ -6691,6 +6817,7 @@ const KEY_ACTS=[
   {id:'u_bulwark', n:'TRAIN BULWARK', def:'b'},
   {id:'u_sunderer',n:'TRAIN SUNDERER',def:'s'},
   {id:'u_harrower',n:'TRAIN HARROWER',def:'h'},
+  {id:'u_breaker', n:'TRAIN MELEE',    def:'e'},
   {id:'u_talon',   n:'TRAIN TALON',   def:'t'},
   {id:'u_titan',   n:'TRAIN CAPITAL SHIP', def:'c'},
   {id:'b_keystone',  n:'BUILD KEYSTONE',  def:'k'},
