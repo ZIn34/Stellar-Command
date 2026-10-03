@@ -192,19 +192,23 @@ function addPlayer(room,c){
   c.room=room; roster(room); return true;
 }
 /* The host decides when to go: everyone in gets a slot, the rest become bots. */
-function begin(room,mode,grand,seed,terrain){
+/* Only a scale we know about is ever handed back out. */
+const SCALE_OK={standard:1,grand:1,blitz:1};
+function okScale(v){ return pick(SCALE_OK,v,'standard'); }
+function begin(room,mode,grand,seed,terrain,scale){
   room.started=true;
   const facs=['concord','concord','concord','concord'];
   room.players.forEach((pl,i)=>{ if(pl&&pl.fac&&i<4) facs[i]=okFac(pl.fac); });
   const teams=(mode==='ffa')?[0,1,2,3]:room.teams.slice(0,4);
-  room.cfg={mode:mode,grand:!!grand,seed:seed,terrain:terrain,
+  const sc=okScale(scale!==undefined?scale:(grand?'grand':'standard'));
+  room.cfg={mode:mode,grand:!!grand,scale:sc,seed:seed,terrain:terrain,
             count:room.players.length,facs:facs,teams:teams};
   room.players.forEach((c,i)=>{
     if(!c) return;
     room.toks[i]=c.id;
     send(c,{t:'start',role:i===0?'host':'guest',code:room.code,
-            slot:i,count:room.players.length,mode:mode,grand:!!grand,seed:seed,
-            terrain:terrain,facs:facs,teams:teams,tok:c.id});
+            slot:i,count:room.players.length,mode:mode,grand:!!grand,scale:sc,
+            seed:seed,terrain:terrain,facs:facs,teams:teams,tok:c.id});
   });
 }
 function handle(c,text){
@@ -241,8 +245,8 @@ function handle(c,text){
       c.room=room; c.fac=okFac(m.fac||c.fac); room.seen=Date.now();
       const g=room.cfg||{};
       send(c,{t:'start',role:'guest',code:room.code,slot:seat,count:g.count||room.players.length,
-              mode:g.mode,grand:!!g.grand,seed:g.seed,terrain:g.terrain,facs:g.facs,
-              teams:g.teams,tok:c.id,rejoin:true});
+              mode:g.mode,grand:!!g.grand,scale:g.scale,seed:g.seed,terrain:g.terrain,
+              facs:g.facs,teams:g.teams,tok:c.id,rejoin:true});
       for(const o of room.players) if(o&&o!==c) send(o,{t:'peerback',slot:seat});
       return;
     }
@@ -257,7 +261,7 @@ function handle(c,text){
     const room=c.room;
     if(!room||room.started||hostOf(room)!==c) return;
     if(m.mode!==undefined) room.mode=okMode(m.mode);
-    begin(room,room.mode,m.grand,m.seed,m.terrain);
+    begin(room,room.mode,m.grand,m.seed,m.terrain,m.scale);
     return;
   }
   if(m.t==='list'){

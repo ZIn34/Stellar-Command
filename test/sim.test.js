@@ -244,8 +244,10 @@ test('the replay header stores the seed the match started from', () => {
 test('the replay header records the map size that was actually played', () => {
   ok(!/scale:\s*scaleKey/.test(run('String(replaySave)')),
      'replaySave no longer trusts the local menu scaleKey');
-  ok(/scale:\s*GRAND/.test(run('String(replaySave)')),
-     'replaySave derives the scale from the live GRAND flag');
+  ok(/scale:\s*\(?GRAND/.test(run('String(replaySave)')),
+     'replaySave derives the scale from the live flags');
+  ok(/BLITZ/.test(run('String(replaySave)')),
+     'and records a blitz match as blitz, not as standard');
 });
 
 test('the replay header records which doctrines were on the field', () => {
@@ -917,6 +919,114 @@ test('the shipyard step walks the same build chain as the others', () => {
   ok(run('(function(){var f=tutFocus(); return !!(f&&f.x!==undefined);})()'),
      'then a patch of ground to put it on');
   run('placing=null; cardMode="main"');
+});
+
+
+console.log('\nblitz');
+
+function scaleStart(sc, mode) {
+  run('scaleKey="' + sc + '"; modeKey="' + (mode || 'duel') + '"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+}
+
+test('blitz is the standard map at half price and double speed', () => {
+  scaleStart('standard');
+  const std = run('({map:MAP_W,cost:COST_RATE,build:BUILD_RATE,train:TRAIN_RATE,eco:ECO})');
+  scaleStart('blitz');
+  const bz = run('({map:MAP_W,cost:COST_RATE,build:BUILD_RATE,train:TRAIN_RATE,eco:ECO})');
+  eq(bz.map, std.map, 'same size map as standard');
+  eq(bz.cost, 0.5, 'everything is half price');
+  eq(bz.build, 2, 'structures go up twice as fast');
+  eq(bz.train, 2, 'and units train twice as fast');
+  eq(run('BLITZ'), true, 'the flag is set');
+  eq(run('GRAND'), false, 'and it is not grand war');
+});
+
+test('half price applies to units and structures alike', () => {
+  scaleStart('standard');
+  const su = run('priceOf("unit","warden",0)'), sb = run('priceOf("building","habitat",0)');
+  const st = run('priceOf("unit","titan",0)');
+  scaleStart('blitz');
+  const bu = run('priceOf("unit","warden",0)'), bb = run('priceOf("building","habitat",0)');
+  const bt = run('priceOf("unit","titan",0)');
+  eq(bu.m, Math.round(su.m / 2), 'a unit costs half (' + su.m + ' -> ' + bu.m + ')');
+  eq(bb.m, Math.round(sb.m / 2), 'a structure costs half (' + sb.m + ' -> ' + bb.m + ')');
+  eq(bt.m, Math.round(st.m / 2), 'even the capital ship (' + st.m + ' -> ' + bt.m + ')');
+  eq(bt.g, Math.round(st.g / 2), 'ichor too');
+});
+
+test('the price on the card is the price you are charged', () => {
+  /* The build card quoted BDEF straight while startBuild charged priceOf, so
+     in Blitz it said 400 and took 200. */
+  scaleStart('blitz');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var w=ents.find(function(e){return !e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker;})');
+  run('setSel([w]); cardMode="build"; refreshUI()');
+  const shown = run('(function(){var b=cardButtons.filter(function(x){return !x.empty&&x.cost&&/Habitat|Bower|Warren/.test(x.name);})[0];' +
+                    'return b?b.cost.m:-1;})()');
+  run('cardMode="main"');
+  run('P[0].m=5000');
+  const before = run('P[0].m');
+  run('startBuild("habitat",k.x+300,k.y+300,0,[w])');
+  const charged = before - run('P[0].m');
+  eq(shown, charged, 'card said ' + shown + ', charged ' + charged);
+});
+
+test('the blitz starts really are side by side, and evenly paired', () => {
+  scaleStart('standard', 'duel');
+  const std = run('Math.hypot(BASES[1].tx-BASES[0].tx,BASES[1].ty-BASES[0].ty)');
+  scaleStart('blitz', 'duel');
+  const bz = run('Math.hypot(BASES[1].tx-BASES[0].tx,BASES[1].ty-BASES[0].ty)');
+  ok(bz < std / 3, 'the two starts are far closer than standard (' +
+     Math.round(bz) + ' vs ' + Math.round(std) + ' tiles)');
+  ok(bz > 16, 'but far enough apart that each has its own aurite (' + Math.round(bz) + ' tiles)');
+  // and a four-way blitz is still a fair draw
+  scaleStart('blitz', 'ffa');
+  const n = run('NPLAY'), pos = [];
+  for (let i = 0; i < n; i++) pos.push(run('({x:BASES[' + i + '].tx,y:BASES[' + i + '].ty})'));
+  const tally = {};
+  for (let i = 0; i < n; i++) {
+    let near = -1, nd = 1e18;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const d = Math.hypot(pos[j].x - pos[i].x, pos[j].y - pos[i].y);
+      if (d < nd) { nd = d; near = j; }
+    }
+    tally[near] = (tally[near] || 0) + 1;
+  }
+  const worst = Math.max.apply(null, Object.keys(tally).map(k => tally[k]));
+  ok(worst <= 1, 'no start is more than one player\'s nearest: ' + JSON.stringify(tally));
+});
+
+test('a blitz match opens far faster than a standard one', () => {
+  const run1 = sc => run([
+    '(function(){',
+    ' scaleKey="' + sc + '"; modeKey="duel"; terrainKey="open"; facKey="concord";',
+    ' startGame("warlord"); BOTS=[false,true,false,false];',
+    ' var hall=null;',
+    ' for(var i=0;i<2500;i++){',
+    '   over=false; simTick(0.1);',
+    '   if(!hall&&ents.some(function(e){return !e.dead&&e.owner===1&&e.type==="musterhall"&&e.done;})){',
+    '     hall=Math.round(gameTime); break; }',
+    ' }',
+    ' return hall;',
+    '})()'
+  ].join('\n'));
+  const std = run1('standard'), bz = run1('blitz');
+  ok(bz !== null && std !== null, 'both got a barracks up');
+  ok(bz < std, 'blitz builds one sooner (' + bz + 's vs ' + std + 's)');
+});
+
+test('the scale travels with an online match', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  const srv = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/scale:sc/.test(whole), 'the host sends the scale key');
+  ok(/function startOnline\(seed,grand,mode,scale\)/.test(whole), 'the client takes it');
+  ok(/SCALE_OK=\{standard:1,grand:1,blitz:1\}/.test(srv), 'the relay only passes ones it knows');
+  ok(/scale:sc/.test(srv), 'and hands it to every player');
+  ok(/scale:g\.scale/.test(srv), 'including on a reconnect');
 });
 
 

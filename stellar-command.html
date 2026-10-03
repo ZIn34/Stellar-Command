@@ -589,16 +589,21 @@ const TILE=32;
 const IS_TOUCH=(window.matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchstart' in window);
 const TERRAIN_MAX=IS_TOUCH?2048:4096;   // hard cap on the terrain bitmap, whatever the map size
 let MAP_W=112, MAP_H=112, WW=TILE*MAP_W, WH=TILE*MAP_H;
-let MAPSCALE=1, TQ=1, DETAIL=1, GRAND=false, SPEED=1;
-let ECO=1, BUILD_RATE=1, TRAIN_RATE=1, MOVE_RATE=1;
+let MAPSCALE=1, TQ=1, DETAIL=1, GRAND=false, BLITZ=false, SPEED=1;
+let ECO=1, BUILD_RATE=1, TRAIN_RATE=1, MOVE_RATE=1, COST_RATE=1;
 function applyScale(){
-  // Grand War floods you with income and finishes structures and units fast,
-  // but battles are fought at normal speed so they stay readable.
+  /* Grand War floods you with income and finishes structures and units fast,
+     but battles are fought at normal speed so they stay readable.
+
+     Blitz is the standard map with the two starts almost on top of each other:
+     everything costs half and goes up twice as fast, so the opening is over in
+     a couple of minutes and you are fighting from the first Delver. */
   SPEED=1;
   ECO=GRAND?7:1;
-  BUILD_RATE=GRAND?7:1;
-  TRAIN_RATE=GRAND?7:1;
+  BUILD_RATE=GRAND?7:(BLITZ?2:1);
+  TRAIN_RATE=GRAND?7:(BLITZ?2:1);
   MOVE_RATE=GRAND?1.5:1;      // only enough to cope with a ten-times-bigger map
+  COST_RATE=BLITZ?.5:1;       // every price, through priceOf
 }
 let VW=0, VH=0, DPR=1;
 function resize(){
@@ -688,7 +693,9 @@ function priceOf(kind,type,owner){
      price. A capital ship is flat for everyone - it is meant to be the same
      commitment whichever doctrine you run. */
   const f=(kind==='building'||d.flatCost)?1:facOf(owner).cost;
-  return {m:Math.round((d.m||0)*f), g:Math.round((d.g||0)*f)};
+  // COST_RATE is the scale's doing - Blitz halves everything
+  const m=(d.m||0)*f*COST_RATE, g=(d.g||0)*f*COST_RATE;
+  return {m:Math.max(d.m?1:0,Math.round(m)), g:Math.max(d.g?1:0,Math.round(g))};
 }
 /* ...and every part-refund comes from here, off the same price. */
 function refundOf(kind,type,owner,frac){
@@ -946,8 +953,13 @@ let blocked, terr, explored, visible;
 const START_Z=1.5;                 // closer default framing
 const cam={x:0,y:0,z:START_Z};
 let BASES=[], EXPOS=[];
-function setMapScale(grand){
-  GRAND=!!grand;
+/* Accepts a scale key ('standard' | 'grand' | 'blitz'). A bare boolean still
+   works, because several callers used to pass `scaleKey==='grand'`. */
+function setMapScale(scale){
+  const key=(scale===true)?'grand':((scale===false||scale==null)?'standard':String(scale));
+  GRAND=key==='grand';
+  BLITZ=key==='blitz';
+  const grand=GRAND;
   MAP_W=MAP_H=grand?354:112;                 // grand war is ten times the area
   WW=TILE*MAP_W; WH=TILE*MAP_H;
   MAPSCALE=(MAP_W*MAP_H)/(72*72);
@@ -961,10 +973,21 @@ function setMapScale(grand){
   allocFog();
   const f=v=>Math.round(MAP_W*v);
   applyScale();
-  BASES=[{tx:f(.14),ty:f(.86)},{tx:f(.86),ty:f(.14)},
-         {tx:f(.14),ty:f(.50)},{tx:f(.86),ty:f(.50)}];
+  /* Blitz packs the starts into the middle of the same map - about a fifth of
+     the usual distance apart, close enough to see each other almost at once,
+     far enough for each to have its own aurite. The pairing stays even: every
+     start is exactly one other player's nearest neighbour. */
+  BASES=BLITZ
+    ? [{tx:f(.38),ty:f(.44)},{tx:f(.62),ty:f(.44)},
+       {tx:f(.38),ty:f(.62)},{tx:f(.62),ty:f(.62)}]
+    : [{tx:f(.14),ty:f(.86)},{tx:f(.86),ty:f(.14)},
+       {tx:f(.14),ty:f(.50)},{tx:f(.86),ty:f(.50)}];
   EXPOS=[];
-  if(grand){
+  if(BLITZ){
+    // a handful of patches out on the rim, worth the walk once home runs dry
+    EXPOS=[[.5,.14],[.5,.88],[.14,.5],[.88,.5],[.18,.18],[.84,.84]]
+      .map(v=>({tx:f(v[0]),ty:f(v[1])}));
+  } else if(grand){
     const g=[.15,.34,.5,.66,.85];
     for(const a of g) for(const b of g){
       if(BASES.some(bs=>Math.abs(a-bs.tx/MAP_W)<.07&&Math.abs(b-bs.ty/MAP_H)<.07)) continue;
@@ -3071,14 +3094,15 @@ function netRecv(m){
     NET.teams=Array.isArray(m.teams)?m.teams.slice(0,4).map(v=>v|0):null;
     if(m.rejoin) say('Reconnected as Commander '+(NET.slot+1)+'.');
     lobbyClose();
-    startOnline(m.seed>>>0,!!m.grand,m.mode||'duel');
+    startOnline(m.seed>>>0,!!m.grand,m.mode||'duel',m.scale);
     return;
   }
   if(m.t==='relay'){ NET.from=m.from; netData(m.d); NET.from=undefined; return; }
 }
 function netData(d){
   if(!d) return;
-  if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose(); startOnline(d.seed,!!d.grand,d.mode||'duel'); return; }
+  if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose();
+    startOnline(d.seed,!!d.grand,d.mode||'duel',d.scale); return; }
   if(d.k==='out'&&NET.role==='guest'){
     endGame('ELIMINATED','#ff6b52',
       {keepRunning:true, spectate:true, sub:'Your forces are gone. The battle continues.'});
@@ -3261,9 +3285,12 @@ function teamsValid(arr,mode){
 }
 function netBegin(){
   if(!NET.isHost) return;
-  const g=(typeof scaleKey!=='undefined'&&scaleKey==='grand');
+  const sc=(typeof scaleKey!=='undefined')?scaleKey:'standard';
   const md=(typeof modeKey!=='undefined')?modeKey:'duel';
-  netSend({t:'begin',mode:md,grand:g,terrain:terrainKey,seed:(Math.random()*4294967295)>>>0});
+  /* `grand` goes along for older clients; `scale` is what actually decides it
+     now that there are three of them. */
+  netSend({t:'begin',mode:md,grand:sc==='grand',scale:sc,
+           terrain:terrainKey,seed:(Math.random()*4294967295)>>>0});
 }
 function contextOrder(mine,wx,wy){
   mine=mine.filter(e=>e&&!e.dead);
@@ -3320,7 +3347,7 @@ function netHostApply(c,from){
     case 'build': {
       if(!BDEF[c.type]) break;
       const okB=startBuild(c.type,c.x,c.y,ME,us.filter(u=>UDEF[u.type].worker));
-      if(!okB) netRelay({k:'no',s:canAfford(ME,BDEF[c.type])?'Cannot build there':'Not enough resources'},ME);
+      if(!okB) netRelay({k:'no',s:canAfford(ME,bldCost(c.type,ME))?'Cannot build there':'Not enough resources'},ME);
       break;
     }
     case 'research': { const b=bld(c.id); if(b&&b.done&&UPG[c.key]) tryResearch(b,c.key); break; }
@@ -3346,10 +3373,12 @@ function netHostApply(c,from){
   }
 }
 /* ---------- match lifecycle ---------- */
-function startOnline(seed,grand,mode){
+function startOnline(seed,grand,mode,scale){
   tutEnd();
   setSeed(seed);
-  setMapScale(!!grand);
+  const sc=(typeof scale==='string'&&SCALES[scale])?scale:(grand?'grand':'standard');
+  scaleKey=sc;                              // so the HUD and the manual agree
+  setMapScale(sc);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
   ROCK_CLUSTERS=(TERRAINS[NET.terrain]||TERRAINS.open).rocks;
   FACOF=(NET.facs&&NET.facs.length===4)?NET.facs.slice():[facKey,'concord','concord','concord'];
@@ -3628,7 +3657,11 @@ function buildCard(){
     if(cardMode==='build'){
       for(const t of ['keystone','habitat','musterhall','siphon','forgeworks','watchspire','citadel']){
         const d=BDEF[t], locked=d.req&&!hasBuilding(0,d.req);
-        cardButtons.push({img:iconOf('bld',t,0),name:nameOf(t,0),cost:{m:d.m,g:d.g},
+        /* This quoted BDEF directly, so it showed the list price while
+           startBuild charged the real one - in Blitz the card said 400 and
+           took 200. Every price shown comes from priceOf now. */
+        const _bc=bldCost(t,0);
+        cardButtons.push({img:iconOf('bld',t,0),name:nameOf(t,0),cost:{m:_bc.m,g:_bc.g},
           hk:hkOf('bld',t,d.hk),dis:locked,
           tip:locked?'Requires '+nameOf(d.req,0):'',
           act:function(){ if(!canAfford(0,d)){ say('Not enough resources'); SFX.play('deny'); return; } placing=t; cardMode='main'; }});
@@ -4247,7 +4280,7 @@ function aiRun(AI,ME,dt){
   }
   const enemyDir=aiKnownBases(AI)[0]||{x:fs0.tx*TILE,y:fs0.ty*TILE};
   const put=(type,anchor,bias)=>{
-    if(!canBuild()||!canAfford(ME,BDEF[type])) return false;
+    if(!canBuild()||!canAfford(ME,bldCost(type,ME))) return false;
     const p=aiPlace(ME,type,anchor||home,bias);
     return p?!!startBuild(type,p.x,p.y,ME,[freeWorker()]):false;
   };
@@ -5924,7 +5957,7 @@ function replayUI(){
 function replaySave(){
   if(!REC.frames.length){ say('Nothing recorded'); SFX.play('deny'); return; }
   const head={
-    v:REPLAY_FMT, seed:SEED0>>>0, scale:GRAND?'grand':'standard', mode:modeKey,
+    v:REPLAY_FMT, seed:SEED0>>>0, scale:(GRAND?'grand':(BLITZ?'blitz':'standard')), mode:modeKey,
     terrain:terrainKey, facof:FACOF.slice(0,4),
     rocks:ROCK_CLUSTERS, nplay:NPLAY, teamof:TEAMOF.slice(0,4), step:REC.step,
     frames:REC.frames.length, when:new Date().toISOString()};
@@ -5983,7 +6016,7 @@ function replayLoad(file){
     scaleKey=r.head.scale||'standard';
     modeKey=r.head.mode||'duel';
     terrainKey=r.head.terrain||'open';
-    setMapScale(scaleKey==='grand');
+    setMapScale(scaleKey);
     setupSides(modeKey,1);
     if(Array.isArray(r.head.teamof)) TEAMOF=r.head.teamof.slice();
     NPLAY=r.head.nplay||2;
@@ -6269,6 +6302,7 @@ function setupSides(mode,humans){
 }
 const SCALES={
   standard:{n:'STANDARD',d:'112 x 112 · normal pace'},
+  blitz:{n:'BLITZ',d:'starts side by side · half price · twice as fast'},
   grand:{n:'GRAND WAR',d:'10x map · 7x income & build · huge armies'}
 };
 /* Each doctrine calls the same roster by its own names. Hotkeys stay pinned to
@@ -6435,8 +6469,11 @@ function menuInit(){
     const f=FACTIONS[facKey]||FACTIONS.concord, sb=f.supplyBonus||0;
     man.innerHTML=rows.map(r=>{
       const d=r[0]==='unit'?UDEF[r[1]]:BDEF[r[1]];
-      const cm=r[0]==='unit'?Math.round(d.m*f.cost):d.m;
-      const cg=r[0]==='unit'?Math.round((d.g||0)*f.cost):(d.g||0);
+      /* Blitz halves every price, so the manual has to quote the same
+         figures the command card will. */
+      const _cr=(scaleKey==='blitz')?.5:1;
+      const cm=Math.round((r[0]==='unit'?d.m*f.cost:d.m)*_cr);
+      const cg=Math.round((r[0]==='unit'?(d.g||0)*f.cost:(d.g||0))*_cr);
       const cost=cm+(cg?' + <u>'+cg+'</u>':'');
       let desc=facText(r[2]);
       if(d.supply){
@@ -7517,7 +7554,7 @@ function startTutorial(){
   NET.role=null;
   setSeed((Math.random()*4294967295)>>>0);
   scaleKey='standard';
-  setMapScale(false);
+  setMapScale('standard');
   diffKey='recruit'; DIFF=DIFFS.recruit||DIFFS.veteran;
   ELITE={hp:1,dmg:1};
   modeKey='duel';
@@ -7546,7 +7583,7 @@ function startGame(key){
   tutEnd();
   NET.role=null;
   setSeed((Math.random()*4294967295)>>>0);
-  setMapScale(scaleKey==='grand');
+  setMapScale(scaleKey);
   diffKey=key; DIFF=DIFFS[key]||DIFFS.veteran;
   ELITE={hp:DIFF.hp,dmg:DIFF.dmg};
   ROCK_CLUSTERS=(TERRAINS[terrainKey]||TERRAINS.open).rocks;
