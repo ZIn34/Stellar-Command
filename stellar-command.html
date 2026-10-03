@@ -223,6 +223,14 @@ body.touch #pauseBtn{top:max(8px,env(safe-area-inset-top));left:max(10px,env(saf
 .scard{border:1px solid #21405e;border-radius:8px;padding:clamp(4px,.9vh,7px) 11px;cursor:pointer;
   background:linear-gradient(180deg,rgba(20,40,60,.5),rgba(10,20,32,.5));transition:.15s;
   display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+/* The tutorial used to tell you what to do and leave you to find it. A step
+   can now name the control it wants, and that control pulses until you use it. */
+@keyframes tutPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,207,90,.85)}
+  50%{box-shadow:0 0 0 8px rgba(255,207,90,0)}
+}
+.tutLit{animation:tutPulse 1.15s ease-out infinite;
+  border-color:#ffcf5a!important;outline:1px solid rgba(255,207,90,.8)}
 .scard:hover{border-color:#3f8fbe}
 .scard.on{border-color:#4bd6ff;box-shadow:inset 0 0 22px rgba(75,214,255,.16)}
 .scard b{font-weight:400;font-size:clamp(11px,1.6vh,13px);letter-spacing:2px;color:#cfe3f2}
@@ -3087,6 +3095,7 @@ function buildCard(){
         (o.img?'<img class="bic" src="'+o.img+'" alt="">':'<span class="ic">'+o.ic+'</span>')+
         '<span class="nm">'+(o.name||'')+'</span>';
       el.title=o.tip||'';
+      if(o.hk) el.dataset.hk=o.hk;     // lets the tutorial pulse a named button
       const fire=function(ev){
         if(ev){ ev.preventDefault(); ev.stopPropagation(); }
         if(o.dis){ say(o.tip||'Unavailable'); SFX.play('deny'); return; }
@@ -3489,8 +3498,21 @@ function aiRun(AI,ME,dt){
       .filter(e=>!ents.some(b=>!b.dead&&b.kind==='building'&&dist(b,e)<300))
       .sort((a,b)=>dist(a,home)-dist(b,home));
     for(const e of spots){
-      if(canPlace('keystone',snap(e.x),snap(e.y),ME)&&startBuild('keystone',snap(e.x),snap(e.y),ME,[freeWorker()])){
-        AI.expo++; AI.lastExpo={x:snap(e.x),y:snap(e.y)}; break;
+      /* The expansion anchor is the middle of an aurite cluster, and a 96x96
+         Keystone does not fit on top of the patches - so canPlace refused
+         every spot and bots never expanded at all, however much they banked.
+         Walk outward until there is room beside the cluster, the way a player
+         places one. */
+      let at=null;
+      for(let r=0;r<=5&&!at;r++){
+        for(let a=0;a<8&&!at;a++){
+          const ang=a*Math.PI/4, d=r*TILE*2;
+          const px=snap(e.x+Math.cos(ang)*d), py=snap(e.y+Math.sin(ang)*d);
+          if(canPlace('keystone',px,py,ME)) at={x:px,y:py};
+        }
+      }
+      if(at&&startBuild('keystone',at.x,at.y,ME,[freeWorker()])){
+        AI.expo++; AI.lastExpo=at; break;
       }
     }
   }
@@ -4644,6 +4666,7 @@ function render(){
     ctx.strokeStyle=ok?'#7dffb0':'#ff8a7a'; ctx.lineWidth=2; ctx.setLineDash([9,6]);
     ctx.strokeRect(px-d.w/2,py-d.h/2,d.w,d.h); ctx.setLineDash([]);
   }
+  if(TUT.on) drawTutFocus();            // inside the world transform
   ctx.restore();
 
   // drag box
@@ -5847,7 +5870,7 @@ function settingsInit(){
 /* ===================== TRAINING =====================
    A short guided run on a quiet map. Each step watches real game state rather
    than scripting the player, so any legitimate way of doing the thing counts. */
-const TUT={on:false, i:0, t:0, done:false, acts:{}, baseM:0};
+const TUT={on:false, i:0, t:0, done:false, acts:{}, baseM:0, litEl:null, progT:0};
 /* Starting Delvers mine on their own and you open with 150 aurite, so reading
    world state alone marks those steps done before the player touches anything.
    Count the orders the player actually gives instead. */
@@ -5888,79 +5911,176 @@ function tutSpawnOutpost(){
 }
 const mineU=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='unit'&&(!f||f(e)));
 const mineB=f=>ents.filter(e=>!e.dead&&e.owner===0&&e.kind==='building'&&(!f||f(e)));
+/* What the current step wants you to touch: an entity, a point on the ground,
+   or a button in the panel. Steps declare it; the renderer rings it. */
+function tutFocus(){
+  const st=TUT_STEPS[TUT.i];
+  if(!TUT.on||!st||!st.focus) return null;
+  try{ return st.focus()||null; }catch(e){ return null; }
+}
+function tutNearestRes(type){
+  const h=tutHome(); if(!h) return null;
+  return nearest(ents,h.x,h.y,e=>e.kind==='res'&&e.type===(type||'aurite')&&e.amount>0);
+}
+function drawTutFocus(){
+  const f=tutFocus(); if(!f) return;
+  let p=null;
+  if(f.ent&&!f.ent.dead){
+    p={x:f.ent.x,y:f.ent.y,
+       r:(f.ent.kind==='building'?Math.max(f.ent.w,f.ent.h)*.62:(f.ent.r||14)+12)};
+  } else if(f.x!==undefined) p={x:f.x,y:f.y,r:f.r||30};
+  if(!p) return;
+  const t=(performance.now()/620)%1;
+  ctx.save(); ctx.lineWidth=3; ctx.strokeStyle='#ffcf5a';
+  for(let k=0;k<2;k++){
+    const a=(t+k*.5)%1;
+    ctx.globalAlpha=(1-a)*.8;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r+a*30,0,7); ctx.stroke();
+  }
+  ctx.globalAlpha=1; ctx.restore();
+}
+/* The panel buttons are DOM, and the command card is rebuilt constantly, so
+   the class is re-applied rather than set once. */
+function tutHilite(){
+  const f=tutFocus();
+  const want=(f&&f.el)?f.el:null;
+  if(TUT.litEl&&TUT.litEl!==want){
+    const o=document.querySelector(TUT.litEl);
+    if(o) o.classList.remove('tutLit');
+  }
+  TUT.litEl=want;
+  if(!want) return;
+  const o=document.querySelector(want);
+  if(o&&!o.classList.contains('tutLit')) o.classList.add('tutLit');
+}
+function tutClearHilite(){
+  if(TUT.litEl){ const o=document.querySelector(TUT.litEl); if(o) o.classList.remove('tutLit'); }
+  TUT.litEl=null;
+}
 const TUT_STEPS=[
   {b:'Select your Delvers.',
    h:dv('Drag a box around them with the left mouse button, or press F2 to grab everything.',
         'Press and hold on open ground for a moment, then drag to box them in. One finger drags the camera, two fingers pinch to zoom.'),
+   focus:()=>{ const u=mineU(x=>x.type==='delver')[0]; return u?{ent:u}:null; },
+   prog:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0).length+' selected',
    ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0).length>=2},
-  {b:'Put a Delver on aurite yourself.',
-   h:dv('Right-click one of the blue crystal clusters. Aurite pays for everything you build.',
-        'Tap one of the blue crystal clusters. Aurite pays for everything you build.'),
-   ok:()=>(TUT.acts.gather||0)>=1},
   {b:'Train three more Delvers.',
    h:dv('Click your Keystone and pick Delver. More miners means more income - keep them coming all game.',
         'Tap your Keystone, then tap Delver three times. More miners means more income - keep them coming all game.'),
    enter:()=>{ TUT.baseD=mineU(u=>u.type==='delver').length; },
+   focus:()=>{ const k=mineB(b=>b.type==='keystone')[0];
+     return (sel.length===1&&sel[0]===k)?{el:'#card .btn[data-hk="D"]'}:(k?{ent:k}:null); },
+   prog:()=>Math.max(0,mineU(u=>u.type==='delver').length-(TUT.baseD||0))+' / 3 trained',
    ok:()=>mineU(u=>u.type==='delver').length>=(TUT.baseD||0)+3},
   {b:'Use the idle button to put them to work.',
    h:dv('New Delvers stand around doing nothing. The amber button by the minimap counts them - click it, or press F1, then send them to a crystal.',
         'New Delvers stand around doing nothing. The amber button by the minimap counts them - tap it, then tap a crystal.'),
+   focus:()=>(TUT.acts.idle||0)<1?{el:'#idle'}:(()=>{ const r=tutNearestRes('aurite'); return r?{ent:r}:null; })(),
+   prog:()=>idleWorkers().length+' still idle',
    ok:()=>(TUT.acts.idle||0)>=1&&idleWorkers().length===0},
   {b:'Raise a Habitat.',
    h:dv('Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
         'Tap Build in the bottom panel, pick Habitat, then tap a clear patch of ground. It lifts your population cap.'),
+   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="H"]'}:{el:'#card .btn[data-hk="B"]'},
+   prog:()=>{ const b=mineB(x=>x.type==='habitat')[0];
+     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
    ok:()=>mineB(b=>b.type==='habitat'&&b.done).length>=1},
   {b:'Raise a Barracks.',
    h:dv('Same again with R. This is what trains your soldiers, so put it somewhere safe.',
         'Tap Build again and pick Barracks. This is what trains your soldiers, so put it somewhere safe.'),
+   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="R"]'}:{el:'#card .btn[data-hk="B"]'},
+   prog:()=>{ const b=mineB(x=>x.type==='musterhall')[0];
+     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
    ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
   {b:'Train a Warden.',
    h:dv('Click the finished Barracks and pick Warden from the panel at the bottom.',
         'Tap the finished Barracks, then tap Warden in the panel at the bottom.'),
+   focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
+     return (sel.length===1&&sel[0]===h)?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
    ok:()=>mineU(u=>u.type==='warden').length>=1||
        mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
   {b:'Attack-move your Warden out.',
    h:dv('Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
         'Select it, tap Attack in the panel, then tap across the map. Attack-move walks there and engages anything on the way.'),
+   focus:()=>{ const w=mineU(u=>u.type==='warden')[0];
+     return (sel.length&&sel.every(e=>e.kind==='unit'))?{el:'#card .btn[data-hk="A"]'}:(w?{ent:w}:null); },
    ok:()=>(TUT.acts.amove||0)>=1},
   {b:'Raise a Watchspire near your Keystone.',
    h:dv('Build menu, then W. Towers hit hard, outrange your infantry and never get stat bonuses used against them - they are your best answer to a rush.',
         'Tap Build and pick Watchspire. Towers hit hard, outrange your infantry and are your best answer to a rush.'),
+   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="T"]'}:{el:'#card .btn[data-hk="B"]'},
+   prog:()=>{ const b=mineB(x=>x.type==='watchspire')[0];
+     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
    ok:()=>mineB(b=>b.type==='watchspire'&&b.done).length>=1},
   {b:'Build a squad: five Wardens.',
    h:dv('Queue them from the Barracks. Hold the button to stack the queue, and select several Barracks at once to build from all of them.',
         'Tap the Barracks, then tap Warden five times to stack the queue.'),
+   focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
+     return (sel.length&&sel.every(e=>e.kind==='building'&&e.type==='musterhall'))
+       ?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
+   prog:()=>{ const have=mineU(u=>u.type==='warden').length;
+     const q=mineB(b=>b.type==='musterhall').reduce((n,b)=>n+((b.queue&&b.queue.length)||0),0);
+     return have+' / 5'+(q?'  (+'+q+' queued)':''); },
    ok:()=>mineU(u=>u.type==='warden').length>=5},
+  {b:'Repair something with a Delver.',
+   h:dv('Your Keystone has been knocked about. Select a Delver and right-click the damaged building - repairs cost a fraction of the build price.',
+        'Your Keystone has been knocked about. Select a Delver, then tap the damaged building to mend it.'),
+   enter:()=>{ const k=tutHome(); if(k){ k.hp=Math.max(1,k.maxHp*.55); k.hurtAt=-999; } },
+   focus:()=>{ const k=tutHome(); return (k&&k.hp<k.maxHp)?{ent:k}:null; },
+   prog:()=>{ const k=tutHome(); return k?Math.round(100*k.hp/k.maxHp)+'% hull':''; },
+   ok:()=>{ const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
   {b:'Put your army on a control group.',
    h:dv('Select your Wardens and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
         'Select your Wardens, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
+   focus:()=>{ const w=mineU(u=>u.type==='warden')[0]; return w?{ent:w}:null; },
+   prog:()=>{ const n=Object.keys(groups).reduce((m,k)=>
+       Math.max(m,(groups[k]||[]).filter(e=>e&&!e.dead).length),0);
+     return n?('group of '+n):'none set'; },
    ok:()=>Object.keys(groups).some(k=>(groups[k]||[]).filter(e=>e&&!e.dead).length>=3)},
   {b:'Hold the line. Raiders inbound, one airborne.',
    h:'Wardens, Bulwarks and Watchspires can shoot air. Sunderers and Harrowers cannot - that is the one hard rule of fighting here.',
    enter:()=>{ tutSpawnRaiders(4,true); say('Legion raiders inbound - one Shrike in the air.'); SFX.play('attackOrder'); },
+   focus:()=>{ const f=tutFoeUnits()[0]; return f?{ent:f}:null; },
+   prog:()=>tutFoeUnits().length+' raiders left',
    ok:()=>tutFoeUnits().length===0},
   {b:'Raise a Siphon on an ichor vent and crew it.',
    h:dv('The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then right-click it with a Delver.',
         'The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then tap it with a Delver.'),
+   focus:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done)[0];
+     if(sp) return {ent:sp};
+     if(cardMode==='build') return {el:'#card .btn[data-hk="S"]'};
+     const v=tutNearestRes('vent'); return v?{ent:v}:{el:'#card .btn[data-hk="B"]'}; },
+   prog:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
+     if(!sp.length) return 'no Siphon yet';
+     return mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length+' / 1 crewed'; },
    ok:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
      return sp.length>0&&mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length>=1; }},
   {b:'Raise a Forgeworks.',
    h:dv('Build menu, then F. It costs ichor and unlocks the heavy units - Sunderers, Harrowers and Talons - plus upgrades.',
         'Tap Build and pick Forgeworks. It unlocks the heavy units and your upgrades.'),
+   focus:()=>cardMode==='build'?{el:'#card .btn[data-hk="F"]'}:{el:'#card .btn[data-hk="B"]'},
+   prog:()=>{ const b=mineB(x=>x.type==='forgeworks')[0];
+     return b?(b.done?'standing':Math.round(b.prog*100)+'% built'):'none yet'; },
    ok:()=>mineB(b=>b.type==='forgeworks'&&b.done).length>=1},
   {b:'Research an upgrade.',
    h:dv('Click the Forgeworks, then A for Weapons or D for Plating. Both are permanent and apply to your whole army - the best use of a big bank.',
         'Tap the Forgeworks, then Weapons or Plating. Both are permanent and apply to your whole army.'),
+   focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
+     return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="A"]'}:(f?{ent:f}:null); },
    ok:()=>UP[0].wep+UP[0].arm>=1||mineB(b=>b.type==='forgeworks'&&b.res).length>0},
   {b:'Build a Talon.',
    h:dv('From the Forgeworks, press T. Talons fly straight over rock and anything in the way, and only anti-air can touch them.',
         'From the Forgeworks, tap Talon. Talons fly over everything, and only anti-air can touch them.'),
+   focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
+     return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="T"]'}:(f?{ent:f}:null); },
    ok:()=>mineU(u=>u.type==='talon').length>=1||
        mineB(b=>b.type==='forgeworks'&&b.queue&&b.queue.length>0).length>0},
   {b:'Destroy the Legion outpost.',
    h:dv('Their forward post is lightly held. Select your army, press A and click their base - buildings first cuts their reinforcements.',
         'Their forward post is lightly held. Select your army, tap Attack, then tap their base.'),
    enter:()=>{ tutSpawnOutpost(); say('Legion outpost located. Level it.'); },
+   focus:()=>{ const b=tutFoeBlds()[0]; return b?{ent:b}:null; },
+   prog:()=>tutFoeBlds().length+' buildings standing',
    ok:()=>tutFoeBlds().length===0},
   {b:'Outpost cleared. You are ready.',
    h:dv('Two habits win games: never stop making Delvers, and never let aurite pile up. Delvers repair too - right-click a damaged building. Good hunting, Commander.',
@@ -5974,6 +6094,7 @@ function tutShow(){
   if(st.enter&&!st._entered){ st._entered=true; try{ st.enter(); }catch(e){} }
   tutEl('tut').style.display='block';
   tutEl('tut').classList.toggle('done',!!st.last);
+  tutClearHilite(); TUT.progT=0;
   tutEl('tutStep').textContent=st.last?'':(TUT.i+1)+' / '+(TUT_STEPS.length-1);
   tutEl('tutBody').textContent=facText(st.b);
   tutEl('tutHint').textContent=facText((typeof st.h==='function')?st.h():st.h);
@@ -5987,6 +6108,7 @@ function tutAdvance(){
 }
 function tutEnd(){
   TUT.on=false;
+  tutClearHilite();
   tutEl('tut').style.display='none';
 }
 function tutStep(dt){
@@ -5997,6 +6119,16 @@ function tutStep(dt){
   if(typeof st.h==='function'){
     const txt=st.h();
     if(tutEl('tutHint').textContent!==txt) tutEl('tutHint').textContent=txt;
+  }
+  tutHilite();
+  TUT.progT-=dt;
+  if(TUT.progT<=0){                     // 'Wardens 2 / 5' as it happens
+    TUT.progT=.25;
+    let pr='';
+    if(typeof st.prog==='function'){ try{ pr=st.prog()||''; }catch(e){ pr=''; } }
+    const txt=(TUT.i+1)+' / '+(TUT_STEPS.length-1)+(pr?'  -  '+pr:'');
+    const el=tutEl('tutStep');
+    if(el.textContent!==txt) el.textContent=txt;
   }
   let done=false;
   try{ done=!!st.ok(); }catch(e){ done=false; }
