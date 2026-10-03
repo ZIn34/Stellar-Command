@@ -4942,180 +4942,237 @@ function makeUnitSpr(type,owner){
   if(_fs!==1) g.scale(_fs,_fs);
   const hullGrad=()=>{ const gr=g.createLinearGradient(0,-R,0,R);
     gr.addColorStop(0,HULL_HI); gr.addColorStop(.55,HULL); gr.addColorStop(1,HULL_LO); return gr; };
+  /* Running gear. Treads and road wheels sit outboard of the hull and overlap
+     it, so a vehicle reads as one machine rather than a body with striped bars
+     floating beside it. */
+  const treads=(len,hullH,w,segs)=>{
+    const off=hullH+w*.16;
+    g.fillStyle=DARK;
+    rr(g,-len/2,-off-w/2,len,w,w*.3); g.fill();
+    rr(g,-len/2, off-w/2,len,w,w*.3); g.fill();
+    g.fillStyle='rgba(235,245,220,.10)';                 // track links
+    const n=segs||9;
+    for(let i=0;i<n;i++){ const x=-len/2+len*.06+i*(len*.88)/n;
+      rr(g,x,-off-w/2+w*.18,len*.028,w*.64,1); g.fill();
+      rr(g,x, off-w/2+w*.18,len*.028,w*.64,1); g.fill(); }
+    g.fillStyle='rgba(0,0,0,.35)';                       // shadow under the run
+    rr(g,-len/2,-off-w/2,len,w*.2,1); g.fill();
+    rr(g,-len/2, off+w*.3,len,w*.2,1); g.fill();
+  };
+  const tyres=(len,hullH,rad,n)=>{
+    const off=hullH+rad*.25;
+    for(let i=0;i<n;i++){
+      const x=n>1?(-len/2+rad+i*(len-2*rad)/(n-1)):0;
+      g.fillStyle=DARK;
+      g.beginPath(); g.arc(x,-off,rad,0,7); g.fill();
+      g.beginPath(); g.arc(x, off,rad,0,7); g.fill();
+      g.fillStyle='rgba(235,245,220,.09)';               // hub
+      g.beginPath(); g.arc(x,-off,rad*.42,0,7); g.fill();
+      g.beginPath(); g.arc(x, off,rad*.42,0,7); g.fill();
+    }
+  };
+  /* Hull numbers: three short bars. Deliberately not letters - at this size
+     real lettering turns to mud, but the rhythm of a stencil still reads as
+     a military vehicle. */
+  const stencil=(x,y,sz)=>{ g.fillStyle='rgba(235,245,220,.30)';
+    for(let i=0;i<3;i++){ rr(g,x+i*sz*.42,y,sz*.22,sz*.7,.5); g.fill(); } };
+
   if(type==='breaker'){
-    /* Short, broad and front-heavy: a slab of plate with the weight out in
-       front. The doctrine shape functions make the Concord's a milled wedge,
-       the Legion's a notched cleaver and the Pact's a rounded claw. */
-    g.fillStyle=DARK;                                   // braced legs
-    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
-      g.save(); g.translate(sg[0]*R*.3,sg[1]*R*.62); g.rotate(sg[1]*.5);
-      rr(g,-R*.3,-3,R*.6,6,2.6); g.fill(); g.restore();
-    });
-    poly(g,[[R*.95,0],[R*.3,-R*.8],[-R*.75,-R*.62],[-R*.9,0],[-R*.75,R*.62],[R*.3,R*.8]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
-    g.fillStyle=HULL_HI;                                // the business end
-    poly(g,[[R*1.5,0],[R*.55,-R*.62],[R*.45,-R*.2],[R*.45,R*.2],[R*.55,R*.62]]); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
-    g.fillStyle=_sh('#33445a');                         // cleaver edge
-    poly(g,[[R*1.5,0],[R*.9,-R*.3],[R*.9,R*.3]]); g.fill();
-    g.fillStyle=t.c;                                    // shoulder flashes
-    for(let i=-1;i<=1;i+=2){ rr(g,-R*.45,i*R*.42-2,R*.5,4,1.6); g.fill(); }
-    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath();
-      g.arc(-R*.1,0,R*.17,0,7); g.fill(); },t.c,7);
+    /* Flame tank. Tracks at the back, one road wheel up front, a ram plate on
+       the nose. The front plate used to be its own bar and read as a slab
+       floating ahead of the hull, so the glacis is inside the hull outline now
+       and a fender ties the front wheel into the body. */
+    const H=R*.56;
+    treads(R*1.3,H,R*.34,6);
+    g.save(); g.translate(R*.6,0); tyres(R*.5,H*.92,R*.2,1); g.restore();
+    g.fillStyle=DARK;                                    // fenders over the wheel
+    rr(g,R*.3,-H-R*.3,R*.62,R*.16,2); g.fill();
+    rr(g,R*.3, H+R*.14,R*.62,R*.16,2); g.fill();
+    poly(g,[[-R*.9,-H],[R*.3,-H],[R*.92,-H*.44],[R*1.02,0],[R*.92,H*.44],[R*.3,H],[-R*.9,H]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
+    g.fillStyle=HULL_HI;                                 // glacis, inside the outline
+    poly(g,[[R*.3,-H*.9],[R*.86,-H*.4],[R*.95,0],[R*.86,H*.4],[R*.3,H*.9]]); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.fillStyle=_sh('#33445a');                          // ram edge
+    poly(g,[[R*1.02,0],[R*.88,-R*.2],[R*.88,R*.2]]); g.fill();
+    g.fillStyle='rgba(235,245,220,.20)';                 // vision slit
+    rr(g,R*.5,-R*.06,R*.28,R*.12,1); g.fill();
+    g.fillStyle=DARK;                                    // open fighting compartment
+    rr(g,-R*.74,-R*.3,R*.88,R*.6,2); g.fill();
+    g.fillStyle=t.c; rr(g,-R*.66,-R*.22,R*.72,R*.44,1.6); g.fill();
+    g.fillStyle=DARK;                                    // short flame projector
+    rr(g,-R*.08,-2.3,R*.88,4.6,1.8); g.fill();
+    g.fillStyle=HULL_HI; rr(g,R*.74,-3,R*.22,6,1.4); g.fill();
+    stencil(-R*.86,-R*.2,R*.32);
   } else if(type==='titan'){
-    /* A capital ship: a long spined core with a heavy ring around the middle
-       and four outriggers. facPoly and facRR rebuild the same point list in
-       each doctrine's own language, so this one silhouette comes out milled
-       for the Concord, hammered for the Legion and grown for the Pact. */
-    g.fillStyle=DARK;                                   // outriggers
+    /* Command vehicle: a super-heavy hull on four bogies with an armoured
+       cupola amidships. facPoly and facRR rebuild the same point list in each
+       army's own language, so one silhouette comes out milled for Allied
+       Command, chamfered for the Shock Army and welded for the Militia. */
+    g.fillStyle=DARK;                                    // bogies
     [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
-      g.save(); g.translate(sg[0]*R*.42,sg[1]*R*.78); g.rotate(sg[1]*.42);
-      rr(g,-R*.5,-5,R*1.0,10,4); g.fill();
-      g.restore();
+      g.save(); g.translate(sg[0]*R*.38,sg[1]*R*.74); g.rotate(sg[1]*.38);
+      rr(g,-R*.48,-R*.1,R*.96,R*.2,R*.08); g.fill(); g.restore();
     });
-    g.fillStyle=HULL_LO;                                // wing roots
-    [[-1],[1]].forEach(sg=>{
-      poly(g,[[-R*.2,sg[0]*R*.5],[R*.5,sg[0]*R*.95],[R*.1,sg[0]*R*1.08],[-R*.6,sg[0]*R*.72]]);
-      g.fill(); g.strokeStyle=DARK; g.lineWidth=1.3; g.stroke();
-    });
-    poly(g,[[R*1.3,0],[R*.62,-R*.56],[-R*.3,-R*.72],[-R*1.1,-R*.34],
-            [-R*1.1,R*.34],[-R*.3,R*.72],[R*.62,R*.56]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.8; g.stroke();
-    g.fillStyle=HULL_HI;                                // dorsal spine
-    poly(g,[[R*1.08,0],[R*.3,-R*.26],[-R*.78,-R*.2],[-R*.78,R*.2],[R*.3,R*.26]]);
-    g.fill(); g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
-    g.fillStyle=DARK;                                   // the heavy ring
-    rr(g,-R*.46,-R*.84,R*.3,R*1.68,5); g.fill();
-    g.fillStyle=t.c; g.globalAlpha=.9;
-    rr(g,-R*.4,-R*.66,R*.17,R*1.32,4); g.fill(); g.globalAlpha=1;
-    g.fillStyle=DARK;                                   // prow lance
-    rr(g,R*.55,-4.6,R*.85,9.2,3); g.fill();
-    g.fillStyle=HULL; rr(g,R*1.18,-6,R*.3,12,2.4); g.fill();
-    g.fillStyle=t.c;                                    // flank batteries
-    for(let i=-1;i<=1;i+=2){
-      rr(g,-R*.1,i*R*.5-2.4,R*.62,4.8,2); g.fill();
-    }
-    // the core
-    const cg=g.createRadialGradient(-R*.05,-R*.1,1,0,0,R*.46);
-    cg.addColorStop(0,_lt('#e9f6ff')); cg.addColorStop(.45,t.c); cg.addColorStop(1,DARK);
-    glow(g,()=>{ g.fillStyle=cg; g.beginPath(); g.arc(0,0,R*.4,0,7); g.fill(); },t.c,16);
-    g.strokeStyle=DARK; g.lineWidth=1.6; g.beginPath(); g.arc(0,0,R*.4,0,7); g.stroke();
-    g.fillStyle=_lt('#cdefff');
-    glow(g,()=>{ g.beginPath(); g.arc(-R*.08,-R*.06,R*.14,0,7); g.fill(); },t.c,9);
+    poly(g,[[R*1.22,0],[R*.58,-R*.5],[-R*.34,-R*.66],[-R*1.02,-R*.3],
+            [-R*1.02,R*.3],[-R*.34,R*.66],[R*.58,R*.5]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=2.1; g.stroke();
+    g.fillStyle=HULL_HI;                                 // spine deck
+    poly(g,[[R*.98,0],[R*.28,-R*.23],[-R*.7,-R*.19],[-R*.7,R*.19],[R*.28,R*.23]]); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.4; g.stroke();
+    g.fillStyle=DARK;                                    // turret race
+    rr(g,-R*.44,-R*.78,R*.26,R*1.56,R*.1); g.fill();
+    g.fillStyle=t.c; g.globalAlpha=.8;
+    rr(g,-R*.38,-R*.62,R*.14,R*1.24,R*.07); g.fill(); g.globalAlpha=1;
+    g.fillStyle=DARK;                                    // main gun
+    rr(g,R*.48,-R*.11,R*.82,R*.22,R*.07); g.fill();
+    g.fillStyle=HULL_LO; rr(g,R*1.08,-R*.15,R*.24,R*.3,R*.05); g.fill();
+    g.fillStyle=DARK;                                    // sponson mounts
+    for(let i=-1;i<=1;i+=2){ rr(g,-R*.08,i*R*.46-R*.07,R*.56,R*.14,R*.05); g.fill(); }
+    const cg=g.createRadialGradient(-R*.04,-R*.08,1,0,0,R*.38);
+    cg.addColorStop(0,_lt('#e4eeff')); cg.addColorStop(.45,t.c); cg.addColorStop(1,DARK);
+    glow(g,()=>{ g.fillStyle=cg; g.beginPath(); g.arc(0,0,R*.32,0,7); g.fill(); },t.c,14);
+    g.strokeStyle=DARK; g.lineWidth=1.7; g.beginPath(); g.arc(0,0,R*.32,0,7); g.stroke();
+    stencil(-R*.82,-R*.1,R*.2);
   } else if(type==='delver'){
-    plate(g,-R-3,-R*.62,R*.7,R*1.24,3,HULL,HULL_LO);
-    g.fillStyle=t.c; g.globalAlpha=.85; rr(g,-R-1.5,-R*.34,2,R*.68,1); g.fill(); g.globalAlpha=1;
-    g.fillStyle=DARK;
-    rr(g,-R*.7,-R-1.6,R*1.5,3.4,1.4); g.fill();
-    rr(g,-R*.7, R-1.8,R*1.5,3.4,1.4); g.fill();
-    poly(g,[[-R*.75,-R*.72],[R*.35,-R*.86],[R*.95,0],[R*.35,R*.86],[-R*.75,R*.72]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
-    g.fillStyle=t.c;
-    poly(g,[[-R*.2,-R*.6],[R*.3,-R*.66],[R*.3,-R*.3],[-R*.2,-R*.28]]); g.fill();
-    poly(g,[[-R*.2, R*.6],[R*.3, R*.66],[R*.3, R*.3],[-R*.2, R*.28]]); g.fill();
-    g.fillStyle=_lt('#8fe4ff');
-    poly(g,[[R*.85,-2.8],[R*1.75,0],[R*.85,2.8]]); g.fill();
-    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath(); g.arc(R*.3,0,1.9,0,7); g.fill(); },_lt('#9ee9ff'),5);
+    /* Engineer vehicle: an armoured dozer. The blade with its teeth and the
+       jib arm over the back deck are what tell it apart from the APC - without
+       them the two were nearly the same box on tracks. */
+    const H=R*.5;
+    treads(R*1.95,H,R*.34,8);
+    g.fillStyle=HULL;                                    // jib arm over the rear
+    rr(g,-R*1.3,-R*.09,R*.95,R*.18,2); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.fillStyle=DARK; rr(g,-R*1.44,-R*.2,R*.2,R*.4,2); g.fill();
+    poly(g,[[-R*.86,-H],[R*.5,-H],[R*.7,0],[R*.5,H],[-R*.86,H]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
+    g.fillStyle=HULL_LO;                                 // blade arms, behind the blade
+    rr(g,R*.42,-R*.74,R*.34,R*.1,1); g.fill();
+    rr(g,R*.42, R*.64,R*.34,R*.1,1); g.fill();
+    g.fillStyle=HULL_HI;                                 // dozer blade
+    rr(g,R*.72,-R*.86,R*.26,R*1.72,2); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.3; g.stroke();
+    g.fillStyle=DARK;                                    // blade teeth
+    for(let i=-2;i<=2;i++){ rr(g,R*.95,i*R*.3-R*.05,R*.17,R*.1,1); g.fill(); }
+    g.fillStyle=DARK; rr(g,-R*.3,-R*.3,R*.58,R*.6,3); g.fill();
+    g.fillStyle=t.c; rr(g,-R*.22,-R*.22,R*.42,R*.44,2); g.fill();
+    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath();
+      g.arc(R*.16,0,1.9,0,7); g.fill(); },_lt('#9ee9ff'),5);
+    stencil(-R*.78,-R*.2,R*.32);
   } else if(type==='warden'){
-    plate(g,-R*1.05,-R*.5,R*.6,R,2.5,HULL,HULL_LO);
-    g.fillStyle=DARK; rr(g,-R*.1,-1.5,R*2.05,3,1.4); g.fill();
-    g.fillStyle=t.c; rr(g,R*1.35,-1.1,R*.5,2.2,1); g.fill();
-    poly(g,[[-R*.55,-R*.78],[R*.5,-R*.62],[R*.72,0],[R*.5,R*.62],[-R*.55,R*.78]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
-    g.fillStyle=t.c;
-    rr(g,-R*.5,-R*.95,R*.75,R*.4,2); g.fill();
-    rr(g,-R*.5, R*.55,R*.75,R*.4,2); g.fill();
-    g.fillStyle=DARK; g.beginPath(); g.arc(R*.18,0,R*.44,0,7); g.fill();
-    glow(g,()=>{ g.fillStyle=t.c; rr(g,R*.28,-R*.2,R*.3,R*.4,1.2); g.fill(); },t.c,6);
-  } else if(type==='bulwark'){
-    g.fillStyle=DARK;                                   // legs
-    g.save(); g.translate(-R*.5,-R*.72); g.rotate(-.35); rr(g,-R*.5,-3,R,6,2.5); g.fill(); g.restore();
-    g.save(); g.translate(-R*.5, R*.72); g.rotate(.35);  rr(g,-R*.5,-3,R,6,2.5); g.fill(); g.restore();
-    g.fillStyle=HULL_LO;                                // foot pads
-    g.save(); g.translate(-R*.88,-R*.86); g.rotate(-.35); rr(g,-R*.3,-3.6,R*.6,7.2,3); g.fill(); g.restore();
-    g.save(); g.translate(-R*.88, R*.86); g.rotate(.35);  rr(g,-R*.3,-3.6,R*.6,7.2,3); g.fill(); g.restore();
-    poly(g,[[-R*.62,-R*.66],[R*.35,-R*.82],[R*.62,-R*.3],[R*.62,R*.3],[R*.35,R*.82],[-R*.62,R*.66]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.3; g.stroke();
-    g.fillStyle=HULL_HI;                                // shield slab
-    poly(g,[[-R*.34,-R*1.16],[R*.74,-R*1.0],[R*.94,-R*.54],[-R*.18,-R*.62]]); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
-    g.fillStyle=t.c;
-    poly(g,[[R*.14,-R*1.07],[R*.71,-R*.98],[R*.81,-R*.72],[R*.24,-R*.79]]); g.fill();
-    g.fillStyle=DARK;                                   // twin cannon arm
-    rr(g,R*.1,R*.46,R*1.5,4.2,2); g.fill();
-    rr(g,R*.1,R*.86,R*1.5,4.2,2); g.fill();
-    g.fillStyle=HULL; rr(g,-R*.16,R*.4,R*.56,R*.66,3); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
-    g.fillStyle=t.c;
-    rr(g,R*1.44,R*.48,R*.24,3.8,1.4); g.fill();
-    rr(g,R*1.44,R*.88,R*.24,3.8,1.4); g.fill();
-    g.fillStyle=DARK; g.beginPath(); g.arc(R*.3,0,R*.4,0,7); g.fill();
-    glow(g,()=>{ g.fillStyle=t.c; rr(g,R*.42,-R*.16,R*.26,R*.32,1.2); g.fill(); },t.c,7);
-    g.strokeStyle=t.c; g.lineWidth=1.6;
-    g.beginPath(); g.moveTo(R*.1,-R*.32); g.lineTo(R*.1,R*.32); g.stroke();
-  } else if(type==='talon'){
-    poly(g,[[-R*.5,-R*.95],[R*.15,-R*.28],[R*.15,R*.28],[-R*.5,R*.95],[-R*.15,0]]);
-    g.fillStyle=HULL_LO; g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
-    poly(g,[[-R*.8,-R*.34],[R*.4,-R*.3],[R*1.05,0],[R*.4,R*.3],[-R*.8,R*.34]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
-    g.fillStyle=t.c;
-    poly(g,[[-R*.55,-R*.2],[R*.1,-R*.17],[R*.1,R*.17],[-R*.55,R*.2]]); g.fill();
-    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath(); g.arc(R*.5,0,R*.16,0,7); g.fill(); },t.c,7);
-    g.fillStyle=t.c; rr(g,-R*.95,-2,R*.3,4,1.4); g.fill();
-  } else if(type==='harrower'){
-    g.fillStyle=DARK;                                   // outrigger legs
-    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
-      g.save(); g.translate(sg[0]*R*.55,sg[1]*R*.85); g.rotate(sg[1]*.5);
-      rr(g,-R*.34,-3.4,R*.68,6.8,3); g.fill(); g.restore();
-    });
-    poly(g,[[R*1.05,0],[R*.35,-R*.86],[-R*.72,-R*.7],[-R*.95,0],[-R*.72,R*.7],[R*.35,R*.86]]);
+    /* Scout car. Four road wheels instead of two, a proper ring turret and a
+       whip aerial: the two-wheel box was the plainest thing on the field and
+       nothing picked it out at a glance. */
+    const H=R*.44;
+    tyres(R*1.75,H,R*.24,4);
+    poly(g,[[-R*.8,-H],[R*.3,-H],[R*.84,-H*.46],[R*.84,H*.46],[R*.3,H],[-R*.8,H]]);
     g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.4; g.stroke();
-    g.fillStyle=HULL_HI;                                // serrated ram plate
-    poly(g,[[R*1.35,0],[R*.5,-R*.72],[R*.42,-R*.34],[R*.42,R*.34],[R*.5,R*.72]]); g.fill();
+    g.fillStyle=HULL_LO;                                 // sloped bonnet
+    poly(g,[[R*.3,-H*.9],[R*.8,-H*.42],[R*.8,H*.42],[R*.3,H*.9]]); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
+    g.fillStyle='rgba(235,245,220,.12)';                 // deck line
+    rr(g,-R*.7,-H*.78,R*.9,R*.1,1); g.fill();
+    g.fillStyle=HULL_LO;                                 // spare wheel on the tail
+    g.beginPath(); g.arc(-R*.9,0,R*.2,0,7); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.strokeStyle=HULL_HI; g.lineWidth=1.4; g.lineCap='round';
+    g.beginPath(); g.moveTo(-R*.4,-R*.1); g.lineTo(-R*.98,-R*.66); g.stroke();
+    g.lineCap='butt';
+    g.fillStyle=DARK;                                    // ring turret
+    g.beginPath(); g.arc(-R*.06,0,R*.3,0,7); g.fill();
+    g.fillStyle=HULL; g.beginPath(); g.arc(-R*.06,0,R*.23,0,7); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.fillStyle=DARK; rr(g,R*.02,-1.5,R*.95,3,1.2); g.fill();
+    g.fillStyle=t.c; rr(g,R*.82,-1.1,R*.2,2.2,1); g.fill();
+    glow(g,()=>{ g.fillStyle=t.c; g.beginPath();
+      g.arc(-R*.06,0,R*.12,0,7); g.fill(); },t.c,6);
+  } else if(type==='bulwark'){
+    /* APC. Wheeled and long, with a row of vision ports down each side and a
+       small ring mount - the ports are the detail that keeps it from reading
+       as the engineer vehicle. */
+    const H=R*.52;
+    tyres(R*2.05,H,R*.21,4);
+    poly(g,[[-R*1.05,-H],[R*.55,-H],[R*1.08,-H*.5],[R*1.08,H*.5],[R*.55,H],[-R*1.05,H]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
+    g.fillStyle=HULL_HI;                                 // nose plate
+    poly(g,[[R*.55,-H*.92],[R*1.04,-H*.46],[R*1.04,H*.46],[R*.55,H*.92]]); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
-    g.fillStyle=t.c;
-    for(let i=-1;i<=1;i++){
-      poly(g,[[R*1.34,i*R*.3],[R*.98,i*R*.3-R*.12],[R*.98,i*R*.3+R*.12]]); g.fill();
+    g.fillStyle=DARK;                                    // vision ports
+    for(let i=0;i<3;i++){
+      rr(g,-R*.85+i*R*.42,-H*.62,R*.3,H*.26,1); g.fill();
+      rr(g,-R*.85+i*R*.42, H*.36,R*.3,H*.26,1); g.fill();
     }
-    g.fillStyle=DARK;                                   // stubby side cannons
-    rr(g,R*.35,-R*.92,R*.75,5,2); g.fill();
-    rr(g,R*.35, R*.62,R*.75,5,2); g.fill();
-    g.fillStyle=t.c;
-    rr(g,-R*.9,-R*.34,R*.24,R*.68,1.5); g.fill();
-    const cg=g.createRadialGradient(0,0,1,0,0,R*.42);
-    cg.addColorStop(0,_lt('#e9f6ff')); cg.addColorStop(.5,t.c); cg.addColorStop(1,'rgba(0,0,0,0)');
-    glow(g,()=>{ g.fillStyle=cg; g.beginPath(); g.arc(-R*.05,0,R*.4,0,7); g.fill(); },t.c,9);
-  } else {
-    const brawler=false;
+    g.fillStyle=DARK; g.beginPath(); g.arc(-R*.2,0,R*.26,0,7); g.fill();
+    g.fillStyle=HULL; g.beginPath(); g.arc(-R*.2,0,R*.19,0,7); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.fillStyle=DARK; rr(g,-R*.14,-1.7,R*.62,3.4,1.5); g.fill();
+    g.fillStyle=t.c; rr(g,-R*1.0,-R*.14,R*.18,R*.28,1); g.fill();
+    glow(g,()=>{ g.fillStyle=t.c; g.beginPath();
+      g.arc(-R*.2,0,R*.1,0,7); g.fill(); },t.c,6);
+  } else if(type==='talon'){
+    /* Gunship. Tail boom and rotor disc, so it reads as airborne even without
+       the altitude shadow the renderer puts under it. */
     g.fillStyle=DARK;
-    rr(g,-R*.95,-R-1,R*1.9,brawler?6.5:5,2); g.fill();
-    rr(g,-R*.95, R-(brawler?5.5:4),R*1.9,brawler?6.5:5,2); g.fill();
-    g.strokeStyle=_sh('#0a1017'); g.lineWidth=1;
-    for(let i=-3;i<=3;i++){ g.beginPath();
-      g.moveTo(i*R*.27,-R-1); g.lineTo(i*R*.27,-R+4);
-      g.moveTo(i*R*.27, R-4); g.lineTo(i*R*.27, R+1); g.stroke(); }
-    poly(g,[[-R*.9,-R*.66],[R*.55,-R*.72],[R*.95,0],[R*.55,R*.72],[-R*.9,R*.66]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.3; g.stroke();
-    g.fillStyle=t.c;
-    rr(g,-R*.78,-R*.62,R*.3,R*1.24,1.5); g.fill();
-    rr(g,-R*.3,-R*.78,R*.9,R*.16,1); g.fill();
-    rr(g,-R*.3, R*.62,R*.9,R*.16,1); g.fill();
-    if(brawler){                               // short, thick gun and a ram plate
-      g.fillStyle=HULL_HI;
-      poly(g,[[R*.72,-R*.6],[R*1.15,-R*.22],[R*1.15,R*.22],[R*.72,R*.6]]); g.fill();
-      g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
-      g.fillStyle=DARK; rr(g,R*.3,-4.4,R*1.0,8.8,2.5); g.fill();
-      g.fillStyle=t.c; rr(g,R*1.16,-3,R*.22,6,1.4); g.fill();
-    } else {
-      g.fillStyle=DARK; rr(g,R*.25,-2.8,R*1.75,5.6,2); g.fill();
-      g.fillStyle=HULL; rr(g,R*1.7,-4,R*.4,8,1.6); g.fill();
-    }
-    const tg=g.createRadialGradient(-R*.08,-R*.16,1,0,0,R*.5);
-    tg.addColorStop(0,_sh('#7d94ab')); tg.addColorStop(1,_sh('#33445a'));
-    g.fillStyle=tg; g.beginPath(); g.arc(0,0,R*.48,0,7); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1.4; g.beginPath(); g.arc(0,0,R*.48,0,7); g.stroke();
-    glow(g,()=>{ g.fillStyle=t.c; g.beginPath(); g.arc(-R*.12,0,1.9,0,7); g.fill(); },t.c,5);
+    rr(g,-R*1.68,-2.4,R*1.0,4.8,2); g.fill();            // tail boom
+    poly(g,[[-R*.8,-R*.18],[-R*1.48,-R*.58],[-R*1.48,-R*.18]]); g.fill();
+    poly(g,[[R*1.12,0],[R*.44,-R*.48],[-R*.74,-R*.4],[-R*.88,0],[-R*.74,R*.4],[R*.44,R*.48]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
+    g.fillStyle=DARK;                                    // stub wings with pods
+    rr(g,-R*.34,-R*.92,R*.48,R*.28,2); g.fill();
+    rr(g,-R*.34, R*.64,R*.48,R*.28,2); g.fill();
+    g.fillStyle=HULL_LO;
+    rr(g,-R*.29,-R*.85,R*.38,R*.15,1); g.fill();
+    rr(g,-R*.29, R*.7,R*.38,R*.15,1); g.fill();
+    g.fillStyle=t.c; poly(g,[[R*1.02,0],[R*.38,-R*.28],[R*.38,R*.28]]); g.fill();
+    g.strokeStyle='rgba(225,238,255,.42)'; g.lineWidth=2.3;   // rotor disc
+    for(let i=0;i<4;i++){ const a=i*Math.PI/2+.42;
+      g.beginPath(); g.moveTo(Math.cos(a)*R*.24,Math.sin(a)*R*.24);
+      g.lineTo(Math.cos(a)*R*1.78,Math.sin(a)*R*1.78); g.stroke(); }
+    g.fillStyle=DARK; g.beginPath(); g.arc(0,0,R*.15,0,7); g.fill();
+    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath();
+      g.arc(R*.62,0,R*.12,0,7); g.fill(); },t.c,6);
+  } else if(type==='harrower'){
+    /* Battle tank. Wide tracks, a sloped glacis and a cast turret set back off
+       centre, which is what makes it read as the heaviest thing on the field. */
+    const H=R*.6;
+    treads(R*1.95,H,R*.4,10);
+    poly(g,[[-R*.92,-H],[R*.46,-H],[R*.94,-H*.52],[R*.94,H*.52],[R*.46,H],[-R*.92,H]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.7; g.stroke();
+    g.fillStyle=HULL_HI;                                 // glacis
+    poly(g,[[R*.46,-H*.94],[R*.9,-H*.48],[R*.9,H*.48],[R*.46,H*.94]]); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
+    g.fillStyle='rgba(235,245,220,.09)';                 // stowage rail
+    rr(g,-R*.78,-H*.8,R*1.05,R*.12,1); g.fill();
+    const tg=g.createRadialGradient(-R*.1,-R*.14,1,0,0,R*.5);
+    tg.addColorStop(0,HULL_HI); tg.addColorStop(1,HULL);
+    g.fillStyle=tg; g.beginPath(); g.arc(-R*.04,0,R*.44,0,7); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
+    g.fillStyle=DARK;                                    // mantlet and barrel
+    rr(g,R*.3,-R*.13,R*.24,R*.26,1); g.fill();
+    rr(g,R*.4,-3,R*1.3,6,1.5); g.fill();
+    g.fillStyle=HULL_LO; rr(g,R*1.55,-4,R*.24,8,1.5); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
+    glow(g,()=>{ g.fillStyle=t.c; g.beginPath();
+      g.arc(-R*.26,0,R*.1,0,7); g.fill(); },t.c,6);
+    stencil(-R*.7,-R*.14,R*.26);
+  } else {
+    /* Self-propelled howitzer. Short hull, recoil spades at the back and a
+       barrel longer than the vehicle - the one silhouette that says artillery
+       without needing a label. */
+    const H=R*.5;
+    treads(R*1.6,H,R*.36,8);
+    g.fillStyle=DARK;                                    // recoil spades
+    poly(g,[[-R*.85,-H*.9],[-R*1.3,-H*1.5],[-R*1.3,-H*.85]]); g.fill();
+    poly(g,[[-R*.85, H*.9],[-R*1.3, H*1.5],[-R*1.3, H*.85]]); g.fill();
+    poly(g,[[-R*.92,-H],[R*.3,-H],[R*.46,0],[R*.3,H],[-R*.92,H]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
+    g.fillStyle=DARK; rr(g,R*.18,-2.8,R*1.45,5.6,1.5); g.fill();
+    g.fillStyle=HULL_LO; rr(g,R*1.4,-4,R*.28,8,1.5); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
+    g.fillStyle=HULL_HI; rr(g,-R*.16,-R*.3,R*.44,R*.6,2); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.fillStyle=t.c; rr(g,-R*.1,-R*.14,R*.3,R*.28,1); g.fill();
+    stencil(-R*.8,-R*.15,R*.28);
   }
   g.save();
   g.setTransform(SS,0,0,SS,(S/2)*SS,(S/2)*SS);
