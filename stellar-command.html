@@ -864,7 +864,14 @@ const UDEF={
      price of the old one and three times the machine: it is meant to be a
      decision you commit to, not a unit you add. Still 10 population, and
      nothing caps how many you own. */
-  titan:   {n:'Land Battleship',    hp:4500,sp:54,  dmg:156,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true}
+  /* Two weapon systems. The cannon is the slow one with the shared blast,
+     a little heavier than it was. The miniguns are a separate mount with
+     their own cooldown and their own target, so the thing shreds whatever
+     walks up to it while the main gun is still reloading - and because
+     they are single-target they do that without the blast reaching a
+     whole army at once. */
+  titan:   {n:'Land Battleship',    hp:4500,sp:54,  dmg:185,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true,
+            second:{dmg:26, cd:.2, rng:124, off:.62, snd:0}}
 };
 const BDEF={
   keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'H'},
@@ -1776,26 +1783,35 @@ function splashAt(x,y,rad,amt,owner,src,venom,share,primary){
     if(venom) venomApply(o,hit,owner);
   }
 }
-function fire(a,t){
-  const d=DEF(a), rng=d.rng, dmg=dmgOf(a);
-  a.atkCd=d.cd;
+function fire(a,t,w){
+  const d=DEF(a), rng=w?w.rng:d.rng, dmg=dmgOf(a,w);
+  if(w) a.atkCd2=w.cd; else a.atkCd=d.cd;
   a.muzzle=.1;
   const mz=MUZZLE[a.type]||MUZZLE.warden;
   const ar=a.kind==='building'?18:DEF(a).r;
   const ang=Math.atan2(t.y-a.y,t.x-a.x);
-  a.face=ang;
-  fx.push({k:'flash',t:0,dur:.18,a:ang,sc:ar*mz.s,own:a.owner,
-    x:a.x+Math.cos(ang)*ar*mz.d-Math.sin(ang)*ar*mz.off,
-    y:a.y+Math.sin(ang)*ar*mz.d+Math.cos(ang)*ar*mz.off});
-  const lead=ar*mz.d+40;
-  const sx=a.x+Math.cos(ang)*lead-Math.sin(ang)*ar*mz.off;
-  const sy=a.y+Math.sin(ang)*lead+Math.cos(ang)*ar*mz.off;
-  const snd=a.kind==='building'?2:((a.type==='sunderer'||a.type==='harrower')?1:(a.type==='delver'?3:0));
+  /* The hull turns for the main gun only. The miniguns are on their own
+     mounts and take their own target, so letting them steer would spin the
+     whole machine at whatever walked past. */
+  if(!w) a.face=ang;
+  /* and they alternate, so the flashes come off the left and right
+     sponsons in turn rather than both from the centreline */
+  const side=w?((a.gunSide=-(a.gunSide||1))):0;
+  const moff=w?(w.off||.6)*side:mz.off;
+  const mdist=w?1.05:mz.d, msc=w?ar*.7:ar*mz.s;
+  fx.push({k:'flash',t:0,dur:w?.1:.18,a:ang,sc:msc,own:a.owner,
+    x:a.x+Math.cos(ang)*ar*mdist-Math.sin(ang)*ar*moff,
+    y:a.y+Math.sin(ang)*ar*mdist+Math.cos(ang)*ar*moff});
+  const lead=ar*mdist+40;
+  const sx=a.x+Math.cos(ang)*lead-Math.sin(ang)*ar*moff;
+  const sy=a.y+Math.sin(ang)*lead+Math.cos(ang)*ar*moff;
+  const snd=w?(w.snd||0):(a.kind==='building'?2:((a.type==='sunderer'||a.type==='harrower')?1:(a.type==='delver'?3:0)));
   SFX.play(['rifle','cannon','turret','drill'][snd],a.x,a.y);
   if(NET.role==='host'&&rng>40) netEvent([1,Math.round(a.x),Math.round(a.y),Math.round(t.x),Math.round(t.y),a.owner,d.splash?1:0,snd,Math.round(ang*100),Math.round(ar*mz.s),Math.round(sx),Math.round(sy)]);
   if(rng>40){
     shots.push({x:sx,y:sy,tx:t.x,ty:t.y,t:0,dur:Math.max(.06,Math.hypot(t.x-sx,t.y-sy)/900),
-      c:TEAM[a.owner].c,big:!!d.splash,target:t,dmg,splash:d.splash||0,owner:a.owner,
+      c:TEAM[a.owner].c,big:!!(w?w.splash:d.splash),target:t,dmg,
+      splash:(w?w.splash:d.splash)||0,owner:a.owner,
       src:a,                               // so the target knows who to shoot back at
       // a capital ship's blast is shared out; ordinary artillery is not
       share:(a.type==='titan')?TITAN_SPLASH_SHARE:1,
@@ -2141,6 +2157,18 @@ function inRange(a,t,extra){ return Math.hypot(t.x-a.x,t.y-a.y) <= DEF(a).rng+hi
 function updateUnit(u,dt){
   const d=DEF(u);                          // the doctrine's statline, not the shared one
   u.atkCd=Math.max(0,u.atkCd-dt);
+  /* The second mount runs independently: its own cooldown, and it picks
+     its own nearest target rather than waiting for the main gun's. */
+  {
+    const _sec=d.second;
+    if(_sec){
+      u.atkCd2=Math.max(0,(u.atkCd2||0)-dt);
+      if(u.atkCd2<=0&&!over){
+        const t2=findTarget(u,_sec.rng);
+        if(t2) fire(u,t2,_sec);
+      }
+    }
+  }
   u.flash=Math.max(0,u.flash-dt);
   u.muzzle=Math.max(0,(u.muzzle||0)-dt);
   const c=u.cmd;
@@ -7053,7 +7081,10 @@ function facText(t,owner){
   }
   return out;
 }
-function dmgOf(e){
+/* w is an optional weapon on the unit other than its main gun. Everything
+   else - upgrades, army multipliers, rage, dug-in - applies to it just the
+   same, so a second mount is not quietly exempt from research. */
+function dmgOf(e,w){
   const d=DEF(e);
   const up=(e.kind==='unit'&&UP[e.owner])?1+UP[e.owner].wep*UPG.wep.step:1;
   const f=facOf(e.owner), fac=e.kind==='unit'?f.dmg:1;
@@ -7064,7 +7095,8 @@ function dmgOf(e){
      holding ground is worth something to the doctrine that is built for it. */
   const st=d.style;
   const dug=(st&&st.entrench&&(e.stillT||0)>=ENTRENCH_AT)?ENTRENCH_DMG:1;
-  return d.dmg*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage*dug;
+  const base=(w&&w.dmg!==undefined)?w.dmg:d.dmg;
+  return base*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage*dug;
 }
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');

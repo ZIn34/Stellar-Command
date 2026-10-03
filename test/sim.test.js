@@ -1664,6 +1664,60 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
 });
 
+console.log('\nthe capital ship carries two weapons');
+
+function titanArena() {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran"); BOTS=[false,false,false,false]');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var T=mkUnit("titan",0,k.x+500,k.y+500)');
+}
+
+test('the capital ship has a cannon and a second mount', () => {
+  titanArena();
+  const d = run('DEF(T)');
+  ok(d.second, 'there is a second weapon on it');
+  ok(d.second.cd < d.cd / 3, 'the miniguns fire far faster than the cannon (' +
+     d.second.cd + 's vs ' + d.cd + 's)');
+  ok(d.second.rng < d.rng, 'and reach less far, so closing on it is still a choice');
+  ok(!d.second.splash, 'the miniguns are single-target - the shared blast is the cannon' + "'" + 's job');
+});
+
+test('both mounts are worth researching', () => {
+  // a second weapon that ignored upgrades would be a quiet exception
+  titanArena();
+  const base = run('dmgOf(T,DEF(T).second)');
+  run('UP[0].wep=3');
+  const up = run('dmgOf(T,DEF(T).second)');
+  run('UP[0].wep=0');
+  ok(up > base * 1.5, 'weapons research lifts the miniguns too (' +
+     Math.round(base) + ' -> ' + Math.round(up) + ')');
+});
+
+test('the miniguns engage on their own while the cannon is busy', () => {
+  titanArena();
+  run('var far=mkUnit("harrower",1,k.x+650,k.y+500)');     // the cannon's target
+  run('var near=mkUnit("warden",1,k.x+560,k.y+540)');      // walks into the miniguns
+  run('T.cmd={t:"attack",target:far}; T.target=far');
+  for (let i = 0; i < 40; i++) { run('over=false'); run('simTick(0.05)'); }
+  ok(run('near.dead') || run('near.hp') < run('near.maxHp'),
+     'the thing that walked up to it got shot');
+  ok(run('far.hp') < run('far.maxHp'), 'and the main gun kept working on its own target');
+});
+
+test('the hull still aims with the cannon, not the miniguns', () => {
+  /* Letting the second mount steer would spin the whole machine at whatever
+     wandered past while the main gun was mid-aim. */
+  titanArena();
+  run('var far=mkUnit("harrower",1,k.x+500,k.y+660)');      // due south
+  run('T.cmd={t:"attack",target:far}; T.target=far');
+  for (let i = 0; i < 10; i++) { run('over=false'); run('simTick(0.05)'); }
+  const facing = run('T.face');
+  run('mkUnit("warden",1,k.x+560,k.y+500)');                // due east, in minigun reach
+  for (let i = 0; i < 10; i++) { run('over=false'); run('simTick(0.05)'); }
+  near(run('T.face'), facing, 0.5, 'the hull stayed pointed at the cannon target');
+});
+
 console.log('\nonline: what reaches the other player');
 
 test('every unit type survives a snapshot', () => {
