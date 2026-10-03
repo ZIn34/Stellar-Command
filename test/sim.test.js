@@ -1276,7 +1276,8 @@ test('a bot saves for the ship instead of spending it on infantry', () => {
     require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
   ok(/let saveGoal=null;/.test(whole), 'it has a savings goal');
   ok(/if\(savingUp\) continue;/.test(whole), 'and production stands down while saving');
-  ok(/army\.length>=10/.test(whole), 'but only once it has an army to hold with');
+  ok(/army\.length>=\(BLITZ\?6:10\)/.test(whole),
+     'but only once it has an army to hold with');
   ok(/AI\.saveBestAt/.test(whole), 'and it gives up if it stops making progress');
   // the training gate must actually clear the real price
   ok(!/P\[ME\]\.m>=720&&P\[ME\]\.g>=640/.test(whole),
