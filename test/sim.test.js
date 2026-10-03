@@ -965,7 +965,13 @@ test('a unit with no specific order still turns on whoever shoots it', () => {
   run('sniper.cmd={t:"attack",target:a}; sniper.target=a');
   tickOn(40);
   ok(!run('a.dead'), 'the target survived long enough to react');
-  eq(run('a.target===sniper'), true, 'a unit on attack-move turned on the shooter');
+  /* Having killed the shooter counts as having turned on it - target is
+     cleared when it dies. Asserting only on target===sniper made this a
+     test of how hard a tank hits: buffing the gun let it finish the
+     sunderer inside the window and the assertion broke with nothing
+     actually wrong. */
+  ok(run('a.target===sniper') || run('sniper.dead'),
+     'a unit on attack-move turned on the shooter (target or killed it)');
 });
 
 test('a focus-fire order on a unit is never stolen', () => {
@@ -1302,7 +1308,7 @@ test('a harder setting really does kill faster', () => {
   const kill = d => run([
     '(function(){',
     ' scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord";',
-    ' startGame("' + d + '"); BOTS=[false,true,false,false];',
+    ' startGame("' + d + '"); setSeed(4242); init(); BOTS=[false,true,false,false];',
     ' for(var i=0;i<6000;i++){ simTick(0.1); if(over) return Math.round(gameTime); }',
     ' return null;',
     '})()'

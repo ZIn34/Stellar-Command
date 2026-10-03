@@ -845,7 +845,11 @@ const UDEF={
   warden:  {n:'Rifleman',      hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
   bulwark: {n:'Gunner',       hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
   sunderer:{n:'Howitzer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
-  harrower:{n:'Battle Tank', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
+  /* A tank should feel like one. Armour and gun up by about half each,
+     which is roughly twice the staying power in a fight, for a quarter
+     more money and a longer build. Its reach is still short, so it has
+     to close with artillery rather than trade at range. */
+  harrower:{n:'Battle Tank', hp:640, sp:96,  dmg:46, rng:92,  cd:.55, sight:8, m:190, g:95, sup:3, bt:42, r:16},
   talon:   {n:'Warplane',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
   /* The close-quarters unit. Every doctrine has one and they all fight the
      same way - walk in and hit something - but each keeps its doctrine's own
@@ -4436,7 +4440,7 @@ function aiRun(AI,ME,dt){
      between starting structures, and a limit on how many can be unfinished
      at once. Both scale with the pace of the match, so Blitz still moves. */
   const buildGap=()=>tGate(DIFF.buildGap===undefined?11:DIFF.buildGap);
-  const siteCap=()=>GRAND?4:2;
+  const siteCap=()=>GRAND?(DIFF.sites||2)+2:(DIFF.sites||2);
   const sitesOpen=()=>bs.filter(b=>!b.done).length;
   const startB=(type,x,y,crew)=>{
     if(AI.t<(AI.nextBuild||0)) return false;
@@ -6894,15 +6898,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{buildGap:20, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, sites:1, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{buildGap:12, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, sites:2, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:8, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:6, sites:3, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
