@@ -4065,7 +4065,11 @@ function aiRun(AI,ME,dt){
   if(!has('musterhall')&&!building('musterhall')) put('musterhall',home,enemyDir);
   const halls=count('musterhall');
   const siphonCount=bs.filter(b=>b.type==='siphon').length;
-  if(has('musterhall')&&(siphonCount===0||(siphonCount<2&&AI.t>240&&P[ME].m>=300))){
+  /* Two taps could not fund a capital ship on top of an army, so a bot opens a
+     third once it has somewhere to spend the ichor. */
+  const wantSiphons=(has('citadel')||building('citadel'))?3:2;
+  if(has('musterhall')&&(siphonCount===0||
+     (siphonCount<wantSiphons&&AI.t>240&&P[ME].m>=300))){
     const g=nearest(ents,home.x,home.y,e=>e.kind==='res'&&e.type==='vent'&&!e.taken);
     if(g&&dist(g,home)<520&&canBuild()) startBuild('siphon',g.x,g.y,ME,[freeWorker()]);
   }
@@ -4120,19 +4124,35 @@ function aiRun(AI,ME,dt){
   if(!has('musterhall')&&!building('musterhall')&&P[ME].m>=125) put('musterhall',home,enemyDir);
 
   /* ---- army production ---- */
+  /* A capital ship costs more than a bot ever happens to be holding, so it has
+     to save for one deliberately. The gate below used to sit at 720/640 while
+     the ship cost 1500/1500, which meant tryTrain was called and quietly
+     refused every single time - bots never fielded one at all.
+
+     Two parts: the gate now clears the real price, and while the bot is within
+     reach of it the ichor-hungry units stand down so the bank actually fills
+     instead of being spent on another Sunderer. */
+  const tCost=priceOf('unit','titan',ME);
+  const yard=bs.find(b=>b.type==='citadel'&&b.done);
+  const ships=us.filter(u=>u.type==='titan').length;
+  const queuedShip=yard&&yard.queue&&yard.queue.length>0;
+  // close enough that one more ichor spend would push the ship out of reach
+  const savingUp=!!yard&&!queuedShip&&ships<(GRAND?6:2)&&
+                 P[ME].g>=tCost.g*.55&&P[ME].g<tCost.g;
   for(const b of bs){
     if(!b.done||!BDEF[b.type].trains||b.type==='keystone') continue;
     if(b.type==='citadel'){
-      // one at a time, and only when it can pay without starving the army
-      if(!b.queue.length&&P[ME].m>=720&&P[ME].g>=640) tryTrain(b,'titan');
+      if(!b.queue.length&&P[ME].m>=tCost.m+120&&P[ME].g>=tCost.g+60) tryTrain(b,'titan');
       continue;
     }
     if(b.queue.length>=(DIFF.qd||2)) continue;
     if(b.type==='forgeworks'){
-      if(!b.res&&P[ME].m>=420&&P[ME].g>=120){        // bank it into permanent power
+      if(!savingUp&&!b.res&&P[ME].m>=420&&P[ME].g>=120){   // bank it into permanent power
         const key=UP[ME].wep<=UP[ME].arm?'wep':'arm';
         if(UP[ME][key]<UPG[key].max&&tryResearch(b,key)) continue;
       }
+      // saving for the ship: stop buying ichor units until the bank is there
+      if(savingUp) continue;
       const sn=us.filter(u=>u.type==='sunderer').length,
             hr=us.filter(u=>u.type==='harrower').length,
             tl=us.filter(u=>u.type==='talon').length;
