@@ -597,7 +597,7 @@ function applyScale(){
 
      Blitz is the standard map with the two starts almost on top of each other:
      everything costs half and goes up twice as fast, so the opening is over in
-     a couple of minutes and you are fighting from the first Delver. */
+     a couple of minutes and you are fighting from the first Sapper. */
   SPEED=1;
   ECO=GRAND?7:1;
   BUILD_RATE=GRAND?7:(BLITZ?2:1);
@@ -649,13 +649,13 @@ const TEAM=[{c:PC,dk:'#12617f'},{c:EC,dk:'#7d2b1c'},
 const FACTIONS={
   /* The Pact kept its economy; the other two needed one of their own, because
      an economic edge compounds over a match and a combat edge does not. The
-     Concord's is efficiency - the same Delvers bring more home, and its tech
+     Concord's is efficiency - the same Sappers bring more home, and its tech
      is cheaper on top, so it out-researches everyone. */
   concord:{n:'ALLIED COMMAND', d:'professionals - out-tech them, recover everything, waste nothing',
            hp:1,    dmg:1,    sp:1,    cost:1,   bt:1,    eco:1.15,
-           repairMul:.6,                 // Delvers are proper engineers: repairs cost 40% less
+           repairMul:.6,                 // Sappers are proper engineers: repairs cost 40% less
            repairRate:1.7,               // and go 70% faster, mid-battle included
-           upgCost:.62, upgTime:.68,     // Forgeworks tech is far cheaper and quicker
+           upgCost:.62, upgTime:.68,     // Workshop tech is far cheaper and quicker
            bldRegen:.012,                // structures mend themselves once left alone
            tr:['research 38% cheaper, 32% faster','engineers haul 15% more',
                'field repairs 40% cheaper, 70% faster',
@@ -826,36 +826,36 @@ const myFoes=()=>[0,1,2,3].filter(o=>o<NPLAY&&TEAMOF[o]!==TEAMOF[0]);
 
 /* ===================== DEFINITIONS ===================== */
 const UDEF={
-  delver:  {n:'Delver',   hp:60,  sp:118, dmg:5,  rng:18,  cd:1.1, sight:7, m:50,  g:0,  sup:1, bt:12, r:10, worker:true},
-  warden:  {n:'Warden',   hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
-  bulwark: {n:'Bulwark',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
-  sunderer:{n:'Sunderer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
-  harrower:{n:'Harrower', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
-  talon:   {n:'Talon',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
+  delver:  {n:'Sapper',   hp:60,  sp:118, dmg:5,  rng:18,  cd:1.1, sight:7, m:50,  g:0,  sup:1, bt:12, r:10, worker:true},
+  warden:  {n:'Trooper',   hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
+  bulwark: {n:'Halftrack',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
+  sunderer:{n:'Howitzer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
+  harrower:{n:'Battle Tank', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
+  talon:   {n:'Gunship',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
   /* The close-quarters unit. Every doctrine has one and they all fight the
      same way - walk in and hit something - but each keeps its doctrine's own
-     habits on top, so a Concord Breaker digs in and a Pact Lasher poisons. */
+     habits on top, so a Concord Grenadier digs in and a Pact Lasher poisons. */
   /* A quarter of what it used to cost, and one population instead of two -
      it is meant to be the unit you open a match with, so it has to be
      affordable before anything else is standing and not eat the tiny
      population you start with. */
-  breaker: {n:'Breaker',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:23,  g:0,  sup:1, bt:16, r:12},
+  breaker: {n:'Grenadier',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:23,  g:0,  sup:1, bt:16, r:12},
   /* The capital ship. One statline, three completely different machines built
      on it - see FSTYLE for what each doctrine actually fields. Three times the
      price of the old one and three times the machine: it is meant to be a
      decision you commit to, not a unit you add. Still 10 population, and
      nothing caps how many you own. */
-  titan:   {n:'Titan',    hp:4500,sp:54,  dmg:156,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true}
+  titan:   {n:'Paladin',    hp:4500,sp:54,  dmg:156,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true}
 };
 const BDEF={
-  keystone:  {n:'Keystone',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
-  habitat:   {n:'Habitat',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
+  keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
+  habitat:   {n:'Billet',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
   musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker'],hk:'R'},
-  siphon:    {n:'Siphon',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
-  forgeworks:{n:'Forgeworks', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'F'},
-  watchspire:{n:'Watchspire', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
-  // the only place a Titan can be built, and it needs a Forgeworks first
-  citadel:   {n:'Citadel',    hp:1300,w:112,h:112,m:350,g:150,bt:62,sight:7,
+  siphon:    {n:'Refinery',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'S'},
+  forgeworks:{n:'Workshop', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'F'},
+  watchspire:{n:'Bunker', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
+  // the only place a Titan can be built, and it needs a Workshop first
+  citadel:   {n:'Proving Ground',    hp:1300,w:112,h:112,m:350,g:150,bt:62,sight:7,
               trains:['titan'],req:'forgeworks',hk:'G'}
 };
 /* The three doctrines had the same roster with different numbers on it. This
@@ -954,7 +954,7 @@ function styleFor(e){ return (DEF(e)||{}).style||null; }
 
 /* ===================== WORLD STATE ===================== */
 let ents=[], nextId=1, shots=[], fx=[], gameTime=0, over=false, paused=false, gameOn=false;
-/* Forgeworks research. Weapons raise damage, plating cuts damage taken; both
+/* Workshop research. Weapons raise damage, plating cuts damage taken; both
    apply army-wide and give a late economy somewhere to go besides more bodies. */
 /* Research used to be worth 36% damage and 27% protection across three levels
    for a fair chunk of a match's income, which is why nobody - player or bot -
@@ -1296,7 +1296,7 @@ function alive(){ return ents.filter(e=>!e.dead) }
 function unitsOf(o){ return ents.filter(e=>!e.dead&&e.kind==='unit'&&e.owner===o) }
 function bldOf(o){ return ents.filter(e=>!e.dead&&e.kind==='building'&&e.owner===o) }
 function hasBuilding(o,t){ return ents.some(e=>!e.dead&&e.kind==='building'&&e.owner===o&&e.type===t&&e.done) }
-/* Grand War lifts the ceiling to 420 but housing stayed at 8 a Habitat, so
+/* Grand War lifts the ceiling to 420 but housing stayed at 8 a Billet, so
    reaching it meant forty of them. Each one is worth two and a half times as
    much up there, on top of whatever the doctrine adds. */
 function supplyOf(type,o){
@@ -1320,8 +1320,8 @@ function nearest(list,x,y,f){
     const d=(e.x-x)**2+(e.y-y)**2; if(d<bd){bd=d;best=e;} }
   return best;
 }
-/* Harvester counts, the way an RTS shows them: how many Delvers are working
-   back to each Keystone, and how many of a Siphon's three slots are manned.
+/* Harvester counts, the way an RTS shows them: how many Sappers are working
+   back to each Headquarters, and how many of a Refinery's three slots are manned.
    Recomputed once per frame and shared by every building that draws one. */
 let WCOUNT=new Map(), WCOUNT_AT=-1;
 function workerCounts(){
@@ -1342,9 +1342,9 @@ function nearestDepot(o,x,y){
   return nearest(ents,x,y,e=>e.kind==='building'&&e.owner===o&&e.done&&
     BDEF[e.type].dropoff);
 }
-/* Saturation. A mineral line only holds so many Delvers before the extras
-   stand in a queue earning nothing, so each Keystone takes two per aurite
-   patch in reach and each Siphon takes three - the shape StarCraft uses.
+/* Saturation. A mineral line only holds so many Sappers before the extras
+   stand in a queue earning nothing, so each Headquarters takes two per aurite
+   patch in reach and each Refinery takes three - the shape StarCraft uses.
    Spare harvesters walk to the next base instead of piling on. */
 const MINE_REACH=380;
 let WCAP=new Map(), WCAP_AT=-1;
@@ -1385,10 +1385,10 @@ function openDepot(o,x,y,except){
 }
 /* The depot cap says how many a whole line supports. This says how many can
    physically crowd one patch and still swing a pick: without it a dozen
-   Delvers were all sent to the same crystal, queued around it, and only the
+   Sappers were all sent to the same crystal, queued around it, and only the
    two actually in reach ever mined - twelve harvesters, two of them working. */
 const NODE_SLOTS=2;                      // bodies that fit around one aurite patch
-const SIPHON_SLOTS=3;                    // a Siphon is crewed by three
+const SIPHON_SLOTS=3;                    // a Refinery is crewed by three
 let NCOUNT=new Map(), NCOUNT_AT=-1;
 function nodeCounts(){
   if(NCOUNT_AT===gameTime) return NCOUNT;
@@ -1578,7 +1578,7 @@ function titanTick(u,dt){
     for(const e of around(u.x,u.y,grab+40)){
       if(e.dead||e===u||e.kind!=='unit') continue;
       if(!isAlly2(e.owner,u.owner)) continue;
-      if(UDEF[e.type].worker) continue;              // the Delvers have jobs
+      if(UDEF[e.type].worker) continue;              // the Sappers have jobs
       const c=e.cmd;
       if(c&&(c.t==='move'||c.t==='gather'||c.t==='build'||c.t==='repair')) continue;
       const dx=e.x-u.x, dy=e.y-u.y, d=Math.hypot(dx,dy)||.01;
@@ -1655,7 +1655,7 @@ function retalTarget(u){
 }
 function retaliate(t,src){
   if(!t||!src||t.dead||src.dead) return;
-  if(t.kind!=='unit'||UDEF[t.type].worker) return;     // Delvers keep mining
+  if(t.kind!=='unit'||UDEF[t.type].worker) return;     // Sappers keep mining
   if(src.kind!=='unit') return;                        // not a turret
   if(t.owner===src.owner||isAlly2(t.owner,src.owner)) return;
   const c=t.cmd;
@@ -1731,7 +1731,7 @@ function damage(t,amt,by,src){
    aiming at still takes the whole hit; everyone else catches a share of it,
    and that share falls away steeply from the middle.
 
-   `share` is per-weapon so this does not quietly nerf the Sunderer, whose
+   `share` is per-weapon so this does not quietly nerf the Howitzer, whose
    small radius was never the problem. */
 function splashAt(x,y,rad,amt,owner,src,venom,share,primary){
   const sh=(share===undefined)?1:share;
@@ -1808,7 +1808,7 @@ function stepShots(dt){
 let nav=new Uint8Array(1);                     // 1 = impassable for pathing
 let navW=new Uint8Array(1);                    // same, eroded for wide chassis
 let navDirty=true;
-const WIDE_R=14;                               // Sunderers and Harrowers
+const WIDE_R=14;                               // Howitzers and Battle Tanks
 function markNavDirty(){ navDirty=true; }
 function rebuildNav(){
   nav.set(blocked);
@@ -2221,7 +2221,7 @@ function updateUnit(u,dt){
 function findMineralNear(u,from){
   const dep=u?openDepot(u.owner,from.x,from.y,u):null, o=dep||from;
   /* This was simply 'the nearest patch with anything left in it', which is why
-     every idle Delver walked to the same crystal. Prefer the nearest patch
+     every idle Sapper walked to the same crystal. Prefer the nearest patch
      with room and only double up when everything is taken. */
   return openNode(u?u.owner:0,o.x,o.y,u)||
          nearest(ents,o.x,o.y,e=>e.kind==='res'&&e.type==='aurite'&&e.amount>0);
@@ -2306,7 +2306,7 @@ function repairStep(u,dt){
 }
 /* Buildings block the nav grid, so a worker is parked a tile clear of the
    footprint and can never reach a centre-measured radius. Measure to the edge
-   with a tile of slack - a Siphon sits on a vent and was impossible to finish. */
+   with a tile of slack - a Refinery sits on a vent and was impossible to finish. */
 function edgeDist(u,t){
   if(t.kind!=='building') return Math.hypot(t.x-u.x,t.y-u.y);
   const dx=Math.max(0,Math.abs(u.x-t.x)-t.w/2), dy=Math.max(0,Math.abs(u.y-t.y)-t.h/2);
@@ -2671,7 +2671,7 @@ function rightClick(wx,wy,queue){
     SFX.play('attackOrder');
     fx.push({x:t.x,y:t.y,t:0,dur:.5,r:hitRadius(t)+8,k:'ping',c:'#ff6b52'}); return; }
   if(t&&(t.kind==='res'&&t.amount>0||t.kind==='building'&&t.type==='siphon'&&t.owner===0&&t.done)){
-    /* Sending twelve Delvers to one crystal used to put all twelve on that
+    /* Sending twelve Sappers to one crystal used to put all twelve on that
        crystal. What the order means is 'go and mine over there', so the patch
        takes who fits and the rest fan out to the patches around it. */
     let any=false, full=false;
@@ -3610,13 +3610,13 @@ function idleStep(){
 function selectIdle(){
   if(typeof tutAct==='function') tutAct('idle');
   const w=idleWorkers();
-  if(!w.length){ say('No idle Delvers'); return; }
+  if(!w.length){ say('No idle Sappers'); return; }
   // prefer one already in view, and only move the camera if none is
   const vis=w.filter(onScreen);
   const pick=vis.length?vis[0]:w[0];
   setSel([pick]);
   if(!vis.length) centerOn(pick.x,pick.y);
-  say(w.length+' idle Delver'+(w.length>1?'s':''));
+  say(w.length+' idle Sapper'+(w.length>1?'s':''));
   refreshUI();
 }
 function alertStep(){
@@ -3835,7 +3835,7 @@ function buildInfo(){
     if(e.kind==='res'){
       /* The art was already drawn from memory, but this read the live amount -
          so selecting a seam or a vent across the map let you watch an enemy
-         Siphon drain it in real time, which is the same scouting-for-free the
+         Refinery drain it in real time, which is the same scouting-for-free the
          fog is there to prevent. You get the figure you last saw. */
       const sh=resShown(e);
       s+='<span class="k">Remaining</span> '+Math.max(0,Math.round(sh.amount))+
@@ -3983,9 +3983,9 @@ function resShown(e){
   const a=(e.seenAmt===undefined)?e.amount:e.seenAmt;
   return {amount:a, taken:!!e.seenTaken, live:false};
 }
-/* A side with no Keystone left cannot rebuild or expand, so its remaining
+/* A side with no Headquarters left cannot rebuild or expand, so its remaining
    buildings stop being a secret - otherwise finishing a beaten opponent turns
-   into sweeping the map for one stray Habitat. */
+   into sweeping the map for one stray Billet. */
 function revealRuins(){
   for(let o=0;o<NPLAY;o++){
     if(isAlly(o)) continue;
@@ -4296,7 +4296,7 @@ function aiRun(AI,ME,dt){
      holding at a random moment - it spends every scrap of aurite on infantry
      as fast as it comes in. So it saves for them deliberately: one goal at a
      time, and while it is within reach of that goal the barracks and the
-     Forgeworks stand down so the bank actually fills.
+     Workshop stand down so the bank actually fills.
      Guarded two ways: it only saves once it has an army to hold the ground
      with, and it gives up after a while rather than stalling out and losing
      the match with a full treasury. */
@@ -4333,7 +4333,7 @@ function aiRun(AI,ME,dt){
      start of a match. An expansion is exempt: it only becomes a goal once the
      clock has passed, and in Blitz the bot is permanently broke - half-price
      units meant it could always afford one more, so it never reached 40% of a
-     Keystone and never began saving at all. The army floor comes down with the
+     Headquarters and never began saving at all. The army floor comes down with the
      pace too, since a Blitz army of ten arrives much later in the match than
      the moment it needs a second base. */
   if(saveGoal&&!canPayGoal&&army.length>=(BLITZ?6:10)&&
@@ -4381,7 +4381,7 @@ function aiRun(AI,ME,dt){
       .sort((a,b)=>(a.hp/a.maxHp)-(b.hp/b.maxHp))[0];
     const busy=us.filter(u=>u.cmd.t==='repair'&&u.cmd.target&&!u.cmd.target.dead);
     for(const u of busy) if(u.cmd.target.hp>=u.cmd.target.maxHp) u.cmd={t:'idle'};
-    // the Legion cannot repair at all, so pulling a Delver off aurite to try
+    // the Legion cannot repair at all, so pulling a Sapper off aurite to try
     // is pure lost income - it regenerates or it dies
     if(hurt&&aiDoc(ME).repair&&!facOf(ME).noRepair&&
        busy.length<(hurt.type==='keystone'?3:2)&&P[ME].m>mGate(70)){
@@ -4402,9 +4402,9 @@ function aiRun(AI,ME,dt){
      count('habitat')-bs.filter(b=>b.type==='habitat'&&b.done).length<2)
     put('habitat',home);
   if(workers.length<aiWorkerTarget(ME)&&(!has('musterhall')||P[ME].m>=mGate(115))){
-    /* This took the first Keystone with a short queue, which was almost always
+    /* This took the first Headquarters with a short queue, which was almost always
        the main base - so a bot would raise an expansion and then never crew
-       it, because every Delver it trained popped out at home. Train from
+       it, because every Sapper it trained popped out at home. Train from
        whichever line is thinnest, and the new harvester walks straight onto
        the patches beside it. */
     const cores=bs.filter(b=>b.type==='keystone'&&b.done&&b.queue.length<2)
@@ -4419,9 +4419,9 @@ function aiRun(AI,ME,dt){
   const siphonCount=bs.filter(b=>b.type==='siphon').length;
   /* Two taps could not fund a capital ship on top of an army, so a bot opens a
      third once it has somewhere to spend the ichor. */
-  const wantSiphons=(has('citadel')||building('citadel'))?3:2;
+  const wantRefinerys=(has('citadel')||building('citadel'))?3:2;
   if(has('musterhall')&&(siphonCount===0||
-     (siphonCount<wantSiphons&&AI.t>tGate(240)&&P[ME].m>=mGate(300)))){
+     (siphonCount<wantRefinerys&&AI.t>tGate(240)&&P[ME].m>=mGate(300)))){
     const g=nearest(ents,home.x,home.y,e=>e.kind==='res'&&e.type==='vent'&&!e.taken);
     if(g&&dist(g,home)<520&&canBuild()) startBuild('siphon',g.x,g.y,ME,[freeWorker()]);
   }
@@ -4449,7 +4449,7 @@ function aiRun(AI,ME,dt){
       .sort((a,b)=>dist(a,home)-dist(b,home));
     for(const e of spots){
       /* The expansion anchor is the middle of an aurite cluster, and a 96x96
-         Keystone does not fit on top of the patches - so canPlace refused
+         Headquarters does not fit on top of the patches - so canPlace refused
          every spot and bots never expanded at all, however much they banked.
          Walk outward until there is room beside the cluster, the way a player
          places one. */
@@ -4491,7 +4491,7 @@ function aiRun(AI,ME,dt){
 
      Two parts: the gate now clears the real price, and while the bot is within
      reach of it the ichor-hungry units stand down so the bank actually fills
-     instead of being spent on another Sunderer. */
+     instead of being spent on another Howitzer. */
   for(const b of bs){
     if(!b.done||!BDEF[b.type].trains||b.type==='keystone') continue;
     if(b.type==='citadel'){
@@ -6168,10 +6168,10 @@ function startSimWorker(){
 }
 function stopSimWorker(){ if(simWorker){ try{ simWorker.postMessage('stop'); simWorker.terminate(); }catch(e){} simWorker=null; } }
 /* A side is beaten once its last structure falls - you never have to hunt
-   down the final stray Delver to close out a match. Half-built sites count,
+   down the final stray Sapper to close out a match. Half-built sites count,
    so a player who still has something going up is still in it. */
-/* A side that has lost its last Keystone cannot rebuild, expand or train - the
-   match is decided and all that is left is walking the map for a stray Habitat.
+/* A side that has lost its last Headquarters cannot rebuild, expand or train - the
+   match is decided and all that is left is walking the map for a stray Billet.
    A bot in that position concedes. revealRuins() already shows you where its
    leftovers are; this stops you having to go and tidy them up. */
 const SURRENDER_AFTER=9;
@@ -6366,7 +6366,7 @@ function init(){
    commits to all of it. `up` is the research appetite: how many upgrade levels
    it will save for.
 
-   `eco` is what a bot's Delvers bring home per trip. It was 1 everywhere, and
+   `eco` is what a bot's Sappers bring home per trip. It was 1 everywhere, and
    it is the thing they were actually short of: a Warlord bot spent its whole
    income on workers and halls and still only had five or six soldiers three
    minutes in, because there was nothing left over to build any. Income is the
@@ -6422,23 +6422,29 @@ const SCALES={
 const HK={delver:'D',warden:'W',bulwark:'B',sunderer:'S',harrower:'H',talon:'T',
           breaker:'E',titan:'C'};
 const FNAMES={
-  /* Three armies, one roster. The names are the only thing that differs:
-     every type keeps its own statline, role and behaviour. */
-  concord:{titan:'Carrier',      citadel:'Assembly Yard', breaker:'Halftrack',
-           delver:'Engineer',    warden:'Scout Car',      bulwark:'APC',
-           sunderer:'Howitzer',  harrower:'Battle Tank',  talon:'Gunship',
-           keystone:'Headquarters', habitat:'Barracks',   musterhall:'Motor Pool',
-           siphon:'Refinery',    forgeworks:'Workshop',   watchspire:'Gun Emplacement'},
-  legion: {titan:'Land Dreadnought', citadel:'Heavy Works', breaker:'Assault Gun',
-           delver:'Sapper',      warden:'Armoured Car',   bulwark:'Troop Carrier',
-           sunderer:'Rocket Battery', harrower:'Heavy Tank', talon:'Attack Helo',
-           keystone:'Command Post', habitat:'Bunkhouse',  musterhall:'Mobilisation Point',
-           siphon:'Fuel Depot',  forgeworks:'Tank Works', watchspire:'Pillbox'},
-  pact:   {titan:'Juggernaut',   citadel:'Boneyard',      breaker:'Raider',
-           delver:'Digger',      warden:'Technical',      bulwark:'Gun Truck',
-           sunderer:'Mortar Truck', harrower:'Scrap Tank', talon:'Scrapwing',
-           keystone:'Depot',     habitat:'Camp',          musterhall:'Muster Yard',
-           siphon:'Fuel Still',  forgeworks:'Scrapworks', watchspire:'Watchtower'}
+  /* One roster, three armies. Only the names differ - every type keeps its
+     own statline, role and hotkey, so muscle memory carries between armies.
+     The Allied names are the ones all prose in this file is written in:
+     facText() rewrites them into the other two. Keep them consonant-initial
+     and regular-plural or 'a Rifleman' / 'two Riflemans' comes out wrong. */
+  concord:{delver:'Sapper',    warden:'Trooper',       breaker:'Grenadier',
+           bulwark:'Halftrack',sunderer:'Howitzer',    harrower:'Battle Tank',
+           talon:'Gunship',    titan:'Paladin',
+           keystone:'Headquarters', habitat:'Billet',  musterhall:'Barracks',
+           siphon:'Refinery',  forgeworks:'Workshop',  watchspire:'Bunker',
+           citadel:'Proving Ground'},
+  legion: {delver:'Pioneer',   warden:'Conscript',     breaker:'Assault Trooper',
+           bulwark:'Troop Carrier', sunderer:'Rocket Battery', harrower:'Heavy Tank',
+           talon:'Attack Helo',titan:'Land Dreadnought',
+           keystone:'Command Post', habitat:'Bunkhouse', musterhall:'Drill Yard',
+           siphon:'Fuel Depot',forgeworks:'Tank Works',watchspire:'Pillbox',
+           citadel:'Heavy Works'},
+  pact:   {delver:'Digger',    warden:'Irregular',     breaker:'Brawler',
+           bulwark:'Gun Truck',sunderer:'Mortar Truck',harrower:'Scrap Tank',
+           talon:'Scrapwing',  titan:'Juggernaut',
+           keystone:'Depot',   habitat:'Camp',         musterhall:'Muster Yard',
+           siphon:'Fuel Still',forgeworks:'Scrapworks',watchspire:'Watchtower',
+           citadel:'Boneyard'}
 };
 const ENAME=FNAMES.legion;
 function nameOf(type,owner){
@@ -6452,9 +6458,9 @@ function idleTitle(){
 }
 /* The tutorial, the field manual and most of the one-line messages were
    written with Concord names in them, and they read wrong the moment you
-   pick another doctrine - 'build more habitats' when you have no Habitats.
+   pick another doctrine - 'build more habitats' when you have no Billets.
    Rather than tokenise a hundred strings, swap the generic name for the
-   doctrine's own on the way to the screen. Longest name first so 'Watchspire'
+   doctrine's own on the way to the screen. Longest name first so 'Bunker'
    is not half-eaten by a shorter match. */
 const RENAME_KEYS=Object.keys(FNAMES.concord)
   .sort((a,b)=>FNAMES.concord[b].length-FNAMES.concord[a].length);
@@ -6468,7 +6474,7 @@ function facText(t,owner){
     if(!from||!to||from===to) continue;
     if(out.indexOf(from)>=0){
       out=out.split(from).join(to);
-      /* 'Raise a Watchspire' became 'Raise a Impaler'. Make the article agree
+      /* 'Raise a Bunker' became 'Raise a Impaler'. Make the article agree
          with whatever the name now starts with, but only where the rename
          actually happened - a blanket a/an pass would break 'a unit'. */
       const art=/^[aeiou]/i.test(to)?'an':'a', bad=art==='an'?'a':'an';
@@ -6566,18 +6572,18 @@ function menuInit(){
   const rows=[
     ['unit','delver','Hauls supply and fuel, raises every structure.'],
     ['unit','warden','Ranged infantry. The backbone of any push you make.'],
-    ['unit','bulwark','Heavy infantry: twice a Warden in every stat.'],
-    ['unit','sunderer','Tracked artillery. Splash damage, needs a Forgeworks.'],
+    ['unit','bulwark','Heavy infantry: twice a Trooper in every stat.'],
+    ['unit','sunderer','Tracked artillery. Splash damage, needs a Workshop.'],
     ['unit','harrower','Assault walker. Brutal up close, very hard to kill.'],
     ['unit','breaker','Close-quarters. No reach at all, hits hard when it gets there.'],
     ['unit','talon','Gunship. Flies over terrain and hits ground or air.'],
-    ['bld','keystone','Command hub. Trains Delvers, accepts cargo, +10 pop.'],
+    ['bld','keystone','Command hub. Trains Sappers, accepts cargo, +10 pop.'],
     ['bld','habitat','+8 population. Build these before you stall.'],
-    ['bld','musterhall','Trains Wardens. Unlocks Forgeworks and Watchspires.'],
+    ['bld','musterhall','Trains Troopers. Unlocks Workshop and Bunkers.'],
     ['bld','siphon','Built on a fuel well to draw fuel.'],
     ['bld','forgeworks','Trains the heavy units and researches your upgrades.'],
     ['bld','watchspire','Automated defence turret.'],
-    ['bld','citadel','Unlocks your capital ship. Needs a Forgeworks.'],
+    ['bld','citadel','Unlocks your capital ship. Needs a Workshop.'],
     ['unit','titan','Capital ship. 10 pop, no build limit - each doctrine fields a different one.']
   ];
   /* Redrawn whenever you pick a doctrine, so the roster you are reading is
@@ -7152,7 +7158,7 @@ function settingsOpen(){
   el.style.display='flex';
 }
 /* Click a key, press the one you want. A key may be used twice as long as the
-   two buttons never share a panel - Barracks and Bulwark are both 'B' out of
+   two buttons never share a panel - Barracks and Halftrack are both 'B' out of
    the box - so a clash is flagged rather than forbidden. */
 let keyCapture=null;
 function keyClashes(){
@@ -7242,7 +7248,7 @@ function settingsInit(){
    A short guided run on a quiet map. Each step watches real game state rather
    than scripting the player, so any legitimate way of doing the thing counts. */
 const TUT={on:false, i:0, t:0, done:false, acts:{}, baseM:0, litEl:null, progT:0};
-/* Starting Delvers mine on their own and you open with 150 aurite, so reading
+/* Starting Sappers mine on their own and you open with 150 aurite, so reading
    world state alone marks those steps done before the player touches anything.
    Count the orders the player actually gives instead. */
 function tutAct(k){ if(TUT.on) TUT.acts[k]=(TUT.acts[k]||0)+1; }
@@ -7311,7 +7317,7 @@ function tutFocus(){
   if(!TUT.on||!st||!st.focus) return null;
   try{ return st.focus()||null; }catch(e){ return null; }
 }
-/* A clear spot near your Keystone that the thing you are placing will fit on,
+/* A clear spot near your Headquarters that the thing you are placing will fit on,
    so the tutorial can show you WHERE and not just what. */
 function tutPlaceSpot(type){
   const k=tutHome(); if(!k) return null;
@@ -7327,7 +7333,7 @@ function tutPlaceSpot(type){
   return null;
 }
 /* Raising a building is four separate actions, and pointing at the last one is
-   no use if you have not done the first. This walks the chain: the Delver that
+   no use if you have not done the first. This walks the chain: the Sapper that
    will build it, then the build menu, then the building, then the ground. */
 function tutBuildFocus(type,hk){
   if(placing===type){ const p=tutPlaceSpot(type); return p||null; }
@@ -7376,13 +7382,13 @@ function tutClearHilite(){
   TUT.litEl=null;
 }
 const TUT_STEPS=[
-  /* This used to open with 'select your Delvers', which taught a box-select
+  /* This used to open with 'select your Sappers', which taught a box-select
      with nothing to do with it - they were already mining. The lesson belongs
      where you first actually need a worker in hand, which is the moment you
      raise your first building. So the tutorial opens with production. */
-  {b:'Train three more Delvers.',
-   h:dv('Click your Keystone and pick Delver. More miners means more income - keep them coming all game.',
-        'Tap your Keystone, then tap Delver three times. More miners means more income - keep them coming all game.'),
+  {b:'Train three more Sappers.',
+   h:dv('Click your Headquarters and pick Sapper. More miners means more income - keep them coming all game.',
+        'Tap your Headquarters, then tap Sapper three times. More miners means more income - keep them coming all game.'),
    enter:()=>{ TUT.baseD=mineU(u=>u.type==='delver').length; },
    focus:()=>{ const k=mineB(b=>b.type==='keystone')[0];
      return (sel.length===1&&sel[0]===k)?{el:'#card .btn[data-hk="D"]'}:(k?{ent:k}:null); },
@@ -7393,27 +7399,27 @@ const TUT_STEPS=[
      the first thing you are ever asked to do - you have not been shown
      how to select or command anything yet. */
   {b:()=>'Select the '+nameOf('delver',0)+' that is lit up.',
-   h:dv('Click it, or drag a box around it with the left mouse button. F2 grabs your whole army at once. Delvers mine AND build, so nothing goes up without one selected.',
-        'Tap it, or press and hold on open ground and drag a box around it. Delvers mine AND build, so nothing goes up without one selected. One finger drags the camera, two fingers pinch to zoom.'),
+   h:dv('Click it, or drag a box around it with the left mouse button. F2 grabs your whole army at once. Sappers mine AND build, so nothing goes up without one selected.',
+        'Tap it, or press and hold on open ground and drag a box around it. Sappers mine AND build, so nothing goes up without one selected. One finger drags the camera, two fingers pinch to zoom.'),
    focus:()=>{ const u=mineU(x=>UDEF[x.type].worker)[0]; return u?{ent:u}:null; },
    prog:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length+' selected',
    ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length>=1},
   {b:'Use the idle button to put them to work.',
-   h:dv('New Delvers stand around doing nothing. The amber button by the minimap counts them - click it, or press F1, then send them to a crystal.',
-        'New Delvers stand around doing nothing. The amber button by the minimap counts them - tap it, then tap a crystal.'),
+   h:dv('New Sappers stand around doing nothing. The amber button by the minimap counts them - click it, or press F1, then send them to a crystal.',
+        'New Sappers stand around doing nothing. The amber button by the minimap counts them - tap it, then tap a crystal.'),
    focus:()=>(TUT.acts.idle||0)<1?{el:'#idle'}:(()=>{ const r=tutNearestRes('aurite'); return r?{ent:r}:null; })(),
    prog:()=>idleWorkers().length+' still idle',
    ok:()=>(TUT.acts.idle||0)>=1&&idleWorkers().length===0},
   /* It asks for one, because one is what the ring is pointing at - asking for
      "some" while highlighting a single unit just reads as broken. */
-  {b:'Raise a Habitat.',
-   h:dv('Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
-        'Tap Build in the bottom panel, pick Habitat, then tap a clear patch of ground. It lifts your population cap.'),
+  {b:'Raise a Billet.',
+   h:dv('Press B for the build menu, pick Billet, then click a clear patch of ground. It lifts your population cap.',
+        'Tap Build in the bottom panel, pick Billet, then tap a clear patch of ground. It lifts your population cap.'),
    focus:()=>tutBuildFocus('habitat','H'),
    prog:()=>{ const b=mineB(x=>x.type==='habitat')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='habitat') return 'pick your ground';
-     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='habitat'&&b.done).length>=1},
   {b:'Raise a Barracks.',
    h:dv('Same again with R. This is what trains your soldiers, so put it somewhere safe.',
@@ -7422,33 +7428,33 @@ const TUT_STEPS=[
    prog:()=>{ const b=mineB(x=>x.type==='musterhall')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='musterhall') return 'pick your ground';
-     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
-  {b:'Train a Warden.',
-   h:dv('Click the finished Barracks and pick Warden from the panel at the bottom.',
-        'Tap the finished Barracks, then tap Warden in the panel at the bottom.'),
+  {b:'Train a Trooper.',
+   h:dv('Click the finished Barracks and pick Trooper from the panel at the bottom.',
+        'Tap the finished Barracks, then tap Trooper in the panel at the bottom.'),
    focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
      return (sel.length===1&&sel[0]===h)?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
    ok:()=>mineU(u=>u.type==='warden').length>=1||
        mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
-  {b:'Attack-move your Warden out.',
+  {b:'Attack-move your Trooper out.',
    h:dv('Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
         'Select it, tap Attack in the panel, then tap across the map. Attack-move walks there and engages anything on the way.'),
    focus:()=>{ const w=mineU(u=>u.type==='warden')[0];
      return (sel.length&&sel.every(e=>e.kind==='unit'))?{el:'#card .btn[data-hk="A"]'}:(w?{ent:w}:null); },
    ok:()=>(TUT.acts.amove||0)>=1},
-  {b:'Raise a Watchspire near your Keystone.',
+  {b:'Raise a Bunker near your Headquarters.',
    h:dv('Build menu, then W. Towers hit hard, outrange your infantry and never get stat bonuses used against them - they are your best answer to a rush.',
-        'Tap Build and pick Watchspire. Towers hit hard, outrange your infantry and are your best answer to a rush.'),
+        'Tap Build and pick Bunker. Towers hit hard, outrange your infantry and are your best answer to a rush.'),
    focus:()=>tutBuildFocus('watchspire','T'),
    prog:()=>{ const b=mineB(x=>x.type==='watchspire')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='watchspire') return 'pick your ground';
-     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='watchspire'&&b.done).length>=1},
-  {b:'Build a squad: five Wardens.',
+  {b:'Build a squad: five Troopers.',
    h:dv('Queue them from the Barracks. Hold the button to stack the queue, and select several Barracks at once to build from all of them.',
-        'Tap the Barracks, then tap Warden five times to stack the queue.'),
+        'Tap the Barracks, then tap Trooper five times to stack the queue.'),
    focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
      return (sel.length&&sel.every(e=>e.kind==='building'&&e.type==='musterhall'))
        ?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
@@ -7459,7 +7465,7 @@ const TUT_STEPS=[
   /* The three doctrines fight in genuinely different ways now, so there is a
      step about yours - and it is the only step whose win condition depends on
      which one you picked. */
-  {b:()=>({concord:'Dig in: hold your Wardens still and let them shoot.',
+  {b:()=>({concord:'Dig in: hold your Troopers still and let them shoot.',
            legion:'Get in close and trade. You hit harder as you bleed.',
            pact:'Poison them: hit something and let it bleed.'})[facKey]||
           'Learn what your doctrine does.',
@@ -7491,12 +7497,12 @@ const TUT_STEPS=[
      return mineU(u=>!UDEF[u.type].worker&&(u.stillT||0)>=ENTRENCH_AT).length>=1;
    }},
   {b:()=>facOf(0).noRepair?'Your doctrine cannot repair. Learn to live with it.'
-                          :'Repair something with a Delver.',
+                          :'Repair something with a Sapper.',
    h:()=>facOf(0).noRepair
-     ?dv('The Legion has no repair at all - that Keystone stays broken. What you get instead is units that heal themselves once they are out of the fight, and a Spire Core that detonates when it falls. Press on.',
+     ?dv('The Legion has no repair at all - that Headquarters stays broken. What you get instead is units that heal themselves once they are out of the fight, and a Spire Core that detonates when it falls. Press on.',
          'The Legion cannot repair - that hull stays broken. Your units heal themselves out of combat instead. Press on.')
-     :dv('Your Keystone has been knocked about. Select a Delver and right-click the damaged building - repairs cost a fraction of the build price.',
-         'Your Keystone has been knocked about. Select a Delver, then tap the damaged building to mend it.'),
+     :dv('Your Headquarters has been knocked about. Select a Sapper and right-click the damaged building - repairs cost a fraction of the build price.',
+         'Your Headquarters has been knocked about. Select a Sapper, then tap the damaged building to mend it.'),
    enter:()=>{ const k=tutHome(); if(k){ k.hp=Math.max(1,k.maxHp*.55); k.hurtAt=-999; }
      if(facOf(0).noRepair) TUT.noFixAt=gameTime; },
    focus:()=>{ const k=tutHome(); return (k&&k.hp<k.maxHp)?{ent:k}:null; },
@@ -7507,49 +7513,49 @@ const TUT_STEPS=[
    ok:()=>{ if(facOf(0).noRepair) return gameTime-(TUT.noFixAt||gameTime)>7;
      const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
   {b:'Put your army on a control group.',
-   h:dv('Select your Wardens and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
-        'Select your Wardens, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
+   h:dv('Select your Troopers and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
+        'Select your Troopers, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
    focus:()=>{ const w=mineU(u=>u.type==='warden')[0]; return w?{ent:w}:null; },
    prog:()=>{ const n=Object.keys(groups).reduce((m,k)=>
        Math.max(m,(groups[k]||[]).filter(e=>e&&!e.dead).length),0);
      return n?('group of '+n):'none set'; },
    ok:()=>Object.keys(groups).some(k=>(groups[k]||[]).filter(e=>e&&!e.dead).length>=3)},
   {b:'Hold the line. Raiders inbound, one airborne.',
-   h:'Wardens, Bulwarks and Watchspires can shoot air. Sunderers and Harrowers cannot - that is the one hard rule of fighting here.',
+   h:'Troopers, Halftracks and Bunkers can shoot air. Howitzers and Battle Tanks cannot - that is the one hard rule of fighting here.',
    enter:()=>{ tutSpawnRaiders(4,true); say('Legion raiders inbound - one Shrike in the air.'); SFX.play('attackOrder'); },
    focus:()=>{ const f=tutFoeUnits()[0]; return f?{ent:f}:null; },
    prog:()=>tutFoeUnits().length+' raiders left',
    ok:()=>tutFoeUnits().length===0},
-  {b:'Raise a Siphon on an ichor vent and crew it.',
-   h:dv('The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then right-click it with a Delver.',
-        'The green vents give ichor, which every advanced unit needs. Build a Siphon on one, then tap it with a Delver.'),
+  {b:'Raise a Refinery on an ichor vent and crew it.',
+   h:dv('The green vents give ichor, which every advanced unit needs. Build a Refinery on one, then right-click it with a Sapper.',
+        'The green vents give ichor, which every advanced unit needs. Build a Refinery on one, then tap it with a Sapper.'),
    focus:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done)[0];
      if(sp) return {ent:sp};                       // built - now crew it
      if(placing==='siphon'){ const v=tutNearestRes('vent'); return v?{ent:v}:null; }
      return tutBuildFocus('siphon','S'); },
    prog:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
-     if(!sp.length) return 'no Siphon yet';
+     if(!sp.length) return 'no Refinery yet';
      return mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length+' / 1 crewed'; },
    ok:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
      return sp.length>0&&mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length>=1; }},
-  {b:'Raise a Forgeworks.',
-   h:dv('Build menu, then F. It costs ichor and unlocks the heavy units - Sunderers, Harrowers and Talons - plus upgrades.',
-        'Tap Build and pick Forgeworks. It unlocks the heavy units and your upgrades.'),
+  {b:'Raise a Workshop.',
+   h:dv('Build menu, then F. It costs ichor and unlocks the heavy units - Howitzers, Battle Tanks and Gunships - plus upgrades.',
+        'Tap Build and pick Workshop. It unlocks the heavy units and your upgrades.'),
    focus:()=>tutBuildFocus('forgeworks','F'),
    prog:()=>{ const b=mineB(x=>x.type==='forgeworks')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='forgeworks') return 'pick your ground';
-     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='forgeworks'&&b.done).length>=1},
   {b:'Research an upgrade.',
-   h:dv('Click the Forgeworks, then A for Weapons or D for Plating. Both are permanent and apply to your whole army - the best use of a big bank.',
-        'Tap the Forgeworks, then Weapons or Plating. Both are permanent and apply to your whole army.'),
+   h:dv('Click the Workshop, then A for Weapons or D for Plating. Both are permanent and apply to your whole army - the best use of a big bank.',
+        'Tap the Workshop, then Weapons or Plating. Both are permanent and apply to your whole army.'),
    focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="A"]'}:(f?{ent:f}:null); },
    ok:()=>UP[0].wep+UP[0].arm>=1||mineB(b=>b.type==='forgeworks'&&b.res).length>0},
-  {b:'Build a Talon.',
-   h:dv('From the Forgeworks, press T. Talons fly straight over rock and anything in the way, and only anti-air can touch them.',
-        'From the Forgeworks, tap Talon. Talons fly over everything, and only anti-air can touch them.'),
+  {b:'Build a Gunship.',
+   h:dv('From the Workshop, press T. Gunships fly straight over rock and anything in the way, and only anti-air can touch them.',
+        'From the Workshop, tap Gunship. Gunships fly over everything, and only anti-air can touch them.'),
    focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="T"]'}:(f?{ent:f}:null); },
    ok:()=>mineU(u=>u.type==='talon').length>=1||
@@ -7558,7 +7564,7 @@ const TUT_STEPS=[
      new commander would never find out the Citadel existed. Two steps: raise
      the yard, then order the ship. */
   {b:()=>'Raise a '+nameOf('citadel',0)+'.',
-   h:()=>dv('Build menu, then G. It is the only place your capital ship can be built, and it needs the Forgeworks you just put up. Here is a training allowance to pay for it.',
+   h:()=>dv('Build menu, then G. It is the only place your capital ship can be built, and it needs the Workshop you just put up. Here is a training allowance to pay for it.',
             'Tap Build and pick the '+nameOf('citadel',0)+'. It is the only place your capital ship can be built. Here is a training allowance to pay for it.'),
    enter:()=>{
      // the ship costs more than a training run would ever bank
@@ -7569,7 +7575,7 @@ const TUT_STEPS=[
    prog:()=>{ const b=mineB(x=>x.type==='citadel')[0];
      if(b) return b.done?'standing':Math.round(b.prog*100)+'% built';
      if(placing==='citadel') return 'pick your ground';
-     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Delver'; },
+     return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='citadel'&&b.done).length>=1},
   {b:()=>'Order a '+nameOf('titan',0)+'.',
    h:()=>{
@@ -7602,14 +7608,14 @@ const TUT_STEPS=[
    ok:()=>tutFoeBlds().length===0},
   {b:'Their base is yours. You are ready.',
    h:()=>{
-     const base=dv('Two habits win games: never stop making Delvers, and never let aurite pile up. ',
-                   'Two habits win games: never stop making Delvers, and never let aurite pile up. ');
+     const base=dv('Two habits win games: never stop making Sappers, and never let aurite pile up. ',
+                   'Two habits win games: never stop making Sappers, and never let aurite pile up. ');
      const mine={
        concord:'Your Concord mend cheaply and fight hardest from a planted line - hold ground, repair, out-tech. ',
        legion:'Your Legion cannot repair, so trade bodies: they heal themselves out of the fight and swing harder the more they bleed. ',
        pact:'Your Pact wins the long fight - poison everything, pull back onto your own ground, let it work. '
      }[facKey]||'';
-     const cap='Once you have a Forgeworks, a '+nameOf('citadel',0)+' unlocks your '+
+     const cap='Once you have a Workshop, a '+nameOf('citadel',0)+' unlocks your '+
                nameOf('titan',0)+' - 10 pop each, and no limit on how many you field. ';
      return base+mine+cap+'Good hunting, Commander.';
    },
@@ -7655,7 +7661,7 @@ function tutStep(dt){
   }
   tutHilite();
   TUT.progT-=dt;
-  if(TUT.progT<=0){                     // 'Wardens 2 / 5' as it happens
+  if(TUT.progT<=0){                     // 'Troopers 2 / 5' as it happens
     TUT.progT=.25;
     let pr='';
     if(typeof st.prog==='function'){ try{ pr=st.prog()||''; }catch(e){ pr=''; } }
