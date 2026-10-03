@@ -953,8 +953,11 @@ const UPG={
   arm:{n:'Plating', ic:'⛨', hk:'D', step:.09, max:3, m:150, g:50, bt:38}
 };
 let UP=[{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0}];
+/* Research is a price like any other, so it follows the doctrine's discount
+   and the scale's - Blitz halves it with everything else. */
 function upCost(key,lvl,owner){ const u=UPG[key], k=facOf(owner||0).upgCost||1;
-  return {m:Math.round(u.m*(1+lvl*.8)*k), g:Math.round(u.g*(1+lvl*.8)*k)}; }
+  return {m:Math.max(1,Math.round(u.m*(1+lvl*.8)*k*COST_RATE)),
+          g:Math.max(1,Math.round(u.g*(1+lvl*.8)*k*COST_RATE))}; }
 const P=[{m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0},
          {m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0}];   // slot 0 is always the local player
 let blocked, terr, explored, visible;
@@ -2153,12 +2156,13 @@ function updateUnit(u,dt){
   if(c.t==='attack'){
     if(!c.target||c.target.dead){ u.cmd={t:'idle'}; }
     else {
-      /* Told to kill a building, and something alive is shooting you: deal
-         with the shooter first. The order itself is untouched, so the moment
-         the attackers are down the siege picks up where it left off. A told
-         order on a UNIT is never overridden - that is a focus-fire command. */
-      const rt=(c.target.kind==='building')?retalTarget(u):null;
-      u.target=rt||c.target;
+      /* An order you gave wins, full stop - including on a building. This used
+         to hand the unit over to whatever was shooting it, which meant telling
+         an army to kill a specific structure quietly stopped working the
+         moment the defenders fired back. Retaliation still covers everything
+         that is NOT under a specific order: attack-move, hold and idle units
+         all turn on whoever hits them. */
+      u.target=c.target;
       if(inRange(u,u.target)){ if(u.atkCd<=0) fire(u,u.target); }
       else navigate(u,u.target.x,u.target.y,dt,d.rng*.8);
       return; }
@@ -4288,8 +4292,19 @@ function aiRun(AI,ME,dt){
      near the couple of hundred a second base costs - it was not the timer that
      stopped it expanding there, it was never having the money at one time. */
   let saveFromScratch=false;
+  const _forge=bs.find(b=>b.type==='forgeworks'&&b.done);
+  /* Upgrades were never researched once, at any difficulty, in a whole match.
+     They were gated on holding 420 aurite spare and the bot is permanently
+     broke, so a straight 36% damage swing sat on the table all game. It saves
+     for them now, between the expansion and the capital ship. */
+  const upWant=DIFF.up||0;
+  const upHave=UP[ME]?UP[ME].wep+UP[ME].arm:0;
+  const upKey=UP[ME]&&UP[ME].wep<=UP[ME].arm?'wep':'arm';
+  const wantUp=!!_forge&&upHave<upWant&&!_forge.res&&
+               UP[ME]&&UP[ME][upKey]<UPG[upKey].max;
   if(wantExpo){ saveGoal=bldCost('keystone',ME); saveFromScratch=true; }
-  else if(bs.some(b=>b.type==='forgeworks'&&b.done)){
+  else if(wantUp){ saveGoal=upCost(upKey,UP[ME][upKey],ME); saveFromScratch=true; }
+  else if(_forge){
     if(!_yard&&!bs.some(b=>b.type==='citadel'&&!b.done)) saveGoal=bldCost('citadel',ME);
     else if(_yard&&!_queuedShip&&_ships<_shipCap) saveGoal=priceOf('unit','titan',ME);
   }
@@ -4468,9 +4483,11 @@ function aiRun(AI,ME,dt){
     }
     if(b.queue.length>=(DIFF.qd||2)) continue;
     if(b.type==='forgeworks'){
-      if(!savingUp&&!b.res&&P[ME].m>=mGate(420)&&P[ME].g>=mGate(120)){   // bank it into permanent power
-        const key=UP[ME].wep<=UP[ME].arm?'wep':'arm';
-        if(UP[ME][key]<UPG[key].max&&tryResearch(b,key)) continue;
+      /* Research the moment it can actually pay for it, rather than only when
+         it happens to be sitting on a pile. */
+      if(!b.res&&wantUp){
+        const c=upCost(upKey,UP[ME][upKey],ME);
+        if(P[ME].m>=c.m&&P[ME].g>=c.g&&tryResearch(b,upKey)) continue;
       }
       // saving for the ship: stop buying ichor units until the bank is there
       if(savingUp) continue;
@@ -6322,16 +6339,37 @@ function init(){
   requestAnimationFrame(step);
 }
 /* ===================== TITLE SCREEN ===================== */
+/* The ladder was far too gentle at the top: a Warlord bot killing a motionless
+   opponent fielded six units, one base, no towers and had researched nothing
+   at all in three minutes. These are the macro knobs - how often it thinks,
+   how long before it pushes, how saturated its mineral lines get, how much
+   production and tech it builds - and the top of the ladder now actually
+   commits to all of it. `up` is the research appetite: how many upgrade levels
+   it will save for.
+
+   `eco` is what a bot's Delvers bring home per trip. It was 1 everywhere, and
+   it is the thing they were actually short of: a Warlord bot spent its whole
+   income on workers and halls and still only had five or six soldiers three
+   minutes in, because there was nothing left over to build any. Income is the
+   honest lever - it makes a bot play a bigger game rather than a cheaper one.
+
+   `hp`/`dmg` multiply a bot's units. They stay at 1 for the two lower settings
+   - those are beaten by playing better, not by out-statting you - and Warlord
+   gets a modest edge on top of its macro, which the info panel shows you when
+   you select one of its units. */
 const DIFFS={
   recruit:{n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
-           dec:2.3, grace:330, thr:10, step:4, eco:1, hp:1, dmg:1,
-           wk:.40, halls:2, qd:1, expoAt:420, expo:0, techAt:330, spires:1, hallCost:460, expoCost:820},
-  veteran:{n:'VETERAN', tag:'even',  blurb:'Solid macro. First push near the three-minute mark.',
-           dec:1.4, grace:195, thr:8, step:3, eco:1, hp:1, dmg:1,
-           wk:.62, halls:3, qd:1, expoAt:270, expo:1, techAt:205, spires:2, hallCost:390, expoCost:610},
-  warlord:{n:'WARLORD', tag:'brutal',blurb:'Full saturation, fast expansion, relentless production.',
-           dec:.9, grace:150, thr:6, step:2, eco:1, hp:1, dmg:1,
-           wk:.85, halls:4, qd:2, expoAt:190, expo:2, techAt:145, spires:3, hallCost:290, expoCost:430}
+           dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
+           wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
+           hallCost:430, expoCost:700},
+  veteran:{n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+           dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
+           wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
+           hallCost:330, expoCost:520},
+  warlord:{n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+           dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
+           wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
+           hallCost:250, expoCost:380}
 };
 let DIFF=DIFFS.veteran, ELITE={hp:1.35,dmg:1.30}, diffKey='veteran', scaleKey='standard';
 const TERRAINS={

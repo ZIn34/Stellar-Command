@@ -869,28 +869,42 @@ test('the panel renders the summary from that data', () => {
 
 console.log('\nsiege retaliation');
 
-test('a squad sieging a building turns on units that attack it', () => {
+test('an explicit attack order is never taken away from you', () => {
+  /* Retaliation used to override an order on a BUILDING the moment the
+     defenders fired back, which meant telling an army to kill a specific
+     structure quietly stopped working exactly when it mattered. An order you
+     gave wins; retaliation covers everything that has not been given one. */
   arena('concord');
-  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
-  run('var me=mkUnit("warden",0,k.x+300,k.y+300)');
-  run('var wall=mkBuilding("habitat",1,k.x+380,k.y+300,true)');
-  run('var raider=mkUnit("warden",1,k.x+240,k.y+340)');
-  run('me.cmd={t:"attack",target:wall}; me.target=wall');
-  /* Nobody fires on their own during setup, or the raider gets its shot in
-     first and the test ends up asserting about a fight already in progress -
-     which is exactly how this test came out flaky the first time. */
-  run('me.atkCd=999; raider.atkCd=999; raider.cmd={t:"hold"}; raider.target=null');
-  tickOn(3);
-  run('me.atkCd=999; raider.atkCd=999; raider.target=null');
-  eq(run('me.target===wall'), true, 'it starts on the building');
-  run('damage(me,4,1,raider)');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var mine=[]');
+  run('for(var i=0;i<10;i++) mine.push(mkUnit("warden",0,k.x+300+(i%5)*30,k.y+300+((i/5)|0)*30))');
+  run('var wall=mkBuilding("habitat",1,k.x+700,k.y+300,true)');
+  run('var guards=[]');
+  run('for(var i=0;i<3;i++) guards.push(mkUnit("warden",1,k.x+640+i*30,k.y+380))');
+  run('setSel(mine)');
   tickOn(2);
-  eq(run('me.target===raider'), true, 'a raider shooting it pulls it onto the raider');
-  eq(run('me.cmd.t'), 'attack', 'the order itself is untouched');
-  eq(run('me.cmd.target===wall'), true, 'and still points at the building');
-  run('raider.dead=true');
-  tickOn(4);
-  eq(run('me.target===wall'), true, 'with the raider dead the siege resumes on its own');
+  run('rightClick(wall.x,wall.y,false)');
+  const took = run('mine.filter(function(u){return u.cmd.t==="attack"&&u.cmd.target===wall;}).length');
+  eq(took, 10, 'all ten took the order');
+  tickOn(120);
+  const alive = run('mine.filter(function(u){return !u.dead;}).length');
+  const held = run('mine.filter(function(u){return !u.dead&&u.cmd.t==="attack"&&u.cmd.target===wall;}).length');
+  const firing = run('mine.filter(function(u){return !u.dead&&u.target===wall;}).length');
+  ok(alive > 0, 'some survived the defenders (' + alive + '/10)');
+  eq(held, alive, 'every survivor still holds the order');
+  eq(firing, alive, 'and every one of them is shooting the building');
+  ok(run('wall.dead||wall.hp<wall.maxHp*0.5'), 'the building actually came down');
+});
+
+test('a unit with no specific order still turns on whoever shoots it', () => {
+  arena('concord');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var a=mkUnit("harrower",0,k.x+400,k.y+400); a.cmd={t:"amove",x:k.x+400,y:k.y+900}');
+  run('var sniper=mkUnit("sunderer",1,k.x+560,k.y+400)');
+  run('sniper.cmd={t:"attack",target:a}; sniper.target=a');
+  tickOn(40);
+  ok(!run('a.dead'), 'the target survived long enough to react');
+  eq(run('a.target===sniper'), true, 'a unit on attack-move turned on the shooter');
 });
 
 test('a focus-fire order on a unit is never stolen', () => {
