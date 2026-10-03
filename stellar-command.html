@@ -275,6 +275,17 @@ body.touch .mouse-only{display:none}
 .setbox h3:first-child{margin-top:0}
 .setscroll{max-height:min(52vh,340px);overflow-y:auto;padding-right:6px}
 .setscroll::-webkit-scrollbar{width:7px}.setscroll::-webkit-scrollbar-thumb{background:#1d3a55;border-radius:4px}
+.setnote{font-size:9.5px;color:#6f8ca4;line-height:1.5;margin:6px 0 10px}
+#keyList{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.krow{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:4px 7px;border:1px solid #1d3a55;border-radius:4px;background:rgba(8,18,28,.6)}
+.krow span{font-size:10px;color:#9fc4de;letter-spacing:1px}
+.krow button{font:inherit;font-size:10px;letter-spacing:1px;min-width:68px;
+  background:rgba(12,26,40,.9);border:1px solid #27506f;color:#dff1ff;
+  border-radius:4px;padding:3px 8px;cursor:pointer}
+.krow button:hover{border-color:#4bd6ff}
+.krow button.capt{border-color:#ffcf5a;color:#ffd98a}
+.krow.clash button{border-color:#ff6b52;color:#ffb49c}
 .srow{display:flex;justify-content:space-between;align-items:center;margin:11px 0;
   font-size:10.5px;letter-spacing:2px;color:#7c9cb4}
 .setbox .tog{display:inline-block;width:42px;height:21px;border-radius:11px;border:1px solid #2d5a80;background:#0d1a28;
@@ -471,14 +482,23 @@ body.touch .mouse-only{display:none}
       <button id="setTest" class="alt">TEST EFFECTS</button>
       <h3>CAMERA</h3>
       <div class="srow"><span>EDGE SCROLLING</span><button id="tEdge" class="tog"></button></div>
-      <label>SCROLL SPEED<span id="vScroll">100%</span></label><input type="range" id="sScroll" min="40" max="220">
-      <label>MOUSE PAN SPEED<span id="vEdgeSpd">100%</span></label><input type="range" id="sEdgeSpd" min="30" max="250">
+      <label>KEYBOARD SCROLL<span id="vScroll">100%</span></label><input type="range" id="sScroll" min="40" max="220">
+      <label>EDGE SCROLL SPEED<span id="vEdgeSpd">100%</span></label><input type="range" id="sEdgeSpd" min="30" max="250">
       <label>EDGE ZONE<span id="vEdgeZone">22px</span></label><input type="range" id="sEdgeZone" min="8" max="60">
+      <h3>MOUSE</h3>
+      <label>DRAG PAN SENSITIVITY<span id="vDragPan">100%</span></label><input type="range" id="sDragPan" min="30" max="260">
+      <label>ZOOM SPEED<span id="vZoomSpd">100%</span></label><input type="range" id="sZoomSpd" min="30" max="240">
+      <div class="srow"><span>INVERT ZOOM</span><button id="tInvZoom" class="tog"></button></div>
+      <p class="setnote">Hold the middle mouse button and drag to pan the camera.</p>
       <h3>DISPLAY</h3>
       <div class="srow"><span>HEALTH BARS</span>
         <span class="seg"><button data-hp="damaged">HURT</button><button data-hp="always">ALL</button><button data-hp="never">OFF</button></span></div>
       <div class="srow"><span>CONTROL HINTS</span><button id="tHints" class="tog"></button></div>
       <div class="srow"><span>REDUCED EFFECTS</span><button id="tLowFx" class="tog"></button></div>
+      <h3>HOTKEYS</h3>
+      <p class="setnote">Click a key, then press the one you want. Esc cancels, Backspace restores the default.</p>
+      <div id="keyList"></div>
+      <button id="keyReset" class="alt">RESET ALL HOTKEYS</button>
     </div>
     <button id="setClose">CLOSE</button>
   </div>
@@ -1432,8 +1452,29 @@ function venomTick(e,dt){
              t:0,dur:.5,r:3.4,k:'hit',c:'#9ff06a'});
   if(e.hp<=0&&!e.dead) damage(e,0,v.by);   // let the usual death path run
 }
-function damage(t,amt,by){
+/* Being shot is an order. Auto-acquire only ever looked for something inside
+   its own sight radius, so a unit sniped from further out, or one part-way
+   through a move order, just stood there and took it. Anything that is not
+   under a specific attack order now turns on whatever is hitting it. */
+function retaliate(t,src){
+  if(!t||!src||t.dead||src.dead) return;
+  if(t.kind!=='unit'||UDEF[t.type].worker) return;     // Delvers keep mining
+  if(t.owner===src.owner||isAlly2(t.owner,src.owner)) return;
+  const c=t.cmd;
+  if(c&&c.t==='attack'&&c.target&&!c.target.dead) return;   // a told order stands
+  if(c&&(c.t==='gather'||c.t==='build'||c.t==='repair')) return;
+  if(t.target&&!t.target.dead){
+    // already busy with something: only switch if this one is closer
+    const d0=Math.hypot(t.target.x-t.x,t.target.y-t.y);
+    const d1=Math.hypot(src.x-t.x,src.y-t.y);
+    if(d1>=d0) return;
+  }
+  t.target=src;
+  if(c&&c.t==='idle'&&!t.retreat) t.retreat={x:t.x,y:t.y};
+}
+function damage(t,amt,by,src){
   if(t.dead) return;
+  if(src) retaliate(t,src);
   if(t.kind==='unit'&&UP[t.owner]) amt*=Math.max(.35,1-UP[t.owner].arm*UPG.arm.step);
   amt*=wardFactor(t);                      // a Bastion's shield, if one is overhead
   t.hp-=amt; t.flash=.12; t.hurtAt=gameTime;
@@ -1486,11 +1527,11 @@ function damage(t,amt,by){
     for(const e of ents) if(e.target===t) e.target=null;
   }
 }
-function splashAt(x,y,rad,amt,owner){
+function splashAt(x,y,rad,amt,owner,src){
   for(const o of around(x,y,rad+40)){
     if(o.dead||!isFoe(o.owner,owner)) continue;
     const d=Math.hypot(o.x-x,o.y-y);
-    if(d<rad+hitRadius(o)) damage(o,amt*(1-.5*d/(rad+hitRadius(o))),owner);
+    if(d<rad+hitRadius(o)) damage(o,amt*(1-.5*d/(rad+hitRadius(o))),owner,src||null);
   }
 }
 function fire(a,t){
@@ -1513,9 +1554,10 @@ function fire(a,t){
   if(rng>40){
     shots.push({x:sx,y:sy,tx:t.x,ty:t.y,t:0,dur:Math.max(.06,Math.hypot(t.x-sx,t.y-sy)/900),
       c:TEAM[a.owner].c,big:!!d.splash,target:t,dmg,splash:d.splash||0,owner:a.owner,
+      src:a,                               // so the target knows who to shoot back at
       venom:!!(d.style&&d.style.venom)});
   } else {
-    damage(t,dmg,a.owner);
+    damage(t,dmg,a.owner,a);
     if(d.style&&d.style.venom) venomApply(t,dmg,a.owner);
     fx.push({x:(a.x+t.x)/2,y:(a.y+t.y)/2,t:0,dur:.18,r:10,k:'hit',c:TEAM[a.owner].c});
   }
@@ -1525,10 +1567,10 @@ function stepShots(dt){
     s.t+=dt;
     if(s.t>=s.dur){
       s.done=true;
-      if(s.splash) splashAt(s.tx,s.ty,s.splash,s.dmg,s.owner),
+      if(s.splash) splashAt(s.tx,s.ty,s.splash,s.dmg,s.owner,(s.src&&!s.src.dead)?s.src:null),
         fx.push({x:s.tx,y:s.ty,t:0,dur:.4,r:s.splash,k:'boom'});
       else if(s.target&&!s.target.dead){
-        damage(s.target,s.dmg,s.owner);
+        damage(s.target,s.dmg,s.owner,(s.src&&!s.src.dead)?s.src:null);
         if(s.venom) venomApply(s.target,s.dmg,s.owner);
       }
     }
@@ -1910,7 +1952,8 @@ function updateUnit(u,dt){
     }
     if(u.chgT>0){
       if(far<=reach){                      // arrived - the impact lands at full weight
-        if(u.atkCd<=0){ fire(u,u.target); u.chgT=0; u.chgHit=false; }
+        if(u.atkCd<=0){ fire(u,u.target); u.chgT=0; u.chgHit=false;
+          if(u.owner===0) tutAct('charged'); }
       } else navigate(u,u.target.x,u.target.y,dt,reach*.8);
       return;
     }
@@ -2327,6 +2370,18 @@ window.addEventListener('mouseup',e=>{
     const e2=entAt(p.x,p.y);
     if(!e2) { lastPick.t=0; if(!d.shift) setSel([]); return; }
     if(isDoublePick(e2)){ selectKind(e2); return; }
+    /* Left-clicking something hostile with your own fighters in hand attacks
+       it. This only ever selected the thing, so the order you thought you gave
+       never went out. With nothing of yours selected it still just selects, so
+       an enemy's statline is still readable in the panel. */
+    if(!d.shift&&!e.ctrlKey&&isFoe(e2.owner,0)){
+      const mine=sel.filter(x=>!x.dead&&x.kind==='unit'&&x.owner===0&&!UDEF[x.type].worker);
+      if(mine.length){
+        // through the normal order path, so a guest relays it like any other
+        rightClick(p.x,p.y,false);
+        return;
+      }
+    }
     if(d.shift&&e2.owner===0) setSel(sel.includes(e2)?sel.filter(s=>s!==e2):sel.concat(e2));
     else if(e.ctrlKey&&e2.owner===0) selectKind(e2);
     else setSel([e2]);
@@ -2679,8 +2734,33 @@ window.addEventListener('pointerup',e=>{ if(e.pointerType!=='mouse') mmDrag=fals
 cv.addEventListener('wheel',e=>{
   e.preventDefault();
   const p=tPos(e);
-  setZoom(cam.z*(e.deltaY<0?1.12:1/1.12),p.x,p.y);
+  /* The step is yours to set, and some people want the wheel the other way. */
+  const step=1+.12*clamp(OPT.zoomSpd||1,.2,3);
+  let inward=e.deltaY<0;
+  if(OPT.invZoom) inward=!inward;
+  setZoom(cam.z*(inward?step:1/step),p.x,p.y);
 },{passive:false});
+/* Hold the middle button and drag to pan - the standard RTS grab, which this
+   did not have at all, so the 'mouse' settings had nothing to apply to. */
+let panDrag=null;
+cv.addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='mouse'||e.button!==1) return;
+  e.preventDefault();
+  panDrag={x:e.clientX,y:e.clientY};
+  try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+});
+window.addEventListener('pointermove',e=>{
+  if(!panDrag||e.pointerType!=='mouse') return;
+  const k=clamp(OPT.dragPan||1,.2,3)/cam.z;
+  cam.x-=(e.clientX-panDrag.x)*k;
+  cam.y-=(e.clientY-panDrag.y)*k;
+  panDrag.x=e.clientX; panDrag.y=e.clientY;
+  clampCam();
+});
+window.addEventListener('pointerup',e=>{ if(e.button===1||!panDrag) panDrag=null; });
+window.addEventListener('blur',()=>{ panDrag=null; });
+// the middle button otherwise opens the browser's autoscroll, which fights us
+cv.addEventListener('auxclick',e=>{ if(e.button===1) e.preventDefault(); });
 
 /* ===================== ONLINE PLAY =====================
    Host-authoritative: the host simulates, the guest sends orders and renders
@@ -3209,7 +3289,7 @@ window.addEventListener('keydown',e=>{
     return;
   }
   if(e.ctrlKey&&k==='m'){ SFX.toggle(); updSnd(); musicSync(); say(SFX.isMuted()?'Sound off':'Sound on'); e.preventDefault(); return; }
-  if(k==='f2'){
+  if(keyIs('army',k)){
     e.preventDefault();
     let army=unitsOf(0).filter(u=>!UDEF[u.type].worker);
     if(!army.length) army=unitsOf(0);
@@ -3222,8 +3302,9 @@ window.addEventListener('keydown',e=>{
     say(army.length+' unit'+(army.length>1?'s':'')+' selected');
     return;
   }
-  if(k==='f1'){ selectIdle(); e.preventDefault(); return; }
-  if(k===' '){ if(lastAlert) centerOn(lastAlert.x,lastAlert.y); e.preventDefault(); return; }
+  if(keyIs('idle',k)){ selectIdle(); e.preventDefault(); return; }
+  if(keyIs('alert',k)){ if(lastAlert) centerOn(lastAlert.x,lastAlert.y); e.preventDefault(); return; }
+  if(keyIs('pause',k)){ togglePause(); e.preventDefault(); return; }
   for(const b of cardButtons) if(b.hk&&b.hk.length===1&&b.hk.toLowerCase()===k){
     if(b.dis){ say(b.tip||'Unavailable'); return; }
     b.act(); refreshUI(); return;
@@ -3382,7 +3463,8 @@ function buildCard(){
     if(cardMode==='build'){
       for(const t of ['keystone','habitat','musterhall','siphon','forgeworks','watchspire','citadel']){
         const d=BDEF[t], locked=d.req&&!hasBuilding(0,d.req);
-        cardButtons.push({img:iconOf('bld',t,0),name:nameOf(t,0),cost:{m:d.m,g:d.g},hk:d.hk,dis:locked,
+        cardButtons.push({img:iconOf('bld',t,0),name:nameOf(t,0),cost:{m:d.m,g:d.g},
+          hk:hkOf('bld',t,d.hk),dis:locked,
           tip:locked?'Requires '+nameOf(d.req,0):'',
           act:function(){ if(!canAfford(0,d)){ say('Not enough resources'); SFX.play('deny'); return; } placing=t; cardMode='main'; }});
       }
@@ -3394,14 +3476,16 @@ function buildCard(){
       cardButtons.push({ic:'⊘',name:'Stop',hk:'S',act:function(){
         if(NET.role==='guest'){ netCmd('stop',{ids:selIds()}); return; }
         for(const u of us){ u.cmd={t:'idle'}; u.target=null; } }});
-      cardButtons.push({ic:'⚔',name:'Attack',hk:'A',act:function(){ pending='attack'; }});
+      cardButtons.push({ic:'⚔',name:'Attack',hk:keyLabel(keyFor('c_A')),
+        act:function(){ pending='attack'; }});
       cardButtons.push({ic:'⛨',name:'Hold',hk:'H',act:function(){
         if(NET.role==='guest'){ netCmd('hold',{ids:selIds()}); return; }
         for(const u of us) u.cmd={t:'hold'}; }});
       cardButtons.push({empty:true});
       cardButtons.push({empty:true});
       if(us.some(u=>UDEF[u.type].worker))
-        cardButtons.push({ic:'⌂',name:'Build',hk:'B',act:function(){ cardMode='build'; }});
+        cardButtons.push({ic:'⌂',name:'Build',hk:keyLabel(keyFor('c_B')),
+          act:function(){ cardMode='build'; }});
     }
   } else if(b){
     const d=BDEF[b.type];
@@ -3427,7 +3511,7 @@ function buildCard(){
         const uc=unitCost(t,0), un=nameOf(t,0);
         cardButtons.push({img:iconOf('unit',t,0),
           name:un+(bGroup.length>1?' ×'+bGroup.length:''),
-          cost:{m:uc.m,g:uc.g},hk:HK[t]||un.charAt(0),
+          cost:{m:uc.m,g:uc.g},hk:hkOf('unit',t,HK[t]||un.charAt(0)),
           act:function(){ trainGroup(bGroup,t); }});
       }
       if(b.type==='forgeworks'){
@@ -5008,11 +5092,16 @@ function drawBuilding(b){
     ctx.font='600 12px Consolas,monospace';
     ctx.textAlign='center'; ctx.textBaseline='middle';
     const w=ctx.measureText(txt).width+12;
-    ctx.fillStyle='rgba(4,10,17,.82)';
+    /* Over the line's limit is a real problem - those extra harvesters are
+       standing around earning nothing - so it goes red rather than quietly
+       grey, and the whole plate is tinted so you catch it without reading. */
+    const over=c>cap;
+    ctx.fillStyle=over?'rgba(44,8,6,.88)':'rgba(4,10,17,.82)';
     rr(ctx,b.x-w/2,y-8,w,16,4); ctx.fill();
-    ctx.strokeStyle='rgba(75,214,255,.35)'; ctx.lineWidth=1;
+    ctx.strokeStyle=over?'rgba(255,107,82,.95)':'rgba(75,214,255,.35)';
+    ctx.lineWidth=over?1.6:1;
     rr(ctx,b.x-w/2,y-8,w,16,4); ctx.stroke();
-    ctx.fillStyle=c>=cap?'#8fb0c8':(c?'#cfe3f2':'#ff9b7f');
+    ctx.fillStyle=over?'#ff6b52':(c>=cap?'#8fb0c8':(c?'#cfe3f2':'#ff9b7f'));
     ctx.fillText(txt,b.x,y);
     ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   }
@@ -5360,6 +5449,7 @@ function simTick(dt){
     // The host drives the bots too: in an online 2v2 each side has a bot ally,
     // and aiUpdate only walks slots flagged in BOTS, so a duel is a no-op here.
     aiUpdate(dt);
+    aiSurrender();
     fogT-=dt; if(fogT<=0){ fogT=.14; updateFog(); paintFog(); }
     /* A mined-out patch is kept while you still remember it standing, so the
        memory has something to draw. Everything that looks for aurite already
@@ -5630,8 +5720,41 @@ function stopSimWorker(){ if(simWorker){ try{ simWorker.postMessage('stop'); sim
 /* A side is beaten once its last structure falls - you never have to hunt
    down the final stray Delver to close out a match. Half-built sites count,
    so a player who still has something going up is still in it. */
+/* A side that has lost its last Keystone cannot rebuild, expand or train - the
+   match is decided and all that is left is walking the map for a stray Habitat.
+   A bot in that position concedes. revealRuins() already shows you where its
+   leftovers are; this stops you having to go and tidy them up. */
+const SURRENDER_AFTER=9;
+function aiSurrender(){
+  for(let o=0;o<NPLAY;o++){
+    if(!isBot(o)||!P[o]||P[o].out) continue;
+    let core=false;
+    for(const e of ents){
+      if(e.dead||e.owner!==o||e.kind!=='building') continue;
+      if(e.type==='keystone'){ core=true; break; }     // done or still going up
+    }
+    if(core){ P[o].coreLostAt=0; continue; }
+    const has=ents.some(e=>!e.dead&&e.owner===o&&
+      (e.kind==='building'||(e.kind==='unit'&&!UDEF[e.type].worker)));
+    if(!has){ P[o].coreLostAt=0; continue; }            // nothing left to concede with
+    if(!P[o].coreLostAt){ P[o].coreLostAt=gameTime; continue; }
+    if(gameTime-P[o].coreLostAt<SURRENDER_AFTER) continue;
+    P[o].out=true;
+    say('Commander '+(o+1)+' surrenders.');
+    SFX.play('complete');
+    for(const e of ents){
+      if(e.dead||e.owner!==o) continue;
+      if(e.kind==='building'){
+        fx.push({x:e.x,y:e.y,t:0,dur:.8,r:Math.max(e.w,e.h)*.6,k:'boom'});
+        e.dead=true;
+      } else if(e.kind==='unit') e.dead=true;
+    }
+    markNavDirty();
+  }
+}
 function teamAlive(t){
   return ents.some(e=>!e.dead&&e.kind==='building'&&e.owner>=0&&e.owner<NPLAY&&
+    !(P[e.owner]&&P[e.owner].out)&&        // a side that has conceded is out
     TEAMOF[e.owner]===t);
 }
 function aliveTeams(){
@@ -6451,7 +6574,50 @@ function lobbyInit(){
 
 /* ===================== SETTINGS ===================== */
 const OPT={master:1, music:.7, sfx:.5, edge:true, scroll:1, edgeSpd:1, edgeZone:22,
-  hpBars:'damaged', hints:true, lowFx:false};
+  dragPan:1, zoomSpd:1, invZoom:false,
+  hpBars:'damaged', hints:true, lowFx:false, keys:{}};
+/* Every rebindable action in one place. The card entries are the buttons the
+   command panel builds from the unit and building tables, so rebinding one
+   changes the key AND the label printed on the button. */
+const KEY_ACTS=[
+  {id:'idle',   n:'IDLE HARVESTERS', def:'f1'},
+  {id:'army',   n:'SELECT ARMY',     def:'f2'},
+  {id:'alert',  n:'JUMP TO ALERT',   def:' '},
+  {id:'pause',  n:'PAUSE',           def:'p'},
+  {id:'c_A',    n:'ATTACK-MOVE',     def:'a'},
+  {id:'c_B',    n:'BUILD MENU',      def:'b'},
+  {id:'u_delver',  n:'TRAIN WORKER',  def:'d'},
+  {id:'u_warden',  n:'TRAIN WARDEN',  def:'w'},
+  {id:'u_bulwark', n:'TRAIN BULWARK', def:'b'},
+  {id:'u_sunderer',n:'TRAIN SUNDERER',def:'s'},
+  {id:'u_harrower',n:'TRAIN HARROWER',def:'h'},
+  {id:'u_talon',   n:'TRAIN TALON',   def:'t'},
+  {id:'u_titan',   n:'TRAIN CAPITAL SHIP', def:'c'},
+  {id:'b_keystone',  n:'BUILD KEYSTONE',  def:'k'},
+  {id:'b_habitat',   n:'BUILD HABITAT',   def:'h'},
+  {id:'b_musterhall',n:'BUILD BARRACKS',  def:'r'},
+  {id:'b_siphon',    n:'BUILD SIPHON',    def:'s'},
+  {id:'b_forgeworks',n:'BUILD FORGEWORKS',def:'f'},
+  {id:'b_watchspire',n:'BUILD TOWER',     def:'t'},
+  {id:'b_citadel',   n:'BUILD SHIPYARD',  def:'g'}
+];
+const KEY_DEF={};
+KEY_ACTS.forEach(a=>{ KEY_DEF[a.id]=a.def; });
+function keyFor(id){
+  const k=OPT.keys&&OPT.keys[id];
+  return (typeof k==='string'&&k.length)?k:(KEY_DEF[id]||'');
+}
+function keyLabel(k){
+  if(k===' ') return 'SPACE';
+  if(k==='escape') return 'ESC';
+  return String(k||'').toUpperCase();
+}
+/* What the command card should print on a button, so a rebind shows up there. */
+function hkOf(kind,type,fallback){
+  const k=keyFor((kind==='bld'?'b_':'u_')+type);
+  return k?keyLabel(k):(fallback||'');
+}
+function keyIs(id,k){ const w=keyFor(id); return !!w&&w===k; }
 function optLoad(){
   try{ const j=JSON.parse(localStorage.getItem('sc_opt')||'null'); if(j) Object.assign(OPT,j); }catch(e){}
 }
@@ -6464,6 +6630,9 @@ function optApply(){
   const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=Math.round(v*100)+'%'; };
   set('vMaster',OPT.master); set('vMusic',OPT.music); set('vSfx',OPT.sfx); set('vScroll',OPT.scroll);
   set('vEdgeSpd',OPT.edgeSpd);
+  set('vDragPan',OPT.dragPan||1); set('vZoomSpd',OPT.zoomSpd||1);
+  const iz=document.getElementById('tInvZoom');
+  if(iz) iz.classList.toggle('on',!!OPT.invZoom);
   const ez=document.getElementById('vEdgeZone');
   if(ez) ez.textContent=Math.round(OPT.edgeZone)+'px';
   const tog=(id,on)=>{ const e=document.getElementById(id); if(e) e.classList.toggle('on',!!on); };
@@ -6481,10 +6650,69 @@ function settingsOpen(){
   g('sScroll').value=Math.round(OPT.scroll*100);
   g('sEdgeSpd').value=Math.round(OPT.edgeSpd*100);
   g('sEdgeZone').value=Math.round(OPT.edgeZone);
+  g('sDragPan').value=Math.round((OPT.dragPan||1)*100);
+  g('sZoomSpd').value=Math.round((OPT.zoomSpd||1)*100);
+  keyListRender();
   optApply();
   el.style.display='flex';
 }
-function settingsClose(){ document.getElementById('settings').style.display='none'; optSave(); }
+/* Click a key, press the one you want. A key may be used twice as long as the
+   two buttons never share a panel - Barracks and Bulwark are both 'B' out of
+   the box - so a clash is flagged rather than forbidden. */
+let keyCapture=null;
+function keyClashes(){
+  const seen={}, out={};
+  for(const a of KEY_ACTS){
+    const k=keyFor(a.id);
+    if(!k) continue;
+    if(seen[k]!==undefined){ out[a.id]=1; out[seen[k]]=1; }
+    else seen[k]=a.id;
+  }
+  return out;
+}
+function keyListRender(){
+  const host=document.getElementById('keyList');
+  if(!host) return;
+  const clash=keyClashes();
+  host.textContent='';
+  for(const a of KEY_ACTS){
+    const row=document.createElement('div');
+    row.className='krow'+(clash[a.id]?' clash':'');
+    const lab=document.createElement('span');
+    lab.textContent=a.n;
+    const btn=document.createElement('button');
+    btn.textContent=(keyCapture===a.id)?'PRESS A KEY':keyLabel(keyFor(a.id));
+    if(keyCapture===a.id) btn.classList.add('capt');
+    btn.onclick=()=>{
+      SFX.play('click');
+      keyCapture=(keyCapture===a.id)?null:a.id;
+      keyListRender();
+    };
+    row.appendChild(lab); row.appendChild(btn);
+    host.appendChild(row);
+  }
+}
+/* While a key is being captured this swallows the keypress before anything in
+   the game can act on it. */
+window.addEventListener('keydown',e=>{
+  if(!keyCapture) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const id=keyCapture;
+  const k=e.key.toLowerCase();
+  if(k==='escape'){ keyCapture=null; keyListRender(); return; }
+  if(k==='backspace'){ delete OPT.keys[id]; }
+  else {
+    if(!OPT.keys) OPT.keys={};
+    OPT.keys[id]=(e.key===' ')?' ':k;
+  }
+  keyCapture=null;
+  keyListRender(); refreshUI(); optSave();
+},true);
+function settingsClose(){
+  keyCapture=null;
+  document.getElementById('settings').style.display='none';
+  optSave();
+}
 function settingsInit(){
   optLoad();
   const g=id=>document.getElementById(id);
@@ -6495,6 +6723,10 @@ function settingsInit(){
   bind('sMaster','master',100); bind('sMusic','music',100);
   bind('sSfx','sfx',100); bind('sScroll','scroll',100);
   bind('sEdgeSpd','edgeSpd',100); bind('sEdgeZone','edgeZone',1);
+  bind('sDragPan','dragPan',100); bind('sZoomSpd','zoomSpd',100);
+  g('tInvZoom').onclick=()=>{ OPT.invZoom=!OPT.invZoom; SFX.play('click'); optApply(); optSave(); };
+  g('keyReset').onclick=()=>{ OPT.keys={}; SFX.play('click');
+    keyListRender(); refreshUI(); optSave(); say('Hotkeys restored to defaults'); };
   g('tEdge').onclick=()=>{ OPT.edge=!OPT.edge; SFX.play('click'); optApply(); optSave(); };
   g('tHints').onclick=()=>{ OPT.hints=!OPT.hints; hintFaded=false; SFX.play('click'); optApply(); optSave(); };
   g('tLowFx').onclick=()=>{ OPT.lowFx=!OPT.lowFx; SFX.play('click'); optApply(); optSave(); };
@@ -6646,12 +6878,10 @@ function tutClearHilite(){
   TUT.litEl=null;
 }
 const TUT_STEPS=[
-  {b:'Select your Delvers.',
-   h:dv('Drag a box around them with the left mouse button, or press F2 to grab everything.',
-        'Press and hold on open ground for a moment, then drag to box them in. One finger drags the camera, two fingers pinch to zoom.'),
-   focus:()=>{ const u=mineU(x=>x.type==='delver')[0]; return u?{ent:u}:null; },
-   prog:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0).length+' selected',
-   ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0).length>=2},
+  /* This used to open with 'select your Delvers', which taught a box-select
+     with nothing to do with it - they were already mining. The lesson belongs
+     where you first actually need a worker in hand, which is the moment you
+     raise your first building. So the tutorial opens with production. */
   {b:'Train three more Delvers.',
    h:dv('Click your Keystone and pick Delver. More miners means more income - keep them coming all game.',
         'Tap your Keystone, then tap Delver three times. More miners means more income - keep them coming all game.'),
@@ -6666,6 +6896,12 @@ const TUT_STEPS=[
    focus:()=>(TUT.acts.idle||0)<1?{el:'#idle'}:(()=>{ const r=tutNearestRes('aurite'); return r?{ent:r}:null; })(),
    prog:()=>idleWorkers().length+' still idle',
    ok:()=>(TUT.acts.idle||0)>=1&&idleWorkers().length===0},
+  {b:'Select some Delvers - they are your builders.',
+   h:dv('Drag a box around a few with the left mouse button, or press F2 to grab everything you have. Delvers mine AND build, so nothing goes up without one selected.',
+        'Press and hold on open ground for a moment, then drag a box around a few. Delvers mine AND build, so nothing goes up without one selected. One finger drags the camera, two fingers pinch to zoom.'),
+   focus:()=>{ const u=mineU(x=>UDEF[x.type].worker)[0]; return u?{ent:u}:null; },
+   prog:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length+' Delvers selected',
+   ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length>=2},
   {b:'Raise a Habitat.',
    h:dv('Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
         'Tap Build in the bottom panel, pick Habitat, then tap a clear patch of ground. It lifts your population cap.'),
@@ -6716,13 +6952,56 @@ const TUT_STEPS=[
      const q=mineB(b=>b.type==='musterhall').reduce((n,b)=>n+((b.queue&&b.queue.length)||0),0);
      return have+' / 5'+(q?'  (+'+q+' queued)':''); },
    ok:()=>mineU(u=>u.type==='warden').length>=5},
-  {b:'Repair something with a Delver.',
-   h:dv('Your Keystone has been knocked about. Select a Delver and right-click the damaged building - repairs cost a fraction of the build price.',
-        'Your Keystone has been knocked about. Select a Delver, then tap the damaged building to mend it.'),
-   enter:()=>{ const k=tutHome(); if(k){ k.hp=Math.max(1,k.maxHp*.55); k.hurtAt=-999; } },
+  /* The three doctrines fight in genuinely different ways now, so there is a
+     step about yours - and it is the only step whose win condition depends on
+     which one you picked. */
+  {b:()=>({concord:'Dig in: hold your Wardens still and let them shoot.',
+           legion:'Charge: send your Ravagers at something.',
+           pact:'Poison them: hit something and let it bleed.'})[facKey]||
+          'Learn what your doctrine does.',
+   h:()=>({
+     concord:dv('The Concord fights from a planted line: a unit that has not moved for a moment deals '+
+       Math.round((ENTRENCH_DMG-1)*100)+'% more damage. Stop moving before the enemy arrives, do not chase.',
+       'The Concord fights from a planted line: a unit that stands still for a moment deals more damage. Stop moving before they arrive.'),
+     legion:dv('The Legion has almost no range - it closes. Attack something a little way off and your Ravager will plant, wind up, then sprint in for '+
+       Math.round((CHARGE_HIT-1)*100)+'% more on the hit. The wind-up is the price.',
+       'The Legion closes the distance. Attack something a little way off and your Ravager plants, winds up, then charges in for far more damage.'),
+     pact:dv('Every Pact hit leaves a wound that keeps bleeding for '+VENOM_FOR+
+       ' seconds. You win long fights, not short ones - trade and withdraw, the poison keeps working.',
+       'Every Pact hit keeps bleeding for seconds afterwards. You win long fights - trade and withdraw, the poison does the rest.')
+   })[facKey]||'Fight something and watch what your units do.',
+   enter:()=>{ tutSpawnRaiders(2,false); TUT.docBase=(TUT.acts.docHit||0);
+     say('Two scouts wandered in. Use them.'); },
+   focus:()=>{ const f=tutFoeUnits()[0]; return f?{ent:f}:null; },
+   prog:()=>{
+     if(facKey==='legion') return (TUT.acts.charged||0)+' / 1 charges landed';
+     if(facKey==='pact'){ const b=tutFoeUnits().filter(u=>u.venom&&u.venom.until>gameTime).length;
+       return b?('bleeding: '+b):'nothing bleeding yet'; }
+     const dug=mineU(u=>!UDEF[u.type].worker&&(u.stillT||0)>=ENTRENCH_AT).length;
+     return dug+' dug in';
+   },
+   ok:()=>{
+     if(facKey==='legion') return (TUT.acts.charged||0)>=1||tutFoeUnits().length===0;
+     if(facKey==='pact') return tutFoeUnits().some(u=>u.venom&&u.venom.until>gameTime)||
+       tutFoeUnits().length===0;
+     return mineU(u=>!UDEF[u.type].worker&&(u.stillT||0)>=ENTRENCH_AT).length>=1;
+   }},
+  {b:()=>facOf(0).noRepair?'Your doctrine cannot repair. Learn to live with it.'
+                          :'Repair something with a Delver.',
+   h:()=>facOf(0).noRepair
+     ?dv('The Legion has no repair at all - that Keystone stays broken. What you get instead is units that heal themselves once they are out of the fight, and a Spire Core that detonates when it falls. Press on.',
+         'The Legion cannot repair - that hull stays broken. Your units heal themselves out of combat instead. Press on.')
+     :dv('Your Keystone has been knocked about. Select a Delver and right-click the damaged building - repairs cost a fraction of the build price.',
+         'Your Keystone has been knocked about. Select a Delver, then tap the damaged building to mend it.'),
+   enter:()=>{ const k=tutHome(); if(k){ k.hp=Math.max(1,k.maxHp*.55); k.hurtAt=-999; }
+     if(facOf(0).noRepair) TUT.noFixAt=gameTime; },
    focus:()=>{ const k=tutHome(); return (k&&k.hp<k.maxHp)?{ent:k}:null; },
-   prog:()=>{ const k=tutHome(); return k?Math.round(100*k.hp/k.maxHp)+'% hull':''; },
-   ok:()=>{ const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
+   prog:()=>{ const k=tutHome();
+     if(facOf(0).noRepair) return 'nothing to be done about it';
+     return k?Math.round(100*k.hp/k.maxHp)+'% hull':''; },
+   // the Legion just reads it and moves on; everyone else mends the hull
+   ok:()=>{ if(facOf(0).noRepair) return gameTime-(TUT.noFixAt||gameTime)>7;
+     const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
   {b:'Put your army on a control group.',
    h:dv('Select your Wardens and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
         'Select your Wardens, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
@@ -6778,13 +7057,27 @@ const TUT_STEPS=[
    focus:()=>{ const b=tutFoeBlds()[0]; return b?{ent:b}:null; },
    prog:()=>tutFoeBlds().length+' buildings standing',
    ok:()=>tutFoeBlds().length===0},
-  {b:'Outpost cleared. You are ready.',
-   h:dv('Two habits win games: never stop making Delvers, and never let aurite pile up. Delvers repair too - right-click a damaged building. Good hunting, Commander.',
-        'Two habits win games: never stop making Delvers, and never let aurite pile up. Delvers repair too - select one and tap a damaged building. Good hunting, Commander.'),
+  {b:'Their base is yours. You are ready.',
+   h:()=>{
+     const base=dv('Two habits win games: never stop making Delvers, and never let aurite pile up. ',
+                   'Two habits win games: never stop making Delvers, and never let aurite pile up. ');
+     const mine={
+       concord:'Your Concord mend cheaply and fight hardest from a planted line - hold ground, repair, out-tech. ',
+       legion:'Your Legion cannot repair, so trade bodies: they heal themselves out of the fight and swing harder the more they bleed. ',
+       pact:'Your Pact wins the long fight - poison everything, pull back onto your own ground, let it work. '
+     }[facKey]||'';
+     const cap='Once you have a Forgeworks, a '+nameOf('citadel',0)+' unlocks your '+
+               nameOf('titan',0)+' - 10 pop each, and no limit on how many you field. ';
+     return base+mine+cap+'Good hunting, Commander.';
+   },
    ok:()=>false, last:true}
 ];
 
 function tutEl(id){ return document.getElementById(id); }
+function tutStr(v){
+  if(typeof v!=='function') return v||'';
+  try{ return v()||''; }catch(e){ return ''; }
+}
 function tutShow(){
   const st=TUT_STEPS[TUT.i]; if(!st) return;
   if(st.enter&&!st._entered){ st._entered=true; try{ st.enter(); }catch(e){} }
@@ -6792,8 +7085,9 @@ function tutShow(){
   tutEl('tut').classList.toggle('done',!!st.last);
   tutClearHilite(); TUT.progT=0;
   tutEl('tutStep').textContent=st.last?'':(TUT.i+1)+' / '+(TUT_STEPS.length-1);
-  tutEl('tutBody').textContent=facText(st.b);
-  tutEl('tutHint').textContent=facText((typeof st.h==='function')?st.h():st.h);
+  // either field may be a function now, because some steps read your doctrine
+  tutEl('tutBody').textContent=facText(tutStr(st.b));
+  tutEl('tutHint').textContent=facText(tutStr(st.h));
   tutEl('tutSkip').textContent=st.last?'FINISH':'SKIP';
 }
 function tutAdvance(){
@@ -6813,7 +7107,7 @@ function tutStep(dt){
   TUT.t+=dt;
   if(st.last) return;
   if(typeof st.h==='function'){
-    const txt=st.h();
+    const txt=facText(tutStr(st.h));
     if(tutEl('tutHint').textContent!==txt) tutEl('tutHint').textContent=txt;
   }
   tutHilite();

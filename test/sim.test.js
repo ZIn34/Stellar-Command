@@ -432,6 +432,227 @@ test('a patch outside your vision is drawn as you last saw it', () => {
 });
 
 
+console.log('\ndoctrine combat styles');
+
+function arena(fac, foe) {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('FACOF=["' + fac + '","' + (foe || 'concord') + '","concord","concord"]');
+  run('BOTS=[false,false,false,false]');
+  run('P[0].m=9000; P[0].g=9000');
+}
+function tickOn(n, step) {
+  for (let i = 0; i < n; i++) { run('over=false'); run('simTick(' + (step || 0.05) + ')'); }
+}
+
+test('the same unit has a different statline in each doctrine', () => {
+  const seen = {};
+  for (const f of ['concord', 'legion', 'pact']) {
+    run('FACOF=["' + f + '","' + f + '","' + f + '","' + f + '"]');
+    const d = run('defFor("unit","warden",0)');
+    seen[f] = { rng: d.rng, dmg: d.dmg };
+  }
+  ok(seen.legion.rng < seen.concord.rng / 2,
+     'the Legion warden is a brawler (' + seen.legion.rng + ' vs ' + seen.concord.rng + ')');
+  ok(seen.legion.dmg > seen.concord.dmg, 'and it hits harder for it');
+  eq(seen.pact.rng, seen.concord.rng, 'the Pact keeps its range');
+  ok(seen.pact.dmg < seen.concord.dmg, 'and trades raw damage for the wound');
+  run('FACOF=["concord","concord","concord","concord"]');
+});
+
+test('a Legion brawler winds up and then charges', () => {
+  arena('legion');
+  run('var A=mkUnit("warden",0,1000,1000), B=mkUnit("warden",1,1180,1000)');
+  let wind = 0, ran = 0;
+  for (let i = 0; i < 140; i++) {
+    run('over=false'); run('simTick(0.05)');
+    if (run('A.windT>0')) wind++;
+    if (run('A.chgT>0')) ran++;
+  }
+  ok(wind > 3, 'it planted and wound up (' + wind + ' frames)');
+  ok(ran > 2, 'then it sprinted in (' + ran + ' frames)');
+});
+
+test('a charge hits far harder than a standing blow', () => {
+  arena('legion');
+  run('var A=mkUnit("warden",0,1000,1000)');
+  run('A.chgHit=false'); const flat = run('dmgOf(A)');
+  run('A.chgHit=true');  const slam = run('dmgOf(A)');
+  ok(slam > flat * 1.5, 'the impact is worth it (' + flat.toFixed(1) + ' -> ' + slam.toFixed(1) + ')');
+});
+
+test('a Pact wound keeps working after the attacker is gone', () => {
+  arena('pact');
+  run('var A=mkUnit("warden",0,1000,1000), B=mkUnit("warden",1,1060,1000)');
+  tickOn(40);
+  const dps = run('B.venom?B.venom.dps:0');
+  const hp1 = run('B.dead?0:B.hp');
+  run('if(!A.dead) A.dead=true');
+  tickOn(50);
+  const hp2 = run('B.dead?0:B.hp');
+  ok(dps > 0, 'the hit left a wound (' + dps.toFixed(2) + '/s)');
+  ok(hp2 < hp1, 'and it kept bleeding with nobody shooting (' +
+     Math.round(hp1) + ' -> ' + Math.round(hp2) + ')');
+});
+
+test('a Concord unit dug in hits harder than one on the move', () => {
+  arena('concord');
+  run('var A=mkUnit("warden",0,1000,1000)');
+  run('A.stillT=0'); const moving = run('dmgOf(A)');
+  run('A.stillT=' + (run('ENTRENCH_AT') + 1)); const dug = run('dmgOf(A)');
+  ok(dug > moving, 'standing still pays (' + moving.toFixed(1) + ' -> ' + dug.toFixed(1) + ')');
+});
+
+console.log('\ncapital ships');
+
+test('every doctrine fields a different capital ship at the same flat price', () => {
+  const seen = {};
+  for (const f of ['concord', 'legion', 'pact']) {
+    run('FACOF=["' + f + '","' + f + '","' + f + '","' + f + '"]');
+    seen[f] = { name: run('nameOf("titan",0)'), yard: run('nameOf("citadel",0)'),
+                cost: run('priceOf("unit","titan",0)'), def: run('defFor("unit","titan",0)') };
+  }
+  for (const f of ['concord', 'legion', 'pact']) {
+    eq(seen[f].cost.m, 500, f + ' titan aurite');
+    eq(seen[f].cost.g, 500, f + ' titan ichor');
+    eq(seen[f].def.sup, 10, f + ' titan population');
+  }
+  ok(seen.concord.name !== seen.legion.name && seen.legion.name !== seen.pact.name,
+     'three different ships');
+  ok(seen.concord.yard !== seen.legion.yard && seen.legion.yard !== seen.pact.yard,
+     'three different yards');
+  eq(!!seen.concord.def.ward, false, 'ward lives on the style, not the def');
+  ok(run('FSTYLE.concord.titan.ward') && run('FSTYLE.legion.titan.boom') &&
+     run('FSTYLE.pact.titan.brood'), 'each has its own ability');
+  eq(run('BDEF.citadel.req'), 'forgeworks', 'the yard needs a Forgeworks first');
+  run('FACOF=["concord","concord","concord","concord"]');
+});
+
+test('there is no limit on how many capital ships you own', () => {
+  arena('pact');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('for(var i=0;i<6;i++) mkBuilding("habitat",0,k.x+320+(i%3)*90,k.y-240+((i/3)|0)*90,true)');
+  run('recalcSupply(0)');
+  run('var cit=mkBuilding("citadel",0,k.x+260,k.y+60,true)');
+  const q = [run('tryTrain(cit,"titan")'), run('tryTrain(cit,"titan")'), run('tryTrain(cit,"titan")')];
+  ok(q.every(Boolean), 'three queued back to back with no cap');
+  eq(run('cit.queue.length'), 3, 'all three are in the queue');
+});
+
+test('the Aegis Bastion shields what is under it and mends what it hangs over', () => {
+  arena('concord');
+  run('var T=mkUnit("titan",0,1200,1200)');
+  // a target tough enough to survive the hit, or both just die and prove nothing
+  run('var A=mkUnit("harrower",0,1230,1210)');
+  run('var B=mkUnit("harrower",0,3000,3000)');
+  tickOn(4);
+  const full = run('A.maxHp');
+  run('damage(A,100,1); damage(B,100,1)');
+  const under = full - run('A.dead?0:A.hp'), exposed = full - run('B.dead?0:B.hp');
+  ok(under < exposed, 'cover reduced the hit (' + Math.round(under) + ' vs ' +
+     Math.round(exposed) + ')');
+  arena('concord');
+  run('var T2=mkUnit("titan",0,1200,1200)');
+  run('var hurt=mkBuilding("habitat",0,1300,1240,true); hurt.hp=hurt.maxHp*0.4');
+  tickOn(240);
+  ok(run('hurt.hp/hurt.maxHp') > 0.8, 'and it mended the structure beside it');
+});
+
+test('the Cataclysm Engine detonates when it dies', () => {
+  arena('legion');
+  run('var T=mkUnit("titan",0,1200,1200)');
+  run('var V=mkUnit("warden",1,1260,1200)');
+  /* Keep the ship from shooting the victim first - its range covers its own
+     blast radius, so without this the target is already dead and the test
+     proves nothing. A couple of ticks just populate the spatial grid. */
+  run('T.cmd={t:"hold"}; T.target=null; T.atkCd=999; V.cmd={t:"hold"}; V.target=null; V.atkCd=999');
+  tickOn(2);
+  run('T.atkCd=999; V.atkCd=999; V.hp=V.maxHp');
+  const before = run('V.hp');
+  run('damage(T,99999,1)');
+  const after = run('V.dead?0:V.hp');
+  ok(before > 0, 'the victim was alive before the blast (' + Math.round(before) + ' hp)');
+  ok(after < before, 'and the blast caught it (' + Math.round(before) +
+     ' -> ' + Math.round(after) + ')');
+});
+
+test('the Hollow Mother births free units that cost no population', () => {
+  arena('pact');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('for(var i=0;i<6;i++) mkBuilding("habitat",0,k.x+320+(i%3)*90,k.y-240+((i/3)|0)*90,true)');
+  run('var T=mkUnit("titan",0,1200,1200)');
+  run('recalcSupply(0)');
+  const pop0 = run('P[0].sup');
+  tickOn(420);
+  run('recalcSupply(0)');
+  const brood = run('ents.filter(e=>!e.dead&&e.spawned&&e.owner===0).length');
+  ok(brood > 0, 'it birthed ' + brood + ' free units');
+  eq(run('P[0].sup'), pop0, 'and none of them cost population');
+});
+
+console.log('\nretaliation and surrender');
+
+test('a unit shot from outside its sight turns on whoever shot it', () => {
+  arena('concord');
+  run('var A=mkUnit("warden",0,1000,1000); A.cmd={t:"move",x:1000,y:2000}');
+  run('var S=mkUnit("sunderer",1,1150,1000)');     // outranges a warden
+  run('S.cmd={t:"attack",target:A}');
+  tickOn(60);
+  ok(run('A.dead?false:(A.target&&A.target.type==="sunderer")'),
+     'it turned on the thing shooting it instead of walking on');
+});
+
+test('a specific attack order is not overridden by being poked', () => {
+  arena('concord');
+  run('var A=mkUnit("warden",0,1000,1000)');
+  run('var T=mkUnit("warden",1,1100,1000)');
+  run('var Q=mkUnit("warden",1,1020,1010)');
+  run('A.cmd={t:"attack",target:T}; A.target=T');
+  run('damage(A,5,1,Q)');
+  eq(run('A.target===T'), true, 'the order you gave still stands');
+});
+
+test('a Delver that gets shot keeps mining', () => {
+  arena('concord');
+  run('var W=ents.find(e=>!e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker)');
+  run('var F=mkUnit("warden",1,W.x+60,W.y)');
+  run('damage(W,5,1,F)');
+  eq(run('W.cmd.t'), 'gather', 'it is still on the aurite');
+  eq(run('!!W.target'), false, 'and it did not pick a fight');
+});
+
+test('a bot that loses its last Keystone surrenders instead of hiding', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('BOTS=[false,true,false,false]');
+  tickOn(40);
+  run('var k=ents.find(e=>!e.dead&&e.owner===1&&e.kind==="building"&&e.type==="keystone")');
+  run('mkBuilding("habitat",1,k.x+200,k.y+60,true); mkBuilding("musterhall",1,k.x-220,k.y+40,true)');
+  run('mkUnit("warden",1,k.x+120,k.y+120)');
+  run('k.dead=true');
+  tickOn(60);
+  eq(run('!!P[1].out'), false, 'it does not give up the instant the core falls');
+  tickOn(220);
+  eq(run('!!P[1].out'), true, 'but it concedes rather than make you sweep the map');
+  eq(run('ents.filter(e=>!e.dead&&e.owner===1).length'), 0, 'and its leftovers are gone');
+  eq(run('teamAlive(TEAMOF[1])'), false, 'the match counts that side as out');
+});
+
+
+console.log('\ncontrols');
+
+test('Escape cancels and never pauses', () => {
+  // the handler is an inline listener, so read it out of the source
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  const esc = whole.slice(whole.indexOf("if(k==='escape'){", whole.indexOf('addEventListener(\'keydown\'')));
+  const block = esc.slice(0, esc.indexOf('\n  }') + 4);
+  ok(!/togglePause/.test(block), 'Escape no longer opens the pause menu');
+  ok(/setSel\(\[\]\)/.test(block), 'and it drops the selection when there is nothing to cancel');
+  ok(/pauseBtn'\)\.onclick/.test(whole), 'the pause button still pauses');
+});
+
+
 console.log('\nteams');
 
 test('a team arrangement with everyone on one side is rejected', () => {
