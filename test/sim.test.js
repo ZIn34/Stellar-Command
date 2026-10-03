@@ -591,6 +591,107 @@ test('the Hollow Mother births free units that cost no population', () => {
   eq(run('P[0].sup'), pop0, 'and none of them cost population');
 });
 
+console.log('\nsiege retaliation');
+
+test('a squad sieging a building turns on units that attack it', () => {
+  arena('concord');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('var me=mkUnit("warden",0,k.x+300,k.y+300)');
+  run('var wall=mkBuilding("habitat",1,k.x+380,k.y+300,true)');
+  run('var raider=mkUnit("warden",1,k.x+240,k.y+340)');
+  run('me.cmd={t:"attack",target:wall}; me.target=wall');
+  tickOn(3);
+  eq(run('me.target===wall'), true, 'it starts on the building');
+  run('damage(me,4,1,raider)');
+  tickOn(2);
+  eq(run('me.target===raider'), true, 'a raider shooting it pulls it onto the raider');
+  eq(run('me.cmd.t'), 'attack', 'the order itself is untouched');
+  eq(run('me.cmd.target===wall'), true, 'and still points at the building');
+  run('raider.dead=true');
+  tickOn(4);
+  eq(run('me.target===wall'), true, 'with the raider dead the siege resumes on its own');
+});
+
+test('a focus-fire order on a unit is never stolen', () => {
+  arena('concord');
+  run('var A=mkUnit("warden",0,1000,1000)');
+  run('var focus=mkUnit("warden",1,1100,1000)');
+  run('var pest=mkUnit("warden",1,1010,1030)');
+  run('A.cmd={t:"attack",target:focus}; A.target=focus');
+  tickOn(2);
+  run('damage(A,4,1,pest)');
+  tickOn(2);
+  eq(run('A.target===focus'), true, 'told to kill that one, it kills that one');
+});
+
+test('a tower shooting you does not drag you off a siege', () => {
+  arena('concord');
+  run('var B=mkUnit("warden",0,1000,1000)');
+  run('var wall2=mkBuilding("habitat",1,1090,1000,true)');
+  run('var tower=mkBuilding("watchspire",1,1300,1000,true)');
+  run('B.cmd={t:"attack",target:wall2}; B.target=wall2');
+  tickOn(2);
+  run('damage(B,6,1,tower)');
+  tickOn(2);
+  eq(run('B.target===wall2'), true, 'a turret is something you walk out of, not charge');
+});
+
+test('a Delver being shot still keeps mining', () => {
+  arena('concord');
+  run('var W=ents.find(e=>!e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker)');
+  run('var F=mkUnit("warden",1,W.x+60,W.y)');
+  run('damage(W,5,1,F)');
+  eq(run('W.cmd.t'), 'gather', 'still on the aurite');
+});
+
+console.log('\ntutorial covers the capital ship');
+
+test('the tutorial teaches the shipyard and the capital ship', () => {
+  run('facKey="pact"');
+  run('startTutorial()');
+  const steps = run('TUT_STEPS.map(function(s){return (typeof s.b==="function")?s.b():s.b;})');
+  const yard = steps.findIndex(t => /Worldheart|Citadel|Gate|Bloodforge/i.test(t));
+  const ship = steps.findIndex(t => /Hollow Mother|Titan|Bastion|Cataclysm/i.test(t));
+  ok(yard >= 0, 'there is a step for the shipyard');
+  ok(ship > yard, 'and ordering the ship comes after building the yard');
+  const last = steps.length - 1;
+  ok(ship < last, 'both land before the final mission');
+});
+
+test('the shipyard step funds itself, since a training run never banks that much', () => {
+  run('facKey="concord"');
+  run('startTutorial()');
+  const steps = run('TUT_STEPS.map(function(s){return (typeof s.b==="function")?s.b():s.b;})');
+  const i = steps.findIndex(t => /Ascendant Gate/i.test(t));
+  ok(i >= 0, 'found the shipyard step');
+  run('P[0].m=0; P[0].g=0');
+  run('TUT.i=' + i + '; TUT_STEPS[' + i + ']._entered=false; tutShow()');
+  const cost = run('priceOf("unit","titan",0)');
+  ok(run('P[0].m') >= cost.m, 'enough aurite to actually reach the ship');
+  ok(run('P[0].g') >= cost.g, 'and enough ichor');
+});
+
+test('the shipyard step walks the same build chain as the others', () => {
+  run('facKey="legion"');
+  run('startTutorial()');
+  const steps = run('TUT_STEPS.map(function(s){return (typeof s.b==="function")?s.b():s.b;})');
+  const i = steps.findIndex(t => /Bloodforge/i.test(t));
+  run('TUT.i=' + i + '; tutShow()');
+  run('setSel([])');
+  const a = run('(function(){var f=tutFocus(); return f&&f.ent?"rings a unit":JSON.stringify(f);})()');
+  ok(/rings a unit/.test(a), 'with nothing selected it points at a Delver');
+  run('var w=mineU(function(u){return UDEF[u.type].worker;})[0]; setSel([w])');
+  run('cardMode="main"');
+  eq(run('(tutFocus()||{}).el'), '#card .btn[data-hk="B"]', 'then the build menu');
+  run('cardMode="build"');
+  eq(run('(tutFocus()||{}).el'), '#card .btn[data-hk="G"]', 'then the shipyard button');
+  run('placing="citadel"');
+  ok(run('(function(){var f=tutFocus(); return !!(f&&f.x!==undefined);})()'),
+     'then a patch of ground to put it on');
+  run('placing=null; cardMode="main"');
+});
+
+
 console.log('\nretaliation and surrender');
 
 test('a unit shot from outside its sight turns on whoever shot it', () => {
