@@ -965,6 +965,86 @@ test('the shipyard step walks the same build chain as the others', () => {
 });
 
 
+console.log('\nprices: quoted, demanded, charged');
+
+test('what you must hold is exactly what you are charged', () => {
+  /* In Blitz the build button tested the list price while startBuild charged
+     the real one - it made you hold the full amount and then took half. */
+  for (const sc of ['standard', 'blitz']) {
+    run('scaleKey="' + sc + '"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("veteran"); BOTS=[false,false,false,false]');
+    run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+    run('var w=ents.find(function(e){return !e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker;})');
+    const price = run('bldCost("habitat",0)');
+    // exactly the quoted price in the bank must be enough
+    run('P[0].m=' + price.m + '; P[0].g=' + price.g);
+    const before = run('P[0].m');
+    const built = run('!!startBuild("habitat",k.x+300,k.y+300,0,[w])');
+    const charged = before - run('P[0].m');
+    ok(built, sc + ': the quoted price was enough to build it');
+    eq(charged, price.m, sc + ': and that is exactly what it took');
+  }
+});
+
+test('the build button lets you through at the quoted price', () => {
+  for (const sc of ['standard', 'blitz']) {
+    run('scaleKey="' + sc + '"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("veteran"); BOTS=[false,false,false,false]');
+    run('var w=ents.find(function(e){return !e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker;})');
+    run('setSel([w]); cardMode="build"; refreshUI()');
+    const price = run('bldCost("habitat",0).m');
+    run('P[0].m=' + price + '; placing=null');
+    const allowed = run('(function(){var b=cardButtons.filter(function(x){' +
+      'return !x.empty&&/Habitat|Bower|Warren/.test(x.name);})[0];' +
+      'if(!b) return false; b.act(); return !!placing;})()');
+    run('placing=null; cardMode="main"');
+    ok(allowed, sc + ': the button accepted exactly the price it quoted (' + price + ')');
+  }
+});
+
+test('a unit is demanded and charged the same amount', () => {
+  for (const sc of ['standard', 'blitz']) {
+    run('scaleKey="' + sc + '"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("veteran"); BOTS=[false,false,false,false]');
+    run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+    const price = run('priceOf("unit","delver",0)');
+    run('P[0].m=' + price.m);
+    const before = run('P[0].m');
+    const ok1 = run('tryTrain(k,"delver")');
+    ok(ok1, sc + ': trained with exactly the quoted price');
+    eq(before - run('P[0].m'), price.m, sc + ': and charged that');
+  }
+});
+
+test('repairs are billed against what the thing cost you', () => {
+  /* Buildings fell through to the raw definition, so in Blitz a hull that cost
+     half still billed repairs against the full list price. */
+  const share = {};
+  for (const sc of ['standard', 'blitz']) {
+    run('scaleKey="' + sc + '"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("veteran"); BOTS=[false,false,false,false]');
+    run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+    run('var h=mkBuilding("habitat",0,k.x+300,k.y+300,true)');
+    const price = run('priceOf("building","habitat",0).m');
+    const full = run('(function(){var t=h,_fr=facOf(0);' +
+      'return (priceOf(t.kind,t.type,t.owner).m||0)*.35*(_fr.repairMul||1);})()');
+    share[sc] = full / price;
+    ok(price > 0, sc + ': habitat has a price');
+  }
+  near(share.blitz, share.standard, 0.001,
+       'a full repair costs the same share of the price in both scales');
+});
+
+test('nothing reads a price straight off a definition any more', () => {
+  const whole = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'stellar-command.html'), 'utf8');
+  const code = whole.replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(!/canAfford\([^,]+,\s*BDEF\[/.test(code), 'no affordability check against a raw definition');
+  ok(!/(BDEF|UDEF)\[[^\]]+\]\.(m|g)\b/.test(code), 'no direct cost reads off a definition');
+  ok(/function costRateFor/.test(code), 'one place decides what a scale does to prices');
+});
+
+
 console.log('\nblitz');
 
 function scaleStart(sc, mode) {

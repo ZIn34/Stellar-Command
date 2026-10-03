@@ -603,7 +603,7 @@ function applyScale(){
   BUILD_RATE=GRAND?7:(BLITZ?2:1);
   TRAIN_RATE=GRAND?7:(BLITZ?2:1);
   MOVE_RATE=GRAND?1.5:1;      // only enough to cope with a ten-times-bigger map
-  COST_RATE=BLITZ?.5:1;       // every price, through priceOf
+  COST_RATE=costRateFor(BLITZ?'blitz':(GRAND?'grand':'standard'));   // every price, through priceOf
 }
 let VW=0, VH=0, DPR=1;
 function resize(){
@@ -680,6 +680,10 @@ function facOf(o){ return FACTIONS[FACOF[o]]||FACTIONS.concord; }
    whatever your housing supports, and nothing caps it on top of that. The
    function stays so every caller keeps one answer to ask. */
 function popCeiling(){ return Infinity; }
+/* What a given scale does to prices. applyScale() sets the live COST_RATE from
+   this; the field manual asks it directly, because on the menu the live rate
+   still belongs to whatever was played last. */
+function costRateFor(scale){ return scale==='blitz'?.5:1; }
 /* Every price in the game comes from here. It used to be worked out at the
    call site - the guest's local prediction, the host's authoritative path, the
    cancel refund, the salvage bounty and the info panel each re-derived it and
@@ -2247,11 +2251,12 @@ function repairStep(u,dt){
   if(edgeDist(u,t)>workReach(u,t)){ navigate(u,t.x,t.y,dt,workStop(u,t)); return; }
   u.face=Math.atan2(t.y-u.y,t.x-u.x);
   const _rd=DEF(t), pool=P[u.owner], _fr=facOf(u.owner);
-  /* Charge and heal against what the thing cost this doctrine, not the list
-     price - otherwise the Pact pays Concord rates to mend Pact hulls. */
-  const d=(t.kind==='unit')
-    ?Object.assign({},_rd,unitCost(t.type,t.owner),{bt:unitBT(t.type,t.owner)})
-    :_rd;
+  /* Charge and heal against what the thing cost THIS player - the doctrine's
+     price and the scale's. Buildings used to fall through to the raw
+     definition, so in Blitz a hull that cost you half still billed repairs
+     against the full list price. */
+  const d=Object.assign({},_rd,priceOf(t.kind,t.type,t.owner),
+    t.kind==='unit'?{bt:unitBT(t.type,t.owner)}:null);
   const perSec=t.maxHp/Math.max(8,d.bt||20)*(_fr.repairRate||1);   // a full rebuild takes about as long as building it
   const _rm=_fr.repairMul||1;
   const cm=(d.m||0)*.35*_rm/t.maxHp, cg=(d.g||0)*.35*_rm/t.maxHp;
@@ -3639,7 +3644,6 @@ function updSnd(){
   b.innerHTML=SFX.isMuted()?'&#128263;':'&#128266;';
   b.style.opacity=SFX.isMuted()?.45:.85;
 }
-function costStr(d){ return d.m+(d.g?' / '+d.g+'g':'') }
 function hpColor(f){ return f>.6?'#3fe07a':f>.3?'#ffcf5a':'#ff5a4b' }
 
 /* ===================== COMMAND CARD ===================== */
@@ -3668,7 +3672,10 @@ function buildCard(){
         cardButtons.push({img:iconOf('bld',t,0),name:nameOf(t,0),cost:{m:_bc.m,g:_bc.g},
           hk:hkOf('bld',t,d.hk),dis:locked,
           tip:locked?'Requires '+nameOf(d.req,0):'',
-          act:function(){ if(!canAfford(0,d)){ say('Not enough resources'); SFX.play('deny'); return; } placing=t; cardMode='main'; }});
+          /* And the check has to use the same figure. This tested the list
+             price while startBuild charged the real one, so in Blitz it made
+             you hold the full amount and then took half. */
+          act:function(){ if(!canAfford(0,bldCost(t,0))){ say('Not enough resources'); SFX.play('deny'); return; } placing=t; cardMode='main'; }});
       }
       cardButtons.push({empty:true});
       cardButtons.push({empty:true});
@@ -5672,7 +5679,8 @@ function render(){
   if(placing&&mouse.over){
     const d=BDEF[placing];
     const gx=snap(mouse.wx), gy=snap(mouse.wy);
-    const ok=canPlace(placing,gx,gy,0)&&canAfford(0,d);
+    // the ghost goes red on what you will actually be charged
+    const ok=canPlace(placing,gx,gy,0)&&canAfford(0,bldCost(placing,0));
     let px=gx,py=gy;
     if(d.onGeyser){ const g=canPlace(placing,gx,gy,0); if(g){ px=g.x; py=g.y; } }
     const gs=bldSpr(placing,0);
@@ -6480,7 +6488,7 @@ function menuInit(){
       const d=r[0]==='unit'?UDEF[r[1]]:BDEF[r[1]];
       /* Blitz halves every price, so the manual has to quote the same
          figures the command card will. */
-      const _cr=(scaleKey==='blitz')?.5:1;
+      const _cr=costRateFor(scaleKey);
       const cm=Math.round((r[0]==='unit'?d.m*f.cost:d.m)*_cr);
       const cg=Math.round((r[0]==='unit'?(d.g||0)*f.cost:(d.g||0))*_cr);
       const cost=cm+(cg?' + <u>'+cg+'</u>':'');
