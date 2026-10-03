@@ -3188,8 +3188,18 @@ function netDropped(){
     }
     return;
   }
+  /* Somebody leaving is not a result. This handed VICTORY to every client
+     still connected the moment any one player quit - so in a 2v2 the side
+     that lost a player, and the enemy who still had two, were both told they
+     had won. Who has actually won is for netCheckEnd to decide, from what is
+     left standing. A departed commander's forces simply stop taking orders,
+     which is already what 'peergone' does. */
+  if(gameOn){
+    say('A commander left the match - their forces fight on');
+    NET.role=NET.role==='host'?'host':NET.role;
+    return;
+  }
   NET.ended=true;
-  if(gameOn){ say('Opponent left the match'); endGame('VICTORY','#7dffb0'); }
   NET.role=null;
 }
 function netLost(){
