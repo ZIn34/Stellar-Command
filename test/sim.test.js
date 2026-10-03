@@ -591,6 +591,105 @@ test('the Hollow Mother births free units that cost no population', () => {
   eq(run('P[0].sup'), pop0, 'and none of them cost population');
 });
 
+console.log('\nfog: ichor vents');
+
+test('an enemy draining a vent in the fog tells you nothing', () => {
+  newMatch({ fac: 'concord' });
+  run('updateFog()');
+  run([
+    'var _v=null;',
+    'for(var i=0;i<ents.length;i++){ var e=ents[i];',
+    ' if(e.kind!=="res"||e.type!=="vent") continue;',
+    ' var tx=clamp((e.x/TILE)|0,0,MAP_W-1), ty=clamp((e.y/TILE)|0,0,MAP_H-1);',
+    ' if(visible[ti(tx,ty)]!==1){ _v=e; break; } }'
+  ].join('\n'));
+  ok(run('!!_v'), 'found a vent outside vision');
+  const shown = run('resShown(_v).amount');
+  const pickable = run('entAt(_v.x,_v.y)===_v');
+  // somebody builds a Siphon on it and drains it, all out of sight
+  run('_v.taken=true; _v.amount=Math.max(0,_v.amount-400)');
+  eq(run('resShown(_v).amount'), shown, 'the figure you are shown does not move');
+  ok(run('_v.amount') < shown, 'even though it really did drain');
+  eq(run('entAt(_v.x,_v.y)===_v'), pickable,
+     'and it does not quietly become unclickable, which would give it away');
+  // and once you look at it again, you get the truth
+  run('var _tx=clamp((_v.x/TILE)|0,0,MAP_W-1), _ty=clamp((_v.y/TILE)|0,0,MAP_H-1)');
+  run('visible[ti(_tx,_ty)]=1; rememberRes()');
+  eq(run('resShown(_v).amount'), run('_v.amount'), 'in vision you see what is really there');
+});
+
+console.log('\ncapital ships: spread and escort');
+
+test('every capital ship splashes', () => {
+  for (const f of ['concord', 'legion', 'pact']) {
+    run('FACOF=["' + f + '","' + f + '","' + f + '","' + f + '"]');
+    const sp = run('defFor("unit","titan",0).splash');
+    ok(sp > 0, f + ' titan has splash (' + sp + ')');
+  }
+  run('FACOF=["concord","concord","concord","concord"]');
+});
+
+test('a splashing Pact ship still poisons everything it catches', () => {
+  /* The splash branch never touched venomApply, so giving the Hollow Mother a
+     spread would have quietly cost it the thing that makes it a Pact ship. */
+  arena('pact');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('var T=mkUnit("titan",0,k.x+600,k.y+600)');
+  run('var a=mkUnit("titan",1,k.x+740,k.y+600)');
+  run('var b=mkUnit("titan",1,k.x+790,k.y+640)');
+  let bleeding = 0;
+  for (let i = 0; i < 120; i++) {
+    run('over=false'); run('simTick(0.05)');
+    const n = run('[a,b].filter(function(u){return !u.dead&&u.venom&&u.venom.until>gameTime;}).length');
+    if (n > bleeding) bleeding = n;
+  }
+  ok(bleeding >= 2, 'both targets in one splash came away bleeding (' + bleeding + ')');
+});
+
+test('the Aegis Bastion gathers stragglers but obeys your orders', () => {
+  arena('concord');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('var cx=k.x+700, cy=k.y+700');
+  run('var T=mkUnit("titan",0,cx,cy)');
+  run('var R=FSTYLE.concord.titan.ward.range');
+  run('var stray=mkUnit("warden",0,cx+R+120,cy); stray.cmd={t:"idle"}');
+  run('var sent=mkUnit("warden",0,cx+R+120,cy+60); sent.cmd={t:"move",x:cx+R+900,y:cy+60}');
+  run('var w=ents.find(e=>!e.dead&&e.kind==="unit"&&e.owner===0&&UDEF[e.type].worker)');
+  const strayOut0 = run('Math.hypot(stray.x-cx,stray.y-cy)-R');
+  const sentOut0 = run('Math.hypot(sent.x-cx,sent.y-cy)-R');
+  for (let i = 0; i < 200; i++) { run('over=false'); run('simTick(0.05)'); }
+  const strayOut1 = run('Math.hypot(stray.x-T.x,stray.y-T.y)-R');
+  const sentOut1 = run('Math.hypot(sent.x-T.x,sent.y-T.y)-R');
+  ok(strayOut1 < strayOut0, 'the straggler was drawn back under the shield (' +
+     Math.round(strayOut0) + 'px out -> ' + Math.round(strayOut1) + 'px)');
+  ok(strayOut1 <= 0, 'and ended up inside it');
+  ok(sentOut1 > sentOut0, 'the one you sent away kept going (' +
+     Math.round(sentOut0) + 'px -> ' + Math.round(sentOut1) + 'px)');
+  eq(run('w.cmd.t'), 'gather', 'and the Delvers were left to work');
+});
+
+test('a unit trading blows braces against the crowd', () => {
+  arena('legion');
+  run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
+  run('var cx=k.x+620, cy=k.y+620');
+  run('for(var i=0;i<6;i++) mkUnit("warden",0,cx-50+(i%3)*20,cy-20+((i/3)|0)*20)');
+  run('for(var i=0;i<6;i++) mkUnit("warden",1,cx+50-(i%3)*20,cy-20+((i/3)|0)*20)');
+  run('ents.forEach(function(u){ if(!u.dead&&u.kind==="unit"&&!UDEF[u.type].worker)' +
+      ' u.cmd={t:"amove",x:(u.owner===0?cx+40:cx-40),y:cy}; })');
+  let braced = 0;
+  for (let i = 0; i < 90; i++) {
+    run('over=false'); run('simTick(0.05)');
+    const n = run('ents.filter(function(u){return !u.dead&&u.kind==="unit"&&u.braced;}).length');
+    if (n > braced) braced = n;
+  }
+  ok(braced >= 4, 'a melee has units planted and trading (' + braced + ' braced at once)');
+  const src = run('String(separate)');
+  ok(/u\.braced\) f\*=/.test(src), 'and the crowd pushes them far less while they are');
+  ok(/isFoe\(o\.owner,u\.owner\)\) f\*=/.test(src),
+     'and you cannot shove an enemy line around by walking into it');
+});
+
+
 console.log('\nsiege retaliation');
 
 test('a squad sieging a building turns on units that attack it', () => {

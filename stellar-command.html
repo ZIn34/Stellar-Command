@@ -2324,7 +2324,11 @@ function entAt(wx,wy){
   let best=null,bd=1e9;
   for(const e of ents){
     if(e.dead) continue;
-    if(e.kind==='res'&&e.type==='vent'&&e.taken) continue;
+    /* A taken vent is not pickable - but using the LIVE flag meant a vent in
+       the fog went unclickable the instant somebody built on it, which told
+       you they had. Go by what you last saw. */
+    if(e.kind==='res'&&e.type==='vent'&&
+       (typeof resShown==='function'?resShown(e).taken:e.taken)) continue;
     let hit=false,d=0;
     if(e.kind==='building'||e.kind==='res'&&e.type==='vent'){
       hit=Math.abs(wx-e.x)<e.w/2+SLOP-2&&Math.abs(wy-e.y)<e.h/2+SLOP-2;
@@ -3606,7 +3610,14 @@ function buildInfo(){
       (e.kind==='res'?(e.type==='vent'?'◈':'◆'):iconTag(e.kind==='unit'?'unit':'bld',e.type,e.owner))+
       '</div><div id="stats">';
     if(e.kind==='res'){
-      s+='<span class="k">Remaining</span> '+Math.max(0,Math.round(e.amount))+'<br>';
+      /* The art was already drawn from memory, but this read the live amount -
+         so selecting a seam or a vent across the map let you watch an enemy
+         Siphon drain it in real time, which is the same scouting-for-free the
+         fog is there to prevent. You get the figure you last saw. */
+      const sh=resShown(e);
+      s+='<span class="k">Remaining</span> '+Math.max(0,Math.round(sh.amount))+
+        (sh.live?'':' <span style="color:#7c9cb4">(last seen)</span>')+'<br>';
+      if(!sh.live&&sh.taken) s+='<span style="color:#ffb43a">Was being drawn when you left</span><br>';
       s+='<span class="k">Yield</span> 8 per trip';
     } else {
       const f=Math.max(0,e.hp/e.maxHp);
