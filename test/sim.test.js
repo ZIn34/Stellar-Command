@@ -452,7 +452,7 @@ test('each doctrine has its own idea of when to commit', () => {
   ok(doc.pact.homely > 0, 'the Pact prefers to fight on its own ground');
 });
 
-test('a Shock Army bot sends Sappers to mend a damaged hall', () => {
+test('a Steel Legion bot sends Sappers to mend a damaged hall', () => {
   /* It used to be unable to repair at all, so the bot was told not to try.
      Now it can, and it should. */
   run('scaleKey="standard"; modeKey="ffa"; terrainKey="open"; facKey="concord"');
@@ -468,7 +468,7 @@ test('a Shock Army bot sends Sappers to mend a damaged hall', () => {
     const n = run('ents.filter(u=>!u.dead&&u.kind==="unit"&&u.owner===1&&u.cmd&&u.cmd.t==="repair").length');
     if (n > peak) peak = n;
   }
-  ok(peak > 0, 'a Shock Army bot put at least one Sapper on the repair');
+  ok(peak > 0, 'a Steel Legion bot put at least one Sapper on the repair');
 });
 
 test('an Allied bot does send Sappers to mend a damaged hall', () => {
@@ -609,7 +609,7 @@ test('there is no limit on how many capital ships you own', () => {
   eq(run('cit.queue.length'), 3, 'all three are in the queue');
 });
 
-test('the Paladin shields what is under it and mends what it hangs over', () => {
+test('the land battleship shields what is under it and mends what it hangs over', () => {
   arena('concord');
   run('var T=mkUnit("titan",0,1200,1200)');
   // a target tough enough to survive the hit, or both just die and prove nothing
@@ -700,7 +700,7 @@ test('the melee unit is cheap enough to open a match with', () => {
     const wd = run('priceOf("unit","warden",0)');
     const d = run('defFor("unit","breaker",0)');
     const purse = run('P[0].m');
-    ok(br.m < wd.m / 2, f + ': cheaper than half a Trooper (' + br.m + ' vs ' + wd.m + ')');
+    ok(br.m < wd.m / 2, f + ': cheaper than half a rifle squad (' + br.m + ' vs ' + wd.m + ')');
     eq(d.sup, 1, f + ': one population, like the other light units');
     ok(Math.floor(purse / br.m) >= 4,
        f + ': you can afford ' + Math.floor(purse / br.m) + ' from your opening purse');
@@ -758,7 +758,7 @@ test('a splashing Pact ship still poisons everything it catches', () => {
   ok(bleeding >= 2, 'both targets in one splash came away bleeding (' + bleeding + ')');
 });
 
-test('the Paladin gathers stragglers but obeys your orders', () => {
+test('the land battleship gathers stragglers but obeys your orders', () => {
   arena('concord');
   run('var k=ents.find(e=>!e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone")');
   run('var cx=k.x+700, cy=k.y+700');
@@ -999,7 +999,7 @@ test('the tutorial teaches the shipyard and the capital ship', () => {
   run('startTutorial()');
   const steps = run('TUT_STEPS.map(function(s){return (typeof s.b==="function")?s.b():s.b;})');
   const yard = steps.findIndex(t => /Proving Ground|Heavy Works|Boneyard/i.test(t));
-  const ship = steps.findIndex(t => /Paladin|Land Dreadnought|Juggernaut/i.test(t));
+  const ship = steps.findIndex(t => /Land Battleship|Siege Dreadnought|Scrap Leviathan/i.test(t));
   ok(yard >= 0, 'there is a step for the shipyard');
   ok(ship > yard, 'and ordering the ship comes after building the yard');
   const last = steps.length - 1;

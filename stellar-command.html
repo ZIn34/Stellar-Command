@@ -135,9 +135,9 @@ body.touch #sideBtns button{height:34px}
 .port img{width:27px;height:27px;object-fit:contain;pointer-events:none}
 .qi img{width:20px;height:20px;object-fit:contain}
 .btn .hk{position:absolute;top:1px;left:3px;font-size:9px;color:#ffcf5a;line-height:1}
-.btn .cost{position:absolute;top:1px;right:3px;font-size:8.5px;line-height:1;color:#7fd0ff;
+.btn .cost{position:absolute;top:1px;right:3px;font-size:8.5px;line-height:1;color:#d8c37a;
   font-variant-numeric:tabular-nums}
-.btn .cost i{font-style:normal;color:#35d18a}
+.btn .cost i{font-style:normal;color:#d1703a}
 .btn .nm{font-size:8px;line-height:1.1;max-width:100%;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;flex:0 0 auto}
 .btn:hover{background:linear-gradient(180deg,#1d3a55,#14283c);border-color:#4bd6ff}
@@ -248,8 +248,8 @@ body.touch #pauseBtn{top:max(8px,env(safe-area-inset-top));left:max(10px,env(saf
 .mrow img{width:30px;height:30px;object-fit:contain;flex:0 0 30px}
 .mrow .mn{font-size:12px;color:#cfe3f2}
 .mrow .md{font-size:10.5px;color:#6f92ac;line-height:1.4}
-.mrow .mc{margin-left:auto;font-size:10.5px;color:#7fd0ff;white-space:nowrap}
-.mrow .mc u{text-decoration:none;color:#35d18a}
+.mrow .mc{margin-left:auto;font-size:10.5px;color:#d8c37a;white-space:nowrap}
+.mrow .mc u{text-decoration:none;color:#d1703a}
 .keys{font-size:clamp(9px,1.4vh,11px);color:#7c9cb4;line-height:1.7;margin-top:5px}
 .touch-only{display:none}
 body.touch .touch-only{display:block}
@@ -664,7 +664,7 @@ const FACTIONS={
      compensating it. It gets no economy on top: the Legion's whole answer is
      raw strength, and the Pact's whole answer is numbers and money. Trying to
      give it both would have blurred the only thing it is. */
-  legion: {n:'SHOCK ARMY',    d:'heavy armour - the thickest plate, fights harder as it burns',
+  legion: {n:'STEEL LEGION',   d:'heavy armour - the thickest plate, fights harder as it burns',
            hp:1.28, dmg:1.1,  sp:.86,  cost:1.18, bt:1.18, eco:1,
            regen:.035,                   // the wounded knit back together out of the fight
            rage:.4,                      // and hit harder the closer they are to dying
@@ -673,7 +673,7 @@ const FACTIONS={
            tr:['+28% armour, +10% firepower','damaged vehicles are recovered out of contact',
                'up to +40% firepower as they burn','installations cook off when destroyed',
                '+2 manpower from every structure that quarters troops']},
-  pact:   {n:'FREE MILITIA',  d:'irregulars - cheap, everywhere, strongest at home',
+  pact:   {n:'DUST MILITIA',   d:'irregulars - cheap, everywhere, strongest at home',
            hp:.8,   dmg:.92,  sp:1.22, cost:.8,  bt:.76,  eco:1.02,
            trickle:.55,                  // every structure draws aurite out of the ground
            groveRegen:.05, groveRange:240,
@@ -827,25 +827,25 @@ const myFoes=()=>[0,1,2,3].filter(o=>o<NPLAY&&TEAMOF[o]!==TEAMOF[0]);
 /* ===================== DEFINITIONS ===================== */
 const UDEF={
   delver:  {n:'Sapper',   hp:60,  sp:118, dmg:5,  rng:18,  cd:1.1, sight:7, m:50,  g:0,  sup:1, bt:12, r:10, worker:true},
-  warden:  {n:'Trooper',   hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
-  bulwark: {n:'Halftrack',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
+  warden:  {n:'Rifle Squad',   hp:55,  sp:100, dmg:7,  rng:114, cd:.85, sight:8, m:50,  g:0,  sup:1, bt:16, r:10, aa:true},
+  bulwark: {n:'Weapons Team',  hp:230, sp:200, dmg:16, rng:122, cd:.425,sight:9, m:300, g:0,  sup:2, bt:32, r:13, aa:true},
   sunderer:{n:'Howitzer', hp:175, sp:68,  dmg:25, rng:172, cd:2.1, sight:9, m:125, g:50, sup:2, bt:30, r:15, splash:46},
   harrower:{n:'Battle Tank', hp:420, sp:96,  dmg:30, rng:92,  cd:.55, sight:8, m:150, g:75, sup:3, bt:34, r:16},
-  talon:   {n:'Gunship',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
+  talon:   {n:'Warplane',    hp:110, sp:168, dmg:13, rng:126, cd:.7,  sight:11,m:125, g:75, sup:2, bt:28, r:12, air:true, aa:true},
   /* The close-quarters unit. Every doctrine has one and they all fight the
      same way - walk in and hit something - but each keeps its doctrine's own
-     habits on top, so a Concord Grenadier digs in and a Pact Lasher poisons. */
+     habits on top, so an Allied flame squad digs in and a Pact Lasher poisons. */
   /* A quarter of what it used to cost, and one population instead of two -
      it is meant to be the unit you open a match with, so it has to be
      affordable before anything else is standing and not eat the tiny
      population you start with. */
-  breaker: {n:'Grenadier',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:23,  g:0,  sup:1, bt:16, r:12},
+  breaker: {n:'Flame Squad',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:23,  g:0,  sup:1, bt:16, r:12},
   /* The capital ship. One statline, three completely different machines built
      on it - see FSTYLE for what each doctrine actually fields. Three times the
      price of the old one and three times the machine: it is meant to be a
      decision you commit to, not a unit you add. Still 10 population, and
      nothing caps how many you own. */
-  titan:   {n:'Paladin',    hp:4500,sp:54,  dmg:156,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true}
+  titan:   {n:'Land Battleship',    hp:4500,sp:54,  dmg:156,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true}
 };
 const BDEF={
   keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'K'},
@@ -2238,7 +2238,7 @@ function gatherStep(u,dt){
       if(u.owner===0) STATS[u.carryType==='m'?'aurite':'ichor']+=got;
       u.carry=0;
       if(u.owner===0) SFX.play('deposit',dep.x,dep.y);
-      if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+'+Math.round(got),c:u.carryType==='m'?'#7fd0ff':'#35d18a'});
+      if(u.owner===0) fx.push({x:dep.x,y:dep.y-dep.h*.4,t:0,dur:.7,k:'txt',s:'+'+Math.round(got),c:u.carryType==='m'?'#d8c37a':'#d1703a'});
       let back=node;
       // keep your own patch unless it died or somebody took the slot while away
       if(!back||back.dead||(back.kind==='res'&&back.amount<=0)||nodeFull(back,u))
@@ -2690,7 +2690,7 @@ function rightClick(wx,wy,queue){
                              :'That supply cache is worked out - raise another '+nameOf('keystone',0));
       SFX.play('deny'); return;
     }
-    if(any){ tutAct('gather'); SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:t.r+8,k:'ping',c:'#7fd0ff'}); return; }
+    if(any){ tutAct('gather'); SFX.play('order'); fx.push({x:t.x,y:t.y,t:0,dur:.5,r:t.r+8,k:'ping',c:'#d8c37a'}); return; }
   }
   if(t&&t.kind==='building'&&t.owner===0&&!t.done){
     let any=false;
@@ -3828,7 +3828,7 @@ function buildInfo(){
     const dispName=e.kind==='res'?(e.type==='vent'?'FUEL WELL':'SUPPLY CACHE')
       :nameOf(e.type,e.owner).toUpperCase();
     infoT.textContent=(isFoe(e.owner,0)?'ENEMY · ':(e.owner>0&&isAlly(e.owner)?'ALLY · ':''))+dispName;
-    const col=TEAM[e.owner]?TEAM[e.owner].c:(e.type==='vent'?'#35d18a':'#7fd0ff');
+    const col=TEAM[e.owner]?TEAM[e.owner].c:(e.type==='vent'?'#d1703a':'#d8c37a');
     let s='<div id="single"><div class="big" style="color:'+col+'">'+
       (e.kind==='res'?(e.type==='vent'?'◈':'◆'):iconTag(e.kind==='unit'?'unit':'bld',e.type,e.owner))+
       '</div><div id="stats">';
@@ -4719,16 +4719,19 @@ function mixHex(a,b,k){
   const r=Math.round(ar+(br-ar)*k), g=Math.round(ag+(bg-ag)*k), bl=Math.round(ab+(bb-ab)*k);
   return '#'+((1<<24)|(r<<16)|(g<<8)|bl).toString(16).slice(1);
 }
-/* Each doctrine forges its own plating: the Concord mills cool blue-grey
-   alloy, the Legion pours rough iron, the Pact grows pale resin shell. The
-   team colour is still mixed in on top so you can tell players apart. */
+/* One ramp per army, and the whole look of a side comes out of it: Allied
+   Command is olive green, the Steel Legion bare silver steel, the Dust
+   Militia brown scrap. Every hull, wall and panel in this file is written
+   as a cool grey-blue and re-graded through these three ramps, so the army
+   reads before you have identified a single unit. The team colour is still
+   mixed in on top so two players on the same army stay apart. */
 const FBUILD={
-  concord:{hi:'#7d854f', mid:'#545930', lo:'#2e3218', mix:.26, scale:1,   acc:'#d6e4a8'},
+  concord:{hi:'#6f9a52', mid:'#41632f', lo:'#22351a', mix:.24, scale:1,   acc:'#b8e08c'},
   /* These were light enough that mixing them with a cyan team colour landed on
      beige rather than ember, and on a washed mint rather than green. Deepen
      and saturate them so the doctrine survives the mix. */
-  legion: {hi:'#8d99a2', mid:'#5c666e', lo:'#2f363b', mix:.17, scale:1.1, acc:'#cfe0ea'},
-  pact:   {hi:'#c2a877', mid:'#8d7446', lo:'#4f3f22', mix:.15, scale:.92, acc:'#ffcf8a'}
+  legion: {hi:'#b2bdc6', mid:'#78838d', lo:'#3e464d', mix:.15, scale:1.1, acc:'#e2ecf4'},
+  pact:   {hi:'#9c7147', mid:'#6a4a2b', lo:'#392717', mix:.15, scale:.92, acc:'#e0b184'}
 };
 /* The structures were all drawn in one grey-blue, so tinting the trim alone
    left every doctrine looking like the Concord. Re-grade the plate greys
@@ -4769,49 +4772,50 @@ function hullSet(owner){
   return {hi:mixHex(f.hi,c,f.mix), mid:mixHex(f.mid,c,f.mix-.04),
           lo:mixHex(f.lo,c,Math.max(0,f.mix-.14)), acc:f.acc};
 }
-/* Doctrine marks. Stats alone never read on the field, so each legion gets a
-   silhouette you can pick out at a glance: Legion grows horns and smoke
-   stacks, the Pact sprouts fronds and a shell, the Concord stays clean and
-   keeps a sensor vane. Drawn before the lighting pass so they sit in it. */
+/* Army marks. Statlines never read on the field, so each army gets kit you
+   can pick out at a glance: the Steel Legion bolts on skirts and runs twin
+   exhaust stacks, the Dust Militia welds scrap plate at angles and carries fuel on
+   the tail, Allied Command stays clean with a sensor vane and a recognition
+   panel. Drawn before the lighting pass so they sit in it. */
 function facMarkUnit(g,R,t,fk,h){
   if(fk==='legion'){
-    g.fillStyle='#2a1d14'; g.strokeStyle=DARK; g.lineWidth=1;
-    poly(g,[[R*.15,-R*.74],[R*1.22,-R*.5],[R*.5,-R*.3]]); g.fill(); g.stroke();
-    poly(g,[[R*.15, R*.74],[R*1.22, R*.5],[R*.5, R*.3]]); g.fill(); g.stroke();
-    g.fillStyle='#38271c';
-    rr(g,-R*1.26,-R*.5,R*.34,R*.3,1.2); g.fill(); g.strokeStyle=DARK; g.stroke();
-    rr(g,-R*1.26, R*.2,R*.34,R*.3,1.2); g.fill(); g.stroke();
-    g.fillStyle='#17100b'; g.globalAlpha=.5;                // soot streaks
-    for(let i=-1;i<=1;i++) rr(g,-R*.9,i*R*.3-1,R*.9,2,1),g.fill();
+    g.fillStyle=facShade('#3d4650',fk); g.strokeStyle=DARK; g.lineWidth=1;
+    rr(g,-R*.5,-R*.98,R*1.1,R*.2,1.5); g.fill(); g.stroke();   // armour skirts
+    rr(g,-R*.5, R*.78,R*1.1,R*.2,1.5); g.fill(); g.stroke();
+    g.fillStyle=facShade('#2a3137',fk);                            // exhaust stacks
+    rr(g,-R*1.2,-R*.52,R*.3,R*.26,1.2); g.fill(); g.strokeStyle=DARK; g.stroke();
+    rr(g,-R*1.2, R*.26,R*.3,R*.26,1.2); g.fill(); g.stroke();
+    g.fillStyle='#14181b'; g.globalAlpha=.5;                    // soot
+    for(let i=-1;i<=1;i++){ rr(g,-R*.9,i*R*.3-1,R*.9,2,1); g.fill(); }
     g.globalAlpha=1;
     glow(g,()=>{ g.fillStyle='#ff8a3d'; g.beginPath();
-      g.arc(-R*1.2,-R*.35,1.7,0,7); g.arc(-R*1.2,R*.35,1.7,0,7); g.fill(); },'#ff8a3d',6);
+      g.arc(-R*1.14,-R*.39,1.6,0,7); g.arc(-R*1.14,R*.39,1.6,0,7); g.fill(); },'#ff8a3d',6);
   } else if(fk==='pact'){
-    g.strokeStyle='#2c4726'; g.lineWidth=2.4; g.lineCap='round';
-    for(let i=-1;i<=1;i+=2){                                 // trailing fronds
-      g.beginPath(); g.moveTo(-R*.5,i*R*.42);
-      g.quadraticCurveTo(-R*1.2,i*R*.78,-R*1.5,i*R*.28); g.stroke();
-      g.beginPath(); g.moveTo(-R*.3,i*R*.6);
-      g.quadraticCurveTo(-R*.8,i*R*1.1,-R*1.1,i*R*.9); g.stroke();
+    g.fillStyle=facShade('#7a6336',fk); g.strokeStyle=DARK; g.lineWidth=1;
+    for(let i=-1;i<=1;i+=2){                                    // scrap plate, askew
+      g.save(); g.translate(-R*.1,i*R*.72); g.rotate(i*.17);
+      rr(g,-R*.44,-R*.13,R*.88,R*.26,1); g.fill(); g.stroke(); g.restore();
     }
+    g.fillStyle=facShade('#5d4b28',fk);                            // jerrycans on the tail
+    for(let i=-1;i<=1;i+=2){ rr(g,-R*1.22,i*R*.3-R*.13,R*.26,R*.26,1.5); g.fill(); g.stroke(); }
+    g.fillStyle='rgba(235,228,200,.14)';                        // tarp lashed over
+    poly(g,[[-R*.72,-R*.3],[-R*.1,-R*.4],[0,R*.34],[-R*.68,R*.26]]); g.fill();
+    g.strokeStyle=facShade('#8e7641',fk); g.lineWidth=1.3; g.lineCap='round';
+    g.beginPath(); g.moveTo(-R*.5,-R*.08); g.lineTo(-R*1.08,-R*.6); g.stroke();
     g.lineCap='butt';
-    const sg=g.createRadialGradient(-R*.18,-R*.18,1,0,0,R*.55);
-    sg.addColorStop(0,'#9bba7c'); sg.addColorStop(1,'#46593a');
-    g.fillStyle=sg; g.beginPath(); g.ellipse(-R*.05,0,R*.55,R*.42,0,0,7); g.fill();
-    g.strokeStyle='#223520'; g.lineWidth=1.2; g.stroke();
-    g.strokeStyle='#2c4726'; g.lineWidth=1;                  // shell ribs
-    for(let i=-1;i<=1;i++){ g.beginPath();
-      g.moveTo(-R*.05+i*R*.2,-R*.38); g.lineTo(-R*.05+i*R*.2,R*.38); g.stroke(); }
-    glow(g,()=>{ g.fillStyle='#b6f08a'; g.beginPath();
-      g.arc(R*.22,0,R*.14,0,7); g.fill(); },'#b6f08a',6);
+    glow(g,()=>{ g.fillStyle='#ffcf8a'; g.beginPath();
+      g.arc(-R*1.08,-R*.63,1.5,0,7); g.fill(); },'#ffcf8a',5);
   } else {
-    g.fillStyle=h.hi; g.strokeStyle=DARK; g.lineWidth=1;     // swept sensor vane
+    g.fillStyle=h.hi; g.strokeStyle=DARK; g.lineWidth=1;        // swept sensor vane
     poly(g,[[-R*.35,-R*.12],[-R*1.1,-R*.52],[-R*1.32,-R*.3],[-R*.6,R*.02]]);
     g.fill(); g.stroke();
+    g.fillStyle='rgba(240,245,225,.72)';                        // recognition panel
+    poly(g,[[-R*.26,-R*.5],[R*.04,-R*.5],[R*.04,-R*.26],[-R*.26,-R*.26]]); g.fill();
     g.fillStyle=t.c; g.globalAlpha=.9;
     poly(g,[[R*.58,-R*.1],[R*.88,0],[R*.58,R*.1],[R*.68,0]]); g.fill(); g.globalAlpha=1;
   }
 }
+
 function facMarkBld(g,hw,hh,t,fk,h){
   if(fk==='legion'){
     g.strokeStyle=DARK; g.lineWidth=1.2;
@@ -4875,25 +4879,37 @@ function facMarkBld(g,hw,hh,t,fk,h){
     glow(g,()=>{ g.fillStyle=t.c; g.beginPath(); g.arc(0,-hh-14,2.4,0,7); g.fill(); },t.c,9);
   }
 }
-/* muzzle flash artwork, dropped in beside the game as flash.png */
-const FLASH=new Image(); let flashOK=false, flashAR=1.42, flashImg=[null,null];
+/* Muzzle flash and tracer artwork, dropped in beside the game as flash.png
+   and bolt.png. Both are warm yellow, which is the whole point - powder
+   flash and tracer are the same colour whoever fires them, so they are
+   nudged toward the firing team's colour rather than hue-rotated onto it.
+   A full rotation turned the yellow cyan and lost the muzzle flash. */
+function tintImg(src,col,k){
+  const w=src.naturalWidth||src.width, h=src.naturalHeight||src.height;
+  const c=newCv(w,h), g=c.getContext('2d');
+  g.drawImage(src,0,0);
+  g.globalCompositeOperation='source-atop';
+  g.globalAlpha=k; g.fillStyle=col; g.fillRect(0,0,w,h);
+  g.globalAlpha=1; g.globalCompositeOperation='source-over';
+  return c;
+}
+/* Keyed on the colour itself, so changing palettes or sides between
+   matches needs no cache clearing. */
+const TINTED={};
+function warmTint(src,own,k){
+  const col=(TEAM[own]||TEAM[0]).c, key=k+col+(src===FLASH?'f':'b');
+  return TINTED[key]||(TINTED[key]=tintImg(src,col,k));
+}
+const FLASH=new Image(); let flashOK=false, flashAR=1.42;
 FLASH.onload=function(){
   flashOK=true; flashAR=FLASH.naturalWidth/FLASH.naturalHeight;
-  flashImg[0]=FLASH;
-  try{
-    const w=FLASH.naturalWidth, h=FLASH.naturalHeight;
-    const r=newCv(w,h), rg=r.getContext('2d');
-    rg.filter='hue-rotate(145deg) saturate(1.4)';       // Legion red
-    rg.drawImage(FLASH,0,0);
-    flashImg[1]=r;
-  }catch(e){ flashImg[1]=FLASH; }
 };
 FLASH.onerror=function(){ flashOK=false; };
 FLASH.src='flash.png';
 /* projectile artwork, dropped in beside the game as bolt.png. Its own heading and
    tip are measured from the pixels, so it points wherever the shot is going. */
 const BOLT=new Image();
-let boltOK=false, boltAng=0, boltTipX=0, boltTipY=0, boltLen=1, boltImg=[null,null];
+let boltOK=false, boltAng=0, boltTipX=0, boltTipY=0, boltLen=1;
 BOLT.onload=function(){
   try{
     const w=BOLT.naturalWidth, h=BOLT.naturalHeight;
@@ -4912,11 +4928,6 @@ BOLT.onload=function(){
     const cx=sx/sa, cy=sy/sa;
     boltAng=Math.atan2(boltTipY-cy,boltTipX-cx);
     boltLen=Math.max(8,Math.hypot(boltTipX-cx,boltTipY-cy)*2);
-    boltImg[0]=BOLT;
-    const r=newCv(w,h), rg=r.getContext('2d');          // Legion tint
-    try{ rg.filter='hue-rotate(145deg) saturate(1.35)'; }catch(e){}
-    rg.drawImage(BOLT,0,0);
-    boltImg[1]=r;
     boltOK=true;
   }catch(e){ boltOK=false; }
 };
@@ -4977,66 +4988,113 @@ function makeUnitSpr(type,owner){
   const stencil=(x,y,sz)=>{ g.fillStyle='rgba(235,245,220,.30)';
     for(let i=0;i<3;i++){ rr(g,x+i*sz*.42,y,sz*.22,sz*.7,.5); g.fill(); } };
 
-  if(type==='breaker'){
-    /* Flame tank. Tracks at the back, one road wheel up front, a ram plate on
-       the nose. The front plate used to be its own bar and read as a slab
-       floating ahead of the hull, so the glacis is inside the hull outline now
-       and a fender ties the front wheel into the body. */
-    const H=R*.56;
-    treads(R*1.3,H,R*.34,6);
-    g.save(); g.translate(R*.6,0); tyres(R*.5,H*.92,R*.2,1); g.restore();
-    g.fillStyle=DARK;                                    // fenders over the wheel
-    rr(g,R*.3,-H-R*.3,R*.62,R*.16,2); g.fill();
-    rr(g,R*.3, H+R*.14,R*.62,R*.16,2); g.fill();
-    poly(g,[[-R*.9,-H],[R*.3,-H],[R*.92,-H*.44],[R*1.02,0],[R*.92,H*.44],[R*.3,H],[-R*.9,H]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
-    g.fillStyle=HULL_HI;                                 // glacis, inside the outline
-    poly(g,[[R*.3,-H*.9],[R*.86,-H*.4],[R*.95,0],[R*.86,H*.4],[R*.3,H*.9]]); g.fill();
+  /* An army man, seen from above: boots, a torso, two arms reaching to the
+     weapon, and a helmet with one bright spot on it. Flat colour, a hard dark
+     outline and a single gloss highlight - that is the whole trick that makes
+     a toy soldier read as a figure at eight pixels tall. */
+  const man=(x,y,sc,kit,turn)=>{
+    const u=R*sc;
+    g.save(); g.translate(x,y); g.rotate(turn||0);
+    g.fillStyle='rgba(0,0,0,.34)';
+    g.beginPath(); g.ellipse(0,u*.12,u*.56,u*.34,0,0,7); g.fill();
+    g.fillStyle=HULL_LO;                                   // legs
+    rr(g,-u*.42,-u*.24,u*.34,u*.48,u*.12); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=.9; g.stroke();
+    g.fillStyle=HULL;                                      // torso
+    rr(g,-u*.22,-u*.36,u*.56,u*.72,u*.22); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
+    g.fillStyle=HULL_LO;                                   // arms
+    rr(g,u*.02,-u*.34,u*.44,u*.17,u*.07); g.fill();
+    rr(g,u*.02, u*.17,u*.44,u*.17,u*.07); g.fill();
+    if(kit==='rifle'){
+      g.fillStyle=DARK; rr(g,u*.18,-u*.07,u*.95,u*.14,1); g.fill();
+      g.fillStyle=t.c;  rr(g,u*1.0,-u*.05,u*.16,u*.1,1); g.fill();
+    } else if(kit==='flame'){
+      g.fillStyle=HULL_LO;                                 // fuel pack
+      rr(g,-u*.62,-u*.26,u*.26,u*.52,u*.1); g.fill();
+      g.strokeStyle=DARK; g.lineWidth=.9; g.stroke();
+      g.fillStyle=DARK; rr(g,u*.18,-u*.09,u*.7,u*.18,1.5); g.fill();
+      glow(g,()=>{ g.fillStyle='#ffb347';                  // pilot light
+        g.beginPath(); g.arc(u*.95,0,u*.14,0,7); g.fill(); },'#ff8a3d',6);
+    } else if(kit==='mg'){
+      g.fillStyle=DARK;                                    // long barrel, up at an angle
+      rr(g,u*.2,-u*.08,u*1.25,u*.16,1); g.fill();
+      rr(g,u*.5,-u*.42,u*.12,u*.84,1); g.fill();           // bipod
+      g.fillStyle=t.c;  rr(g,u*1.3,-u*.06,u*.18,u*.12,1); g.fill();
+    }
+    g.fillStyle=HULL_HI;                                   // helmet
+    g.beginPath(); g.arc(u*.05,0,u*.31,0,7); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
-    g.fillStyle=_sh('#33445a');                          // ram edge
-    poly(g,[[R*1.02,0],[R*.88,-R*.2],[R*.88,R*.2]]); g.fill();
-    g.fillStyle='rgba(235,245,220,.20)';                 // vision slit
-    rr(g,R*.5,-R*.06,R*.28,R*.12,1); g.fill();
-    g.fillStyle=DARK;                                    // open fighting compartment
-    rr(g,-R*.74,-R*.3,R*.88,R*.6,2); g.fill();
-    g.fillStyle=t.c; rr(g,-R*.66,-R*.22,R*.72,R*.44,1.6); g.fill();
-    g.fillStyle=DARK;                                    // short flame projector
-    rr(g,-R*.08,-2.3,R*.88,4.6,1.8); g.fill();
-    g.fillStyle=HULL_HI; rr(g,R*.74,-3,R*.22,6,1.4); g.fill();
-    stencil(-R*.86,-R*.2,R*.32);
+    g.fillStyle='rgba(255,255,255,.42)';                   // the gloss spot
+    g.beginPath(); g.arc(-u*.05,-u*.1,u*.11,0,7); g.fill();
+    g.restore();
+  };
+  if(type==='breaker'){
+    /* Flame squad. Two men going in close, one carrying the fuel pack - the
+       pilot light on the nozzle is the one bright thing on them, so you can
+       pick an assault squad out of a crowd. */
+    man(-R*.3, R*.4,.78,'rifle',.12);
+    man( R*.12,-R*.26,.9,'flame',-.08);
+    g.fillStyle='rgba(235,245,220,.16)';                   // scorched ground
+    g.beginPath(); g.ellipse(R*.9,0,R*.5,R*.3,0,0,7); g.fill();
   } else if(type==='titan'){
-    /* Command vehicle: a super-heavy hull on four bogies with an armoured
-       cupola amidships. facPoly and facRR rebuild the same point list in each
-       army's own language, so one silhouette comes out milled for Allied
-       Command, chamfered for the Shock Army and welded for the Militia. */
-    g.fillStyle=DARK;                                    // bogies
-    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(sg=>{
-      g.save(); g.translate(sg[0]*R*.38,sg[1]*R*.74); g.rotate(sg[1]*.38);
-      rr(g,-R*.48,-R*.1,R*.96,R*.2,R*.08); g.fill(); g.restore();
-    });
-    poly(g,[[R*1.22,0],[R*.58,-R*.5],[-R*.34,-R*.66],[-R*1.02,-R*.3],
-            [-R*1.02,R*.3],[-R*.34,R*.66],[R*.58,R*.5]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=2.1; g.stroke();
-    g.fillStyle=HULL_HI;                                 // spine deck
-    poly(g,[[R*.98,0],[R*.28,-R*.23],[-R*.7,-R*.19],[-R*.7,R*.19],[R*.28,R*.23]]); g.fill();
+    /* Land battleship. The one thing in the game built like a warship: six
+       bogies down each side, three turrets on the centreline with the forward
+       pair superfiring, and a conning tower amidships carrying the radar. It
+       is meant to be unmistakable from across the map. */
+    g.fillStyle=DARK;                                      // running gear
+    for(let i=-2;i<=2;i++){
+      g.save(); g.translate(i*R*.4,-R*.72); rr(g,-R*.2,-R*.13,R*.4,R*.26,R*.1); g.fill(); g.restore();
+      g.save(); g.translate(i*R*.4, R*.72); rr(g,-R*.2,-R*.13,R*.4,R*.26,R*.1); g.fill(); g.restore();
+    }
+    g.fillStyle=_sh('#1b2634');                            // track runs
+    rr(g,-R*1.0,-R*.88,R*2.0,R*.22,R*.08); g.fill();
+    rr(g,-R*1.0, R*.66,R*2.0,R*.22,R*.08); g.fill();
+    g.fillStyle='rgba(235,245,220,.09)';
+    for(let i=-4;i<=4;i++){
+      rr(g,i*R*.2-R*.02,-R*.84,R*.05,R*.14,1); g.fill();
+      rr(g,i*R*.2-R*.02, R*.7, R*.05,R*.14,1); g.fill();
+    }
+    poly(g,[[R*1.3,0],[R*.86,-R*.44],[-R*.5,-R*.6],[-R*1.14,-R*.4],
+            [-R*1.14,R*.4],[-R*.5,R*.6],[R*.86,R*.44]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=2.2; g.stroke();
+    g.fillStyle=HULL_HI;                                   // armoured deck
+    poly(g,[[R*1.08,0],[R*.72,-R*.26],[-R*.5,-R*.34],[-R*.88,-R*.2],
+            [-R*.88,R*.2],[-R*.5,R*.34],[R*.72,R*.26]]); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.4; g.stroke();
-    g.fillStyle=DARK;                                    // turret race
-    rr(g,-R*.44,-R*.78,R*.26,R*1.56,R*.1); g.fill();
-    g.fillStyle=t.c; g.globalAlpha=.8;
-    rr(g,-R*.38,-R*.62,R*.14,R*1.24,R*.07); g.fill(); g.globalAlpha=1;
-    g.fillStyle=DARK;                                    // main gun
-    rr(g,R*.48,-R*.11,R*.82,R*.22,R*.07); g.fill();
-    g.fillStyle=HULL_LO; rr(g,R*1.08,-R*.15,R*.24,R*.3,R*.05); g.fill();
-    g.fillStyle=DARK;                                    // sponson mounts
-    for(let i=-1;i<=1;i+=2){ rr(g,-R*.08,i*R*.46-R*.07,R*.56,R*.14,R*.05); g.fill(); }
-    const cg=g.createRadialGradient(-R*.04,-R*.08,1,0,0,R*.38);
-    cg.addColorStop(0,_lt('#e4eeff')); cg.addColorStop(.45,t.c); cg.addColorStop(1,DARK);
-    glow(g,()=>{ g.fillStyle=cg; g.beginPath(); g.arc(0,0,R*.32,0,7); g.fill(); },t.c,14);
-    g.strokeStyle=DARK; g.lineWidth=1.7; g.beginPath(); g.arc(0,0,R*.32,0,7); g.stroke();
-    stencil(-R*.82,-R*.1,R*.2);
+    g.fillStyle='rgba(235,245,220,.08)';                   // deck plating seams
+    for(let i=-2;i<=2;i++){ rr(g,i*R*.34,-R*.3,R*.04,R*.6,1); g.fill(); }
+    /* Three turrets: A and B superfiring forward, C facing aft. */
+    const turret=(cx,sc,back)=>{
+      g.fillStyle=_sh('#2a3747');
+      g.beginPath(); g.arc(cx,0,R*.3*sc,0,7); g.fill();
+      const tg=g.createRadialGradient(cx-R*.08*sc,-R*.08*sc,1,cx,0,R*.3*sc);
+      tg.addColorStop(0,HULL_HI); tg.addColorStop(1,HULL);
+      g.fillStyle=tg; g.beginPath(); g.arc(cx,0,R*.25*sc,0,7); g.fill();
+      g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
+      g.fillStyle=DARK;                                    // twin barrels
+      const dir=back?-1:1, root=cx+dir*R*.18*sc;
+      rr(g,back?root-R*.74*sc:root,-R*.14*sc,R*.74*sc,R*.09*sc,1); g.fill();
+      rr(g,back?root-R*.74*sc:root, R*.05*sc,R*.74*sc,R*.09*sc,1); g.fill();
+      g.fillStyle=t.c;
+      g.beginPath(); g.arc(cx,0,R*.08*sc,0,7); g.fill();
+    };
+    turret(R*.62,1.0,false);
+    turret(R*.1, 1.15,false);
+    turret(-R*.78,.9,true);
+    g.fillStyle=_sh('#3b4d63');                            // conning tower
+    rr(g,-R*.46,-R*.26,R*.4,R*.52,R*.1); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
+    g.fillStyle=t.c; g.globalAlpha=.9;
+    rr(g,-R*.4,-R*.18,R*.28,R*.36,R*.07); g.fill(); g.globalAlpha=1;
+    g.strokeStyle=_sh('#5c7189'); g.lineWidth=2;           // radar bar
+    g.beginPath(); g.moveTo(-R*.26,-R*.36); g.lineTo(-R*.26,R*.36); g.stroke();
+    glow(g,()=>{ g.fillStyle=_lt('#e4eeff'); g.beginPath();
+      g.arc(-R*.26,0,R*.1,0,7); g.fill(); },t.c,12);
+    stencil(-R*1.0,-R*.1,R*.2);
   } else if(type==='delver'){
     /* Engineer vehicle: an armoured dozer. The blade with its teeth and the
-       jib arm over the back deck are what tell it apart from the APC - without
+       jib arm over the back deck are what tell it apart from the weapons team - without
        them the two were nearly the same box on tracks. */
     const H=R*.5;
     treads(R*1.95,H,R*.34,8);
@@ -5060,77 +5118,61 @@ function makeUnitSpr(type,owner){
       g.arc(R*.16,0,1.9,0,7); g.fill(); },_lt('#9ee9ff'),5);
     stencil(-R*.78,-R*.2,R*.32);
   } else if(type==='warden'){
-    /* Scout car. Four road wheels instead of two, a proper ring turret and a
-       whip aerial: the two-wheel box was the plainest thing on the field and
-       nothing picked it out at a glance. */
-    const H=R*.44;
-    tyres(R*1.75,H,R*.24,4);
-    poly(g,[[-R*.8,-H],[R*.3,-H],[R*.84,-H*.46],[R*.84,H*.46],[R*.3,H],[-R*.8,H]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.4; g.stroke();
-    g.fillStyle=HULL_LO;                                 // sloped bonnet
-    poly(g,[[R*.3,-H*.9],[R*.8,-H*.42],[R*.8,H*.42],[R*.3,H*.9]]); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
-    g.fillStyle='rgba(235,245,220,.12)';                 // deck line
-    rr(g,-R*.7,-H*.78,R*.9,R*.1,1); g.fill();
-    g.fillStyle=HULL_LO;                                 // spare wheel on the tail
-    g.beginPath(); g.arc(-R*.9,0,R*.2,0,7); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
-    g.strokeStyle=HULL_HI; g.lineWidth=1.4; g.lineCap='round';
-    g.beginPath(); g.moveTo(-R*.4,-R*.1); g.lineTo(-R*.98,-R*.66); g.stroke();
-    g.lineCap='butt';
-    g.fillStyle=DARK;                                    // ring turret
-    g.beginPath(); g.arc(-R*.06,0,R*.3,0,7); g.fill();
-    g.fillStyle=HULL; g.beginPath(); g.arc(-R*.06,0,R*.23,0,7); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
-    g.fillStyle=DARK; rr(g,R*.02,-1.5,R*.95,3,1.2); g.fill();
-    g.fillStyle=t.c; rr(g,R*.82,-1.1,R*.2,2.2,1); g.fill();
-    glow(g,()=>{ g.fillStyle=t.c; g.beginPath();
-      g.arc(-R*.06,0,R*.12,0,7); g.fill(); },t.c,6);
+    /* Rifle squad: three men in a loose wedge, point man forward. The old
+       scout car was the plainest thing on the field; three figures with a gap
+       between them read as infantry at any zoom. */
+    man(-R*.42, R*.52,.72,'rifle',.2);
+    man(-R*.46,-R*.5, .72,'rifle',-.2);
+    man( R*.3,  R*.02,.8, 'rifle',0);
   } else if(type==='bulwark'){
-    /* APC. Wheeled and long, with a row of vision ports down each side and a
-       small ring mount - the ports are the detail that keeps it from reading
-       as the engineer vehicle. */
-    const H=R*.52;
-    tyres(R*2.05,H,R*.21,4);
-    poly(g,[[-R*1.05,-H],[R*.55,-H],[R*1.08,-H*.5],[R*1.08,H*.5],[R*.55,H],[-R*1.05,H]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
-    g.fillStyle=HULL_HI;                                 // nose plate
-    poly(g,[[R*.55,-H*.92],[R*1.04,-H*.46],[R*1.04,H*.46],[R*.55,H*.92]]); g.fill();
+    /* Weapons team. A gun shield with a heavy machine gun on a bipod behind
+       it and two men serving it - the shield is what makes this the one that
+       can stand still and be shot at, and the raised barrel says it can
+       reach aircraft. */
+    g.fillStyle='rgba(0,0,0,.3)';
+    g.beginPath(); g.ellipse(0,R*.1,R*1.0,R*.62,0,0,7); g.fill();
+    g.fillStyle=HULL_LO;                                   // sandbag rest
+    rr(g,R*.1,-R*.68,R*.5,R*1.36,R*.14); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
-    g.fillStyle=DARK;                                    // vision ports
-    for(let i=0;i<3;i++){
-      rr(g,-R*.85+i*R*.42,-H*.62,R*.3,H*.26,1); g.fill();
-      rr(g,-R*.85+i*R*.42, H*.36,R*.3,H*.26,1); g.fill();
-    }
-    g.fillStyle=DARK; g.beginPath(); g.arc(-R*.2,0,R*.26,0,7); g.fill();
-    g.fillStyle=HULL; g.beginPath(); g.arc(-R*.2,0,R*.19,0,7); g.fill();
-    g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
-    g.fillStyle=DARK; rr(g,-R*.14,-1.7,R*.62,3.4,1.5); g.fill();
-    g.fillStyle=t.c; rr(g,-R*1.0,-R*.14,R*.18,R*.28,1); g.fill();
-    glow(g,()=>{ g.fillStyle=t.c; g.beginPath();
-      g.arc(-R*.2,0,R*.1,0,7); g.fill(); },t.c,6);
+    g.fillStyle='rgba(235,245,220,.1)';
+    rr(g,R*.14,-R*.6,R*.42,R*.3,R*.1); g.fill();
+    man(-R*.34, R*.46,.78,'rifle',.18);
+    man(-R*.2, -R*.4, .86,'mg',-.1);
+    g.fillStyle=HULL_HI;                                   // gun shield
+    poly(g,[[R*.42,-R*.78],[R*.78,-R*.5],[R*.78,R*.1],[R*.42,R*.2]]); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1.3; g.stroke();
+    g.fillStyle=t.c;
+    poly(g,[[R*.5,-R*.68],[R*.72,-R*.52],[R*.72,-R*.16],[R*.5,-R*.08]]); g.fill();
   } else if(type==='talon'){
-    /* Gunship. Tail boom and rotor disc, so it reads as airborne even without
-       the altitude shadow the renderer puts under it. */
-    g.fillStyle=DARK;
-    rr(g,-R*1.68,-2.4,R*1.0,4.8,2); g.fill();            // tail boom
-    poly(g,[[-R*.8,-R*.18],[-R*1.48,-R*.58],[-R*1.48,-R*.18]]); g.fill();
-    poly(g,[[R*1.12,0],[R*.44,-R*.48],[-R*.74,-R*.4],[-R*.88,0],[-R*.74,R*.4],[R*.44,R*.48]]);
-    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
-    g.fillStyle=DARK;                                    // stub wings with pods
-    rr(g,-R*.34,-R*.92,R*.48,R*.28,2); g.fill();
-    rr(g,-R*.34, R*.64,R*.48,R*.28,2); g.fill();
-    g.fillStyle=HULL_LO;
-    rr(g,-R*.29,-R*.85,R*.38,R*.15,1); g.fill();
-    rr(g,-R*.29, R*.7,R*.38,R*.15,1); g.fill();
-    g.fillStyle=t.c; poly(g,[[R*1.02,0],[R*.38,-R*.28],[R*.38,R*.28]]); g.fill();
-    g.strokeStyle='rgba(225,238,255,.42)'; g.lineWidth=2.3;   // rotor disc
-    for(let i=0;i<4;i++){ const a=i*Math.PI/2+.42;
-      g.beginPath(); g.moveTo(Math.cos(a)*R*.24,Math.sin(a)*R*.24);
-      g.lineTo(Math.cos(a)*R*1.78,Math.sin(a)*R*1.78); g.stroke(); }
-    g.fillStyle=DARK; g.beginPath(); g.arc(0,0,R*.15,0,7); g.fill();
-    glow(g,()=>{ g.fillStyle=_lt('#cdefff'); g.beginPath();
-      g.arc(R*.62,0,R*.12,0,7); g.fill(); },t.c,6);
+    /* Ground attack plane. Swept wings, a tailplane, a bubble canopy and a
+       propeller disc at the nose - a fixed wing silhouette so it never gets
+       mistaken for anything that fights on the ground. */
+    g.fillStyle=HULL_LO;                                   // tailplane
+    poly(g,[[-R*1.3,-R*.5],[-R*1.0,-R*.16],[-R*1.0,R*.16],[-R*1.3,R*.5],[-R*1.42,0]]);
+    g.fill(); g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+    g.fillStyle=HULL;                                      // swept main wings
+    poly(g,[[R*.22,-R*.2],[-R*.3,-R*1.5],[-R*.62,-R*1.5],[-R*.32,-R*.18]]);
+    g.fill(); g.strokeStyle=DARK; g.lineWidth=1.2; g.stroke();
+    poly(g,[[R*.22, R*.2],[-R*.3, R*1.5],[-R*.62, R*1.5],[-R*.32, R*.18]]);
+    g.fill(); g.stroke();
+    g.fillStyle=t.c;                                       // wing bands
+    poly(g,[[-R*.22,-R*1.36],[-R*.46,-R*1.36],[-R*.36,-R*.94],[-R*.14,-R*.94]]); g.fill();
+    poly(g,[[-R*.22, R*1.36],[-R*.46, R*1.36],[-R*.36, R*.94],[-R*.14, R*.94]]); g.fill();
+    g.fillStyle=DARK;                                      // underwing stores
+    rr(g,-R*.5,-R*1.14,R*.44,R*.14,1.5); g.fill();
+    rr(g,-R*.5, R*1.0,R*.44,R*.14,1.5); g.fill();
+    poly(g,[[R*1.0,0],[R*.5,-R*.34],[-R*.95,-R*.28],[-R*1.1,0],[-R*.95,R*.28],[R*.5,R*.34]]);
+    g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
+    g.fillStyle=_sh('#1b2634');                            // canopy
+    poly(g,[[R*.3,0],[R*.06,-R*.2],[-R*.34,-R*.17],[-R*.34,R*.17],[R*.06,R*.2]]); g.fill();
+    g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
+    glow(g,()=>{ g.fillStyle=_lt('#cdefff');
+      poly(g,[[R*.24,0],[R*.04,-R*.13],[-R*.2,-R*.11],[-R*.2,R*.11],[R*.04,R*.13]]);
+      g.fill(); },t.c,5);
+    g.fillStyle=DARK;                                      // spinner
+    g.beginPath(); g.arc(R*1.02,0,R*.14,0,7); g.fill();
+    /* The blades themselves are drawn live in drawUnit so they turn - a
+       cached sprite can only ever hold a stopped propeller. */
   } else if(type==='harrower'){
     /* Battle tank. Wide tracks, a sloped glacis and a cast turret set back off
        centre, which is what makes it read as the heaviest thing on the field. */
@@ -5626,47 +5668,71 @@ function renderTerrain(){
 }
 
 /* ===================== RESOURCE / ENTITY DRAWING ===================== */
+/* Supply comes out of the ground as crates on a pallet, not crystal: the pile
+   gets shorter as it is worked out, which is the same read the shard heights
+   used to give. SUPPLY and FUEL are what the player sees; the entity types are
+   still 'aurite' and 'vent' underneath, because replays and the netcode speak
+   in those. */
 function drawAurite(e,shownAmt){
   const amt=(shownAmt===undefined)?e.amount:shownAmt;
-  const f=clamp(.35+amt/e.max,.35,1), n=(e.id*2654435761>>>0)/4294967296;
+  const f=clamp(amt/e.max,0,1), n=(e.id*2654435761>>>0)/4294967296;
   ctx.save(); ctx.translate(e.x,e.y);
   ctx.fillStyle='rgba(0,0,0,.34)';
-  ctx.beginPath(); ctx.ellipse(2,9,20,7,0,0,7); ctx.fill();
-  const shards=[[-10,3,13],[0,-4,19],[10,2,15],[-5,5,10],[6,6,11]];
-  ctx.save(); ctx.shadowColor='rgba(110,200,255,.6)'; ctx.shadowBlur=9;
-  shards.forEach((s,i)=>{
-    const h=s[2]*(.5+.5*f)*(.85+n*.3), ox=s[0], oy=s[1];
-    ctx.beginPath();
-    ctx.moveTo(ox,oy-h); ctx.lineTo(ox+5.5,oy-h*.25); ctx.lineTo(ox+2.6,oy+4);
-    ctx.lineTo(ox-2.6,oy+4); ctx.lineTo(ox-5.5,oy-h*.25); ctx.closePath();
-    const gr=ctx.createLinearGradient(ox-5,oy-h,ox+5,oy+4);
-    gr.addColorStop(0,'rgba(214,244,255,.98)'); gr.addColorStop(.45,'rgba(96,193,252,.95)');
-    gr.addColorStop(1,'rgba(28,96,170,.95)');
-    ctx.fillStyle=gr; ctx.fill();
-    ctx.strokeStyle='rgba(220,246,255,.6)'; ctx.lineWidth=.9; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(ox,oy-h); ctx.lineTo(ox,oy+3);
-    ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=.8; ctx.stroke();
-  });
-  ctx.restore(); ctx.restore();
+  ctx.beginPath(); ctx.ellipse(2,9,21,8,0,0,7); ctx.fill();
+  ctx.fillStyle='#3c3a2c';                              // pallet
+  rr(ctx,-18,2,36,7,1.5); ctx.fill();
+  ctx.strokeStyle='#241f16'; ctx.lineWidth=1; ctx.stroke();
+  /* Five crates laid out as a pile; the last ones to be drawn are the first
+     to go, so a worked-out cache is visibly down to its last boxes. */
+  const crates=[[-10,-4,11,10],[1,-4,12,10],[-5,-13,11,9],[6,-12,10,8],[-13,-11,9,8]];
+  const keep=Math.max(1,Math.ceil(f*crates.length));
+  for(let k=0;k<keep;k++){
+    const b=crates[k], x=b[0], y=b[1]+(n*1.4-.7), w=b[2], h=b[3];
+    const gr=ctx.createLinearGradient(x,y,x,y+h);
+    gr.addColorStop(0,'#d8c37a'); gr.addColorStop(1,'#8d7b45');
+    ctx.fillStyle=gr; rr(ctx,x,y,w,h,1.5); ctx.fill();
+    ctx.strokeStyle='#2b2517'; ctx.lineWidth=1.1; ctx.stroke();
+    ctx.strokeStyle='rgba(43,37,23,.75)'; ctx.lineWidth=1.4;   // strapping
+    ctx.beginPath(); ctx.moveTo(x+w*.5,y+.5); ctx.lineTo(x+w*.5,y+h-.5); ctx.stroke();
+    ctx.fillStyle='rgba(255,250,220,.22)';                     // lid highlight
+    rr(ctx,x+1,y+1,w-2,h*.3,1); ctx.fill();
+  }
+  ctx.restore();
 }
+/* A fuel well: a concrete pad, a wellhead with a nodding pump and a drum
+   beside it. Vapour rather than a glow, so it does not read as something
+   magical sitting in a field. */
 function drawVent(e){
   ctx.save(); ctx.translate(e.x,e.y);
   ctx.fillStyle='rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(2,6,30,15,0,0,7); ctx.fill();
-  const rim=ctx.createRadialGradient(0,2,6,0,2,28);
-  rim.addColorStop(0,'#22362c'); rim.addColorStop(1,'#16241d');
-  ctx.fillStyle=rim; ctx.beginPath(); ctx.ellipse(0,2,28,16,0,0,7); ctx.fill();
-  ctx.strokeStyle='#2f4a3c'; ctx.lineWidth=2; ctx.stroke();
-  ctx.fillStyle='#08130d'; ctx.beginPath(); ctx.ellipse(0,1,16,8,0,0,7); ctx.fill();
-  ctx.save(); ctx.shadowColor='#35d18a'; ctx.shadowBlur=14;
-  ctx.fillStyle='rgba(53,209,138,.35)'; ctx.beginPath(); ctx.ellipse(0,1,12,6,0,0,7); ctx.fill();
+  const pad=ctx.createRadialGradient(0,2,6,0,2,28);
+  pad.addColorStop(0,'#4a4535'); pad.addColorStop(1,'#2b2820');
+  ctx.fillStyle=pad; ctx.beginPath(); ctx.ellipse(0,2,28,16,0,0,7); ctx.fill();
+  ctx.strokeStyle='#5c5641'; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='#17140e';                              // the bore
+  ctx.beginPath(); ctx.ellipse(0,3,11,6,0,0,7); ctx.fill();
+  ctx.fillStyle='#8a5a2c';                              // wellhead collar
+  rr(ctx,-9,-4,18,8,2); ctx.fill();
+  ctx.strokeStyle='#2b2017'; ctx.lineWidth=1.2; ctx.stroke();
+  const nod=Math.sin(gameTime*1.6)*.26;                 // pump beam, nodding
+  ctx.save(); ctx.translate(-2,-6); ctx.rotate(nod);
+  ctx.fillStyle='#6f6550'; rr(ctx,-14,-2,26,4,1.5); ctx.fill();
+  ctx.strokeStyle='#241f16'; ctx.lineWidth=1.1; ctx.stroke();
+  ctx.fillStyle='#d1703a'; ctx.beginPath(); ctx.arc(11,0,2.6,0,7); ctx.fill();
   ctx.restore();
-  const t=gameTime*.85;
-  for(let i=0;i<(OPT.lowFx?0:4);i++){
-    const p=(t+i*.25)%1;
-    ctx.globalAlpha=(1-p)*.45;
-    ctx.fillStyle='#4ee3a2';
+  ctx.fillStyle='#4e4736'; rr(ctx,-6,-11,8,7,1.5); ctx.fill();   // A-frame
+  ctx.strokeStyle='#241f16'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='#b5612f';                              // drum on the pad
+  rr(ctx,15,-5,9,12,3); ctx.fill();
+  ctx.strokeStyle='#2b2017'; ctx.lineWidth=1.1; ctx.stroke();
+  ctx.strokeStyle='rgba(255,230,190,.2)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(15.5,-1); ctx.lineTo(23.5,-1); ctx.stroke();
+  for(let i=0;i<(OPT.lowFx?0:3);i++){                   // vapour off the bore
+    const p=((gameTime*.55)+i*.33)%1;
+    ctx.globalAlpha=(1-p)*.22;
+    ctx.fillStyle='#cfc3a6';
     ctx.beginPath();
-    ctx.ellipse(Math.sin(t*2.2+i*1.7)*6,-p*34,9*(1-p*.35),5*(1-p*.35),0,0,7);
+    ctx.ellipse(Math.sin(gameTime*1.3+i*1.7)*5,-10-p*24,7*(1+p*.5),4*(1+p*.5),0,0,7);
     ctx.fill();
   }
   ctx.globalAlpha=1; ctx.restore();
@@ -5779,6 +5845,21 @@ function drawUnit(u){
     d.r*(d.air?.85:1.05),d.r*(d.air?.4:.52),0,0,7); ctx.fill();
   ctx.translate(u.x,u.y-lift); ctx.rotate(u.face);
   ctx.drawImage(spr,-sw/2,-sh/2,sw,sh);
+  if(d.air&&!OPT.lowFx){
+    /* Blades turning at the nose. The phase is offset by the unit id so a
+       flight of them does not beat in unison, and two blurred arcs sit
+       behind the blades to sell the disc. */
+    const sp=gameTime*26+u.id*.7, nose=d.r*1.02, span=d.r*.95;
+    ctx.strokeStyle='rgba(228,240,255,.13)'; ctx.lineWidth=d.r*.3;
+    ctx.beginPath(); ctx.arc(nose,0,span*.72,0,7); ctx.stroke();
+    ctx.strokeStyle='rgba(235,245,255,.5)'; ctx.lineWidth=1.8;
+    ctx.lineCap='round';
+    for(let b=0;b<2;b++){
+      const a=sp+b*Math.PI/2, c=Math.cos(a)*span;
+      ctx.beginPath(); ctx.moveTo(nose,-c); ctx.lineTo(nose,c); ctx.stroke();
+    }
+    ctx.lineCap='butt';
+  }
   ctx.restore();
   if(u.flash>0){
     ctx.save(); ctx.globalAlpha=Math.min(.8,u.flash*4); ctx.fillStyle='#fff';
@@ -5789,7 +5870,7 @@ function drawUnit(u){
     ctx.beginPath(); ctx.arc(u.x+d.r*.7,u.y-d.r*.7-lift,2.6,0,7); ctx.fill(); ctx.restore();
   }
   if(d.worker&&u.carry>0){
-    const c=u.carryType==='m'?'#7fd0ff':'#35d18a';
+    const c=u.carryType==='m'?'#d8c37a':'#d1703a';
     ctx.save(); ctx.shadowColor=c; ctx.shadowBlur=8; ctx.fillStyle=c;
     ctx.beginPath(); ctx.arc(u.x,u.y-d.r-6,3.6,0,7); ctx.fill(); ctx.restore();
   }
@@ -5873,7 +5954,7 @@ function render(){
     const f=s.t/s.dur;
     const x=s.x+(s.tx-s.x)*f, y=s.y+(s.ty-s.y)*f;
     if(boltOK&&!OPT.lowFx){
-      const img=boltImg[s.owner===1?1:0]||BOLT;
+      const img=warmTint(BOLT,s.owner,.24);
       const ang=Math.atan2(s.ty-s.y,s.tx-s.x);
       const L=s.big?96:54, sc=L/boltLen;
       ctx.save();
@@ -5883,14 +5964,23 @@ function render(){
       ctx.drawImage(img,-boltTipX*sc,-boltTipY*sc,BOLT.naturalWidth*sc,BOLT.naturalHeight*sc);
       ctx.restore();
       ctx.globalAlpha=1;
-    } else if(s.big){
-      ctx.fillStyle=s.c; ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill();
-      ctx.strokeStyle='rgba(255,220,150,.6)'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(x-(s.tx-s.x)*.05,y-(s.ty-s.y)*.05); ctx.lineTo(x,y); ctx.stroke();
     } else {
-      ctx.strokeStyle=s.c; ctx.lineWidth=1.6; ctx.globalAlpha=.9;
-      ctx.beginPath(); ctx.moveTo(x-(s.tx-s.x)*.09,y-(s.ty-s.y)*.09); ctx.lineTo(x,y); ctx.stroke();
-      ctx.globalAlpha=1;
+      /* A tracer, not a laser: a pale tapered streak trailing back down
+         the flight path with a hot cream core, and a small bead of the
+         firing team's colour at the head so you can still read whose it
+         is in a crowded fight. */
+      const ang=Math.atan2(s.ty-s.y,s.tx-s.x);
+      const L=s.big?34:21, Wd=s.big?3.4:2.1;
+      ctx.save(); ctx.translate(x,y); ctx.rotate(ang);
+      ctx.globalCompositeOperation='lighter';
+      ctx.globalAlpha=.6; ctx.fillStyle='#fff3b0';
+      poly(ctx,[[Wd*1.7,0],[-L,-Wd*.52],[-L*1.3,0],[-L,Wd*.52]]); ctx.fill();
+      ctx.globalAlpha=.95; ctx.fillStyle='#fffbd4';
+      poly(ctx,[[Wd*1.1,0],[-L*.44,-Wd*.3],[-L*.6,0],[-L*.44,Wd*.3]]); ctx.fill();
+      ctx.globalAlpha=.75; ctx.fillStyle=s.c;
+      ctx.beginPath(); ctx.arc(0,0,Wd*.85,0,7); ctx.fill();
+      ctx.restore();
+      ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
     }
   }
   // effects
@@ -5918,10 +6008,22 @@ function render(){
         ctx.rect(-w*.14,-h,w*(.18+.82*grow),h*2);
         ctx.clip();
         ctx.globalAlpha=p<.1?(p/.1):a2;
-        ctx.drawImage(flashImg[f.own===1?1:0]||FLASH,-w*.12,-h/2,w,h);
+        ctx.drawImage(warmTint(FLASH,f.own,.2),-w*.12,-h/2,w,h);
       } else {
-        ctx.globalAlpha=a2*.9; ctx.fillStyle=f.own===1?'#ffc0a8':'#bff0ff';
-        poly(ctx,[[0,0],[f.sc*1.2,-f.sc*.5],[f.sc*2.2,0],[f.sc*1.2,f.sc*.5]]); ctx.fill();
+        /* The same burst drawn in code: orange outer petals, a yellow
+           body and a cream core, so a missing flash.png looks like a gun
+           going off rather than a blue triangle. */
+        const S=f.sc;
+        ctx.globalAlpha=a2*.85; ctx.fillStyle='#e8842a';
+        for(let i=-2;i<=2;i++){ const a3=i*.44;
+          poly(ctx,[[S*.1,0],[Math.cos(a3)*S*2.3,Math.sin(a3)*S*2.3],
+                    [Math.cos(a3+.22)*S*1.2,Math.sin(a3+.22)*S*1.2]]); ctx.fill(); }
+        ctx.globalAlpha=a2*.95; ctx.fillStyle='#ffe23a';
+        poly(ctx,[[0,0],[S*1.05,-S*.6],[S*1.95,-S*.2],[S*1.95,S*.2],[S*1.05,S*.6]]); ctx.fill();
+        ctx.globalAlpha=a2; ctx.fillStyle='#fffbc8';
+        poly(ctx,[[S*.05,0],[S*.72,-S*.32],[S*1.3,0],[S*.72,S*.32]]); ctx.fill();
+        ctx.globalAlpha=a2*.55; ctx.fillStyle=(TEAM[f.own]||TEAM[0]).c;
+        ctx.beginPath(); ctx.arc(S*.12,0,S*.26,0,7); ctx.fill();
       }
       ctx.restore();
       ctx.globalAlpha=1;
@@ -6007,7 +6109,7 @@ function renderMM(){
     if(e.kind==='res'){
       // your memory of the patch, not its live state
       if(resShown(e).amount<=0) continue;
-      mctx.fillStyle=e.type==='vent'?'#35d18a':'#7fd0ff';
+      mctx.fillStyle=e.type==='vent'?'#d1703a':'#d8c37a';
       mctx.fillRect(e.x/TILE*s-1,e.y/TILE*s-1,2.6,2.6);
       continue;
     }
@@ -6615,22 +6717,22 @@ const FNAMES={
      own statline, role and hotkey, so muscle memory carries between armies.
      The Allied names are the ones all prose in this file is written in:
      facText() rewrites them into the other two. Keep them consonant-initial
-     and regular-plural or 'a Rifleman' / 'two Riflemans' comes out wrong. */
-  concord:{delver:'Sapper',    warden:'Trooper',       breaker:'Grenadier',
-           bulwark:'Halftrack',sunderer:'Howitzer',    harrower:'Battle Tank',
-           talon:'Gunship',    titan:'Paladin',
+     and regular-plural, or 'a Trooper' and 'two Troopers' come out wrong. */
+  concord:{delver:'Sapper',    warden:'Rifle Squad',   breaker:'Flame Squad',
+           bulwark:'Weapons Team', sunderer:'Howitzer',harrower:'Battle Tank',
+           talon:'Warplane',   titan:'Land Battleship',
            keystone:'Headquarters', habitat:'Billet',  musterhall:'Barracks',
            siphon:'Refinery',  forgeworks:'Workshop',  watchspire:'Bunker',
            citadel:'Proving Ground'},
-  legion: {delver:'Pioneer',   warden:'Conscript',     breaker:'Assault Trooper',
-           bulwark:'Troop Carrier', sunderer:'Rocket Battery', harrower:'Heavy Tank',
-           talon:'Attack Helo',titan:'Land Dreadnought',
+  legion: {delver:'Pioneer',   warden:'Conscript Squad',breaker:'Breacher Squad',
+           bulwark:'Flak Team',sunderer:'Rocket Battery', harrower:'Heavy Tank',
+           talon:'Strike Plane',titan:'Siege Dreadnought',
            keystone:'Command Post', habitat:'Bunkhouse', musterhall:'Drill Yard',
            siphon:'Fuel Depot',forgeworks:'Tank Works',watchspire:'Pillbox',
            citadel:'Heavy Works'},
-  pact:   {delver:'Digger',    warden:'Irregular',     breaker:'Brawler',
-           bulwark:'Gun Truck',sunderer:'Mortar Truck',harrower:'Scrap Tank',
-           talon:'Scrapwing',  titan:'Juggernaut',
+  pact:   {delver:'Digger',    warden:'Gun Gang',      breaker:'Brawler',
+           bulwark:'Scrap Gunner', sunderer:'Mortar Truck', harrower:'Scrap Tank',
+           talon:'Scrapwing',  titan:'Scrap Leviathan',
            keystone:'Depot',   habitat:'Camp',         musterhall:'Muster Yard',
            siphon:'Fuel Still',forgeworks:'Scrapworks',watchspire:'Watchtower',
            citadel:'Boneyard'}
@@ -6761,14 +6863,14 @@ function menuInit(){
   const rows=[
     ['unit','delver','Hauls supply and fuel, raises every structure.'],
     ['unit','warden','Ranged infantry. The backbone of any push you make.'],
-    ['unit','bulwark','Heavy infantry: twice a Trooper in every stat.'],
+    ['unit','bulwark','Heavy infantry: twice a Rifle Squad in every stat.'],
     ['unit','sunderer','Tracked artillery. Splash damage, needs a Workshop.'],
     ['unit','harrower','Assault walker. Brutal up close, very hard to kill.'],
     ['unit','breaker','Close-quarters. No reach at all, hits hard when it gets there.'],
-    ['unit','talon','Gunship. Flies over terrain and hits ground or air.'],
+    ['unit','talon','Warplane. Flies over terrain and hits ground or air.'],
     ['bld','keystone','Command hub. Trains Sappers, accepts cargo, +10 pop.'],
     ['bld','habitat','+8 population. Build these before you stall.'],
-    ['bld','musterhall','Trains Troopers. Unlocks Workshop and Bunkers.'],
+    ['bld','musterhall','Trains Rifle Squads. Unlocks Workshop and Bunkers.'],
     ['bld','siphon','Built on a fuel well to draw fuel.'],
     ['bld','forgeworks','Trains the heavy units and researches your upgrades.'],
     ['bld','watchspire','Automated defence turret.'],
@@ -7619,14 +7721,14 @@ const TUT_STEPS=[
      if(placing==='musterhall') return 'pick your ground';
      return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='musterhall'&&b.done).length>=1},
-  {b:'Train a Trooper.',
-   h:dv('Click the finished Barracks and pick Trooper from the panel at the bottom.',
-        'Tap the finished Barracks, then tap Trooper in the panel at the bottom.'),
+  {b:'Train a Rifle Squad.',
+   h:dv('Click the finished Barracks and pick Rifle Squad from the panel at the bottom.',
+        'Tap the finished Barracks, then tap Rifle Squad in the panel at the bottom.'),
    focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
      return (sel.length===1&&sel[0]===h)?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
    ok:()=>mineU(u=>u.type==='warden').length>=1||
        mineB(b=>b.type==='musterhall'&&b.queue&&b.queue.length>0).length>0},
-  {b:'Attack-move your Trooper out.',
+  {b:'Attack-move your Rifle Squad out.',
    h:dv('Select it, press A, then click across the map. Attack-move walks there and engages anything on the way.',
         'Select it, tap Attack in the panel, then tap across the map. Attack-move walks there and engages anything on the way.'),
    focus:()=>{ const w=mineU(u=>u.type==='warden')[0];
@@ -7641,9 +7743,9 @@ const TUT_STEPS=[
      if(placing==='watchspire') return 'pick your ground';
      return sel.some(e=>e.kind==='unit'&&UDEF[e.type].worker)?'open the build menu':'select a Sapper'; },
    ok:()=>mineB(b=>b.type==='watchspire'&&b.done).length>=1},
-  {b:'Build a squad: five Troopers.',
+  {b:'Build a squad: five Rifle Squads.',
    h:dv('Queue them from the Barracks. Hold the button to stack the queue, and select several Barracks at once to build from all of them.',
-        'Tap the Barracks, then tap Trooper five times to stack the queue.'),
+        'Tap the Barracks, then tap Rifle Squad five times to stack the queue.'),
    focus:()=>{ const h=mineB(b=>b.type==='musterhall'&&b.done)[0];
      return (sel.length&&sel.every(e=>e.kind==='building'&&e.type==='musterhall'))
        ?{el:'#card .btn[data-hk="W"]'}:(h?{ent:h}:null); },
@@ -7654,7 +7756,7 @@ const TUT_STEPS=[
   /* The three doctrines fight in genuinely different ways now, so there is a
      step about yours - and it is the only step whose win condition depends on
      which one you picked. */
-  {b:()=>({concord:'Dig in: hold your Troopers still and let them shoot.',
+  {b:()=>({concord:'Dig in: hold your Rifle Squads still and let them shoot.',
            legion:'Get in close and trade. You hit harder as you burn.',
            pact:'Make them bleed: hit something and let the wound work.'})[facKey]||
           'Learn what your doctrine does.',
@@ -7662,8 +7764,8 @@ const TUT_STEPS=[
      concord:dv('Allied Command fights from a dug-in line: a unit that has not moved for a moment deals '+
        Math.round((ENTRENCH_DMG-1)*100)+'% more damage. Stop moving before the enemy arrives, do not chase.',
        'Allied Command fights from a dug-in line: a unit that stands still for a moment deals more damage. Stop moving before they arrive.'),
-     legion:dv('The Shock Army has almost no reach and hits far harder for it, so you have to close. It gets stronger the more it burns - a shot-up Conscript hits for nearly half again - and damaged vehicles are recovered once they are out of contact, so trade bodies freely.',
-       'The Shock Army has almost no reach and hits far harder for it. Close the distance. It gets stronger the more it burns, and damaged vehicles are recovered out of contact - so trade bodies freely.'),
+     legion:dv('The Steel Legion has almost no reach and hits far harder for it, so you have to close. It gets stronger the more it burns - a shot-up Conscript hits for nearly half again - and damaged vehicles are recovered once they are out of contact, so trade bodies freely.',
+       'The Steel Legion has almost no reach and hits far harder for it. Close the distance. It gets stronger the more it burns, and damaged vehicles are recovered out of contact - so trade bodies freely.'),
      pact:dv('Every Militia hit leaves a wound that keeps bleeding for '+VENOM_FOR+
        ' seconds. You win long fights, not short ones - trade and withdraw, the bleeding keeps working.',
        'Every Militia hit keeps bleeding for seconds afterwards. You win long fights - trade and withdraw, the bleeding does the rest.')
@@ -7702,15 +7804,15 @@ const TUT_STEPS=[
    ok:()=>{ if(facOf(0).noRepair) return gameTime-(TUT.noFixAt||gameTime)>7;
      const k=tutHome(); return !k||k.hp>=k.maxHp-1; }},
   {b:'Put your army on a control group.',
-   h:dv('Select your Troopers and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
-        'Select your Troopers, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
+   h:dv('Select your Rifle Squads and press Ctrl+1. Pressing 1 brings them straight back, from anywhere on the map.',
+        'Select your Rifle Squads, then tap an empty numbered slot beside the minimap. Tapping it later brings them back.'),
    focus:()=>{ const w=mineU(u=>u.type==='warden')[0]; return w?{ent:w}:null; },
    prog:()=>{ const n=Object.keys(groups).reduce((m,k)=>
        Math.max(m,(groups[k]||[]).filter(e=>e&&!e.dead).length),0);
      return n?('group of '+n):'none set'; },
    ok:()=>Object.keys(groups).some(k=>(groups[k]||[]).filter(e=>e&&!e.dead).length>=3)},
   {b:'Hold the line. Raiders inbound, one airborne.',
-   h:'Troopers, Halftracks and Bunkers can shoot air. Howitzers and Battle Tanks cannot - that is the one hard rule of fighting here.',
+   h:'Rifle Squads, Weapons Teams and Bunkers can shoot air. Howitzers and Battle Tanks cannot - that is the one hard rule of fighting here.',
    enter:()=>{ tutSpawnRaiders(4,true); say('Enemy raiders inbound - one gunship in the air.'); SFX.play('attackOrder'); },
    focus:()=>{ const f=tutFoeUnits()[0]; return f?{ent:f}:null; },
    prog:()=>tutFoeUnits().length+' raiders left',
@@ -7728,7 +7830,7 @@ const TUT_STEPS=[
    ok:()=>{ const sp=mineB(b=>b.type==='siphon'&&b.done);
      return sp.length>0&&mineU(u=>u.cmd.t==='gather'&&u.cmd.node&&sp.indexOf(u.cmd.node)>=0).length>=1; }},
   {b:'Raise a Workshop.',
-   h:dv('Build menu, then F. It costs fuel and unlocks the heavy units - Howitzers, Battle Tanks and Gunships - plus upgrades.',
+   h:dv('Build menu, then F. It costs fuel and unlocks the heavy units - Howitzers, Battle Tanks and Warplanes - plus upgrades.',
         'Tap Build and pick Workshop. It unlocks the heavy units and your upgrades.'),
    focus:()=>tutBuildFocus('forgeworks','F'),
    prog:()=>{ const b=mineB(x=>x.type==='forgeworks')[0];
@@ -7742,9 +7844,9 @@ const TUT_STEPS=[
    focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="A"]'}:(f?{ent:f}:null); },
    ok:()=>UP[0].wep+UP[0].arm>=1||mineB(b=>b.type==='forgeworks'&&b.res).length>0},
-  {b:'Build a Gunship.',
-   h:dv('From the Workshop, press T. Gunships fly straight over rock and anything in the way, and only anti-air can touch them.',
-        'From the Workshop, tap Gunship. Gunships fly over everything, and only anti-air can touch them.'),
+  {b:'Build a Warplane.',
+   h:dv('From the Workshop, press T. Warplanes fly straight over rock and anything in the way, and only anti-air can touch them.',
+        'From the Workshop, tap Warplane. Warplanes fly over everything, and only anti-air can touch them.'),
    focus:()=>{ const f=mineB(b=>b.type==='forgeworks'&&b.done)[0];
      return (sel.length===1&&sel[0]===f)?{el:'#card .btn[data-hk="T"]'}:(f?{ent:f}:null); },
    ok:()=>mineU(u=>u.type==='talon').length>=1||
@@ -7850,7 +7952,7 @@ function tutStep(dt){
   }
   tutHilite();
   TUT.progT-=dt;
-  if(TUT.progT<=0){                     // 'Troopers 2 / 5' as it happens
+  if(TUT.progT<=0){                     // 'Rifle Squads 2 / 5' as it happens
     TUT.progT=.25;
     let pr='';
     if(typeof st.prog==='function'){ try{ pr=st.prog()||''; }catch(e){ pr=''; } }
