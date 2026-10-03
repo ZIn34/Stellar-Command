@@ -469,16 +469,22 @@ test('the same unit has a different statline in each doctrine', () => {
   const seen = {};
   for (const f of ['concord', 'legion', 'pact']) {
     run('FACOF=["' + f + '","' + f + '","' + f + '","' + f + '"]');
-    const d = run('defFor("unit","warden",0)');
-    seen[f] = { rng: d.rng, dmg: d.dmg };
+    const w = run('defFor("unit","warden",0)');
+    const b = run('defFor("unit","breaker",0)');
+    seen[f] = { wRng: w.rng, wDmg: w.dmg, bRng: b.rng, bDmg: b.dmg, name: run('nameOf("breaker",0)') };
   }
-  ok(seen.legion.rng < seen.concord.rng / 2,
-     'the Legion warden is a brawler (' + seen.legion.rng + ' vs ' + seen.concord.rng + ')');
-  ok(seen.legion.dmg > seen.concord.dmg, 'and it hits harder for it');
-  // the charge mechanic was removed; the brawler statline is what remains
+  // the ranged line is shared ground - the Legion is not all melee any more
+  eq(seen.legion.wRng, seen.concord.wRng, 'the Legion keeps its reach');
+  eq(seen.pact.wRng, seen.concord.wRng, 'and so does the Pact');
+  ok(seen.legion.wDmg > seen.concord.wDmg, 'the Legion just hits harder');
+  ok(seen.pact.wDmg < seen.concord.wDmg, 'the Pact trades damage for the wound');
+  // close quarters is one dedicated unit that every doctrine has its own of
+  for (const f of ['concord', 'legion', 'pact'])
+    ok(seen[f].bRng < seen[f].wRng / 3, f + ' melee unit has almost no reach');
+  ok(seen.legion.bDmg > seen.concord.bDmg, "the Legion's is the nastiest");
+  ok(seen.concord.name !== seen.legion.name && seen.legion.name !== seen.pact.name,
+     'three different names: ' + [seen.concord.name, seen.legion.name, seen.pact.name].join(', '));
   ok(!run('FSTYLE.legion.warden.charge'), 'no charge behaviour left on it');
-  eq(seen.pact.rng, seen.concord.rng, 'the Pact keeps its range');
-  ok(seen.pact.dmg < seen.concord.dmg, 'and trades raw damage for the wound');
   run('FACOF=["concord","concord","concord","concord"]');
 });
 

@@ -267,25 +267,23 @@ body.touch .mouse-only{display:none}
 .online button:hover{border-color:#4bd6ff;color:#e8f4ff}
 #settings{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;
   background:rgba(3,7,13,.86)}
-.setbox{width:min(330px,90vw);padding:22px;border:1px solid #24486b;border-radius:12px;
+.setbox{width:min(440px,94vw);padding:20px;border:1px solid #24486b;border-radius:12px;
   background:linear-gradient(180deg,rgba(10,20,32,.98),rgba(6,12,20,.98));box-shadow:0 20px 60px rgba(0,0,0,.6)}
 .setbox h2{font-size:15px;letter-spacing:5px;color:#cfe3f2;font-weight:400;margin-bottom:12px;text-align:center}
 .setbox h3{font-size:9.5px;letter-spacing:3px;color:#4bd6ff;font-weight:400;margin:16px 0 2px;
   border-bottom:1px solid rgba(45,90,128,.5);padding-bottom:4px}
 .setbox h3:first-child{margin-top:0}
-.setscroll{max-height:min(52vh,340px);overflow-y:auto;padding-right:6px}
-.setscroll::-webkit-scrollbar{width:7px}.setscroll::-webkit-scrollbar-thumb{background:#1d3a55;border-radius:4px}
+.setscroll{max-height:min(62vh,520px);overflow-y:auto;padding-right:8px}
+/* The whole panel used to be one 340px window onto 2000px of content behind a
+   7px scrollbar, so the camera, mouse and hotkey controls were simply never
+   found. Pages, and a scrollbar you can see. */
+.setscroll::-webkit-scrollbar{width:11px}
+.setscroll::-webkit-scrollbar-track{background:rgba(8,18,28,.6);border-radius:6px}
+.setscroll::-webkit-scrollbar-thumb{background:#2d5a80;border-radius:6px;border:2px solid #0a1420}
+.setscroll::-webkit-scrollbar-thumb:hover{background:#4bd6ff}
+.setpage[hidden]{display:none}
 .setnote{font-size:9.5px;color:#6f8ca4;line-height:1.5;margin:6px 0 10px}
 #keyList{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
-.krow{display:flex;justify-content:space-between;align-items:center;gap:8px;
-  padding:4px 7px;border:1px solid #1d3a55;border-radius:4px;background:rgba(8,18,28,.6)}
-.krow span{font-size:10px;color:#9fc4de;letter-spacing:1px}
-.krow button{font:inherit;font-size:10px;letter-spacing:1px;min-width:68px;
-  background:rgba(12,26,40,.9);border:1px solid #27506f;color:#dff1ff;
-  border-radius:4px;padding:3px 8px;cursor:pointer}
-.krow button:hover{border-color:#4bd6ff}
-.krow button.capt{border-color:#ffcf5a;color:#ffd98a}
-.krow.clash button{border-color:#ff6b52;color:#ffb49c}
 .srow{display:flex;justify-content:space-between;align-items:center;margin:11px 0;
   font-size:10.5px;letter-spacing:2px;color:#7c9cb4}
 .setbox .tog{display:inline-block;width:42px;height:21px;border-radius:11px;border:1px solid #2d5a80;background:#0d1a28;
@@ -312,6 +310,26 @@ body.touch .mouse-only{display:none}
   letter-spacing:3px;border-radius:6px;cursor:pointer;border:0;color:#04121c;
   background:linear-gradient(180deg,#7fe4ff,#2aa8d8)}
 .setbox button.alt{color:#cfe3f2;background:linear-gradient(180deg,#16293c,#0d1a28);border:1px solid #2d5a80}
+/* These have to come after `.setbox button`, which is display:block;width:100%
+   at the same specificity - that rule was winning and turning the tabs and the
+   key buttons into full-width slabs. */
+#settings .setTabs{display:flex;gap:4px;margin:0 0 12px;flex-wrap:nowrap}
+#settings .setTabs button{display:block;flex:1 1 0;width:auto;margin-top:0;
+  padding:8px 2px;font-size:8.5px;letter-spacing:1px;border-radius:5px;
+  color:#7c9cb4;background:rgba(10,22,34,.9);border:1px solid #1d3a55}
+#settings .setTabs button:hover{border-color:#2d5a80;color:#bcd8ec}
+#settings .setTabs button.on{background:linear-gradient(180deg,#14364e,#0e2436);
+  border-color:#4bd6ff;color:#dff1ff}
+#settings .krow{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:5px 8px;border:1px solid #1d3a55;border-radius:5px;background:rgba(8,18,28,.6)}
+#settings .krow span{font-size:10px;letter-spacing:1px;color:#9fc4de;flex:1 1 auto;text-align:left}
+#settings .krow button{display:block;width:84px;flex:0 0 84px;margin-top:0;
+  padding:5px 6px;font-size:10px;letter-spacing:1px;border-radius:4px;
+  color:#dff1ff;background:rgba(12,26,40,.95);border:1px solid #27506f}
+#settings .krow button:hover{border-color:#4bd6ff}
+#settings .krow button.capt{border-color:#ffcf5a;color:#ffd98a}
+#settings .krow.clash button{border-color:#ff6b52;color:#ffb49c}
+#settings #keyReset{margin-top:12px}
 #lobby{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;
   background:rgba(3,7,13,.86)}
 .lobbox{width:min(360px,90vw);padding:22px;text-align:center;border:1px solid #24486b;border-radius:12px;
@@ -474,31 +492,42 @@ body.touch .mouse-only{display:none}
 <div id="settings">
   <div class="setbox">
     <h2>SETTINGS</h2>
+    <div class="setTabs">
+      <button data-page="audio" class="on">AUDIO</button><button data-page="camera">CAMERA</button>
+      <button data-page="mouse">MOUSE</button><button data-page="display">DISPLAY</button>
+      <button data-page="keys">HOTKEYS</button>
+    </div>
     <div class="setscroll">
-      <h3>AUDIO</h3>
-      <label>MASTER<span id="vMaster">100%</span></label><input type="range" id="sMaster" min="0" max="100">
-      <label>MUSIC<span id="vMusic">70%</span></label><input type="range" id="sMusic" min="0" max="100">
-      <label>EFFECTS<span id="vSfx">50%</span></label><input type="range" id="sSfx" min="0" max="100">
-      <button id="setTest" class="alt">TEST EFFECTS</button>
-      <h3>CAMERA</h3>
-      <div class="srow"><span>EDGE SCROLLING</span><button id="tEdge" class="tog"></button></div>
-      <label>KEYBOARD SCROLL<span id="vScroll">100%</span></label><input type="range" id="sScroll" min="40" max="220">
-      <label>EDGE SCROLL SPEED<span id="vEdgeSpd">100%</span></label><input type="range" id="sEdgeSpd" min="30" max="250">
-      <label>EDGE ZONE<span id="vEdgeZone">22px</span></label><input type="range" id="sEdgeZone" min="8" max="60">
-      <h3>MOUSE</h3>
-      <label>DRAG PAN SENSITIVITY<span id="vDragPan">100%</span></label><input type="range" id="sDragPan" min="30" max="260">
-      <label>ZOOM SPEED<span id="vZoomSpd">100%</span></label><input type="range" id="sZoomSpd" min="30" max="240">
-      <div class="srow"><span>INVERT ZOOM</span><button id="tInvZoom" class="tog"></button></div>
-      <p class="setnote">Hold the middle mouse button and drag to pan the camera.</p>
-      <h3>DISPLAY</h3>
-      <div class="srow"><span>HEALTH BARS</span>
-        <span class="seg"><button data-hp="damaged">HURT</button><button data-hp="always">ALL</button><button data-hp="never">OFF</button></span></div>
-      <div class="srow"><span>CONTROL HINTS</span><button id="tHints" class="tog"></button></div>
-      <div class="srow"><span>REDUCED EFFECTS</span><button id="tLowFx" class="tog"></button></div>
-      <h3>HOTKEYS</h3>
-      <p class="setnote">Click a key, then press the one you want. Esc cancels, Backspace restores the default.</p>
-      <div id="keyList"></div>
-      <button id="keyReset" class="alt">RESET ALL HOTKEYS</button>
+      <div class="setpage" data-page="audio">
+        <label>MASTER<span id="vMaster">100%</span></label><input type="range" id="sMaster" min="0" max="100">
+        <label>MUSIC<span id="vMusic">70%</span></label><input type="range" id="sMusic" min="0" max="100">
+        <label>EFFECTS<span id="vSfx">50%</span></label><input type="range" id="sSfx" min="0" max="100">
+        <button id="setTest" class="alt">TEST EFFECTS</button>
+      </div>
+      <div class="setpage" data-page="camera" hidden>
+        <div class="srow"><span>EDGE SCROLLING</span><button id="tEdge" class="tog"></button></div>
+        <label>KEYBOARD SCROLL<span id="vScroll">100%</span></label><input type="range" id="sScroll" min="40" max="220">
+        <label>EDGE SCROLL SPEED<span id="vEdgeSpd">100%</span></label><input type="range" id="sEdgeSpd" min="30" max="250">
+        <label>EDGE ZONE<span id="vEdgeZone">22px</span></label><input type="range" id="sEdgeZone" min="8" max="60">
+        <p class="setnote">Edge scrolling pans the camera when the pointer reaches the edge of the screen. The zone is how wide that strip is.</p>
+      </div>
+      <div class="setpage" data-page="mouse" hidden>
+        <label>DRAG PAN SENSITIVITY<span id="vDragPan">100%</span></label><input type="range" id="sDragPan" min="30" max="260">
+        <label>ZOOM SPEED<span id="vZoomSpd">100%</span></label><input type="range" id="sZoomSpd" min="30" max="240">
+        <div class="srow"><span>INVERT ZOOM</span><button id="tInvZoom" class="tog"></button></div>
+        <p class="setnote">Hold the middle mouse button and drag to pan the camera.</p>
+      </div>
+      <div class="setpage" data-page="display" hidden>
+        <div class="srow"><span>HEALTH BARS</span>
+          <span class="seg"><button data-hp="damaged">HURT</button><button data-hp="always">ALL</button><button data-hp="never">OFF</button></span></div>
+        <div class="srow"><span>CONTROL HINTS</span><button id="tHints" class="tog"></button></div>
+        <div class="srow"><span>REDUCED EFFECTS</span><button id="tLowFx" class="tog"></button></div>
+      </div>
+      <div class="setpage" data-page="keys" hidden>
+        <p class="setnote">Click a key, then press the one you want. Esc cancels, Backspace restores the default.</p>
+        <div id="keyList"></div>
+        <button id="keyReset" class="alt">RESET ALL HOTKEYS</button>
+      </div>
     </div>
     <button id="setClose">CLOSE</button>
   </div>
@@ -6868,6 +6897,20 @@ function optApply(){
     b.classList.toggle('on',b.dataset.hp===OPT.hpBars));
 }
 let hintFaded=false;
+/* One page at a time. Everything below the first screenful was unreachable
+   before this, which is why the hotkey list and the edge-scroll sliders might
+   as well not have existed. */
+let setPageNow='audio';
+function setPage(p){
+  setPageNow=p;
+  document.querySelectorAll('.setpage').forEach(el=>{ el.hidden=el.dataset.page!==p; });
+  document.querySelectorAll('.setTabs button').forEach(b=>{
+    b.classList.toggle('on',b.dataset.page===p);
+  });
+  const sc=document.querySelector('.setscroll');
+  if(sc) sc.scrollTop=0;
+  if(p==='keys') keyListRender();
+}
 function settingsOpen(){
   const el=document.getElementById('settings');
   const g=id=>document.getElementById(id);
@@ -6879,7 +6922,7 @@ function settingsOpen(){
   g('sEdgeZone').value=Math.round(OPT.edgeZone);
   g('sDragPan').value=Math.round((OPT.dragPan||1)*100);
   g('sZoomSpd').value=Math.round((OPT.zoomSpd||1)*100);
-  keyListRender();
+  setPage(setPageNow);
   optApply();
   el.style.display='flex';
 }
@@ -6954,6 +6997,9 @@ function settingsInit(){
   g('tInvZoom').onclick=()=>{ OPT.invZoom=!OPT.invZoom; SFX.play('click'); optApply(); optSave(); };
   g('keyReset').onclick=()=>{ OPT.keys={}; SFX.play('click');
     keyListRender(); refreshUI(); optSave(); say('Hotkeys restored to defaults'); };
+  document.querySelectorAll('.setTabs button').forEach(b=>{
+    b.onclick=()=>{ SFX.play('click'); setPage(b.dataset.page); };
+  });
   g('tEdge').onclick=()=>{ OPT.edge=!OPT.edge; SFX.play('click'); optApply(); optSave(); };
   g('tHints').onclick=()=>{ OPT.hints=!OPT.hints; hintFaded=false; SFX.play('click'); optApply(); optSave(); };
   g('tLowFx').onclick=()=>{ OPT.lowFx=!OPT.lowFx; SFX.play('click'); optApply(); optSave(); };
@@ -7117,18 +7163,24 @@ const TUT_STEPS=[
      return (sel.length===1&&sel[0]===k)?{el:'#card .btn[data-hk="D"]'}:(k?{ent:k}:null); },
    prog:()=>Math.max(0,mineU(u=>u.type==='delver').length-(TUT.baseD||0))+' / 3 trained',
    ok:()=>mineU(u=>u.type==='delver').length>=(TUT.baseD||0)+3},
+  /* Selection has to come first. The idle button hands you a pile of
+     workers and expects you to give them an order, which is useless as
+     the first thing you are ever asked to do - you have not been shown
+     how to select or command anything yet. */
+  {b:()=>'Select the '+nameOf('delver',0)+' that is lit up.',
+   h:dv('Click it, or drag a box around it with the left mouse button. F2 grabs your whole army at once. Delvers mine AND build, so nothing goes up without one selected.',
+        'Tap it, or press and hold on open ground and drag a box around it. Delvers mine AND build, so nothing goes up without one selected. One finger drags the camera, two fingers pinch to zoom.'),
+   focus:()=>{ const u=mineU(x=>UDEF[x.type].worker)[0]; return u?{ent:u}:null; },
+   prog:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length+' selected',
+   ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length>=1},
   {b:'Use the idle button to put them to work.',
    h:dv('New Delvers stand around doing nothing. The amber button by the minimap counts them - click it, or press F1, then send them to a crystal.',
         'New Delvers stand around doing nothing. The amber button by the minimap counts them - tap it, then tap a crystal.'),
    focus:()=>(TUT.acts.idle||0)<1?{el:'#idle'}:(()=>{ const r=tutNearestRes('aurite'); return r?{ent:r}:null; })(),
    prog:()=>idleWorkers().length+' still idle',
    ok:()=>(TUT.acts.idle||0)>=1&&idleWorkers().length===0},
-  {b:'Select some Delvers - they are your builders.',
-   h:dv('Drag a box around a few with the left mouse button, or press F2 to grab everything you have. Delvers mine AND build, so nothing goes up without one selected.',
-        'Press and hold on open ground for a moment, then drag a box around a few. Delvers mine AND build, so nothing goes up without one selected. One finger drags the camera, two fingers pinch to zoom.'),
-   focus:()=>{ const u=mineU(x=>UDEF[x.type].worker)[0]; return u?{ent:u}:null; },
-   prog:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length+' Delvers selected',
-   ok:()=>sel.filter(e=>e.kind==='unit'&&e.owner===0&&UDEF[e.type].worker).length>=2},
+  /* It asks for one, because one is what the ring is pointing at - asking for
+     "some" while highlighting a single unit just reads as broken. */
   {b:'Raise a Habitat.',
    h:dv('Press B for the build menu, pick Habitat, then click a clear patch of ground. It lifts your population cap.',
         'Tap Build in the bottom panel, pick Habitat, then tap a clear patch of ground. It lifts your population cap.'),
