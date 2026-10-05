@@ -111,6 +111,29 @@ body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
 #edBldBar{display:none}
 #edBldBar.on{display:flex}
 #edSizeBar button.on{color:#f5f2e9;border-color:#c7b583;background:#2b2619}
+#library{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;
+  align-items:center;justify-content:safe center;gap:10px;background:#0d0c08;
+  overflow-y:auto;overflow-x:hidden;padding:14px 12px}
+#library h2{font-size:13px;letter-spacing:5px;color:#c7b583;font-weight:400}
+#libFind input{font-family:inherit;font-size:11px;width:min(260px,60vw);padding:5px 8px;
+  color:#e8e4d9;background:#16140e;border:1px solid #4c4533;border-radius:5px}
+#libMsg{font-size:10px;letter-spacing:1px;color:#a49d8c;min-height:13px;text-align:center;
+  max-width:min(900px,94vw)}
+#libMsg.bad{color:#ff9d7a}
+#libMsg.good{color:#9fd98c}
+#libList{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+  max-width:min(980px,96vw)}
+#libList .lc{display:flex;flex-direction:column;gap:5px;padding:8px 10px;width:218px;
+  border:1px solid #4c4533;border-radius:7px;background:#1a1810}
+#libList .lc b{font-size:11px;letter-spacing:1px;color:#e8e4d9;font-weight:400;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#libList .lc i{font-size:9px;color:#7d7765;font-style:normal;letter-spacing:.5px}
+#libList .lr{display:flex;gap:5px;flex-wrap:wrap}
+#libList .lc button{font-family:inherit;font-size:9px;letter-spacing:1px;
+  padding:4px 7px;cursor:pointer;color:#cbc4b1;background:#16140e;
+  border:1px solid #4c4533;border-radius:4px}
+#libList .lc button:hover{border-color:#c7b583}
+#libList .lc button.liked{color:#ffc24a;border-color:#8a7540}
 #edBldBar select{font-family:inherit;font-size:10px;letter-spacing:1px;
   padding:5px 7px;color:#e8e4d9;background:#16140e;
   border:1px solid #4c4533;border-radius:5px}
@@ -586,6 +609,7 @@ body.touch .mouse-only{display:none}
       <button id="btnJoin">JOIN</button>
       <button id="btnSettings">SETTINGS</button>
       <button id="btnMapBuilder">MAP BUILDER</button>
+      <button id="btnLibrary">MAP LIBRARY</button>
       <button id="btnTutorial">TUTORIAL</button>
       <button id="btnShop">SHOP</button>
       <button id="btnReplay">WATCH REPLAY</button>
@@ -714,6 +738,22 @@ body.touch .mouse-only{display:none}
   </div>
   <input id="edCode" placeholder="paste a share code here, then LOAD CODE" spellcheck="false">
   <div id="edList"></div>
+</div>
+<div id="library">
+  <h2>MAP LIBRARY</h2>
+  <div class="edTabs" id="libTabs">
+    <button data-page="browse" class="on">BROWSE</button>
+    <button data-page="mine">PUBLISHED BY ME</button>
+    <button data-page="saved">ON THIS DEVICE</button>
+  </div>
+  <div class="edBar" id="libFind">
+    <input id="libQ" placeholder="search by name" spellcheck="false">
+    <button id="libGo">SEARCH</button>
+    <button id="libRandom">SHOW ME SOMETHING</button>
+  </div>
+  <div id="libMsg"></div>
+  <div id="libList"></div>
+  <div class="edBar"><button id="libDone">BACK</button></div>
 </div>
 <div id="shop">
   <div class="shopBox">
@@ -4319,6 +4359,9 @@ window.addEventListener('keydown',e=>{
   if(k==='escape'&&getComputedStyle(document.getElementById('settings')).display!=='none'){
     settingsClose(); e.preventDefault(); return;
   }
+  if(k==='escape'&&getComputedStyle(document.getElementById('library')).display!=='none'){
+    libClose(); e.preventDefault(); return;
+  }
   if(k==='escape'){
     /* Escape is a cancel key, the way it is in StarCraft: it backs out of
        placement, a pending order and the build submenu, and failing that it
@@ -4941,7 +4984,7 @@ function newAI(){ return {
      one building, then the next. A bot had no such limit and filled every
      queue in the frame the money landed, which is why a Recruit still
      macroed like a professional. */
-  acts:2, thrT:0
+  thrT:0
 }; }
 const AIS=[null,null,null,null];
 let BOTS=[false,true,false,false];
@@ -5204,30 +5247,16 @@ function aiRun(AI,ME,dt){
        mGate - an amount of aurite, scaled with what things actually cost */
   const PACE=BLITZ?2:1;
   const tGate=v=>v/PACE;
-  /* Actions per minute, the way a player has them.
-     Only the burst cap earns its place here. What made a bot read as a
-     professional was never how much it got done over a match - it was six
-     queues and four foundations all starting in the same frame. A small
-     burst means one thing at a time, in order, like someone with one
-     mouse, and that is the whole of the tell.
-     Using the rate as a throughput limit was two failed attempts: first
-     it made every setting sluggish, then, raised, it still left them
-     feeble, because a bot starved of actions loses fights, raises the
-     army it wants before attacking again, and goes quiet. So the rate is
-     now well clear of the binding constraint on every setting, and how
-     hard a bot plays comes from the knobs that should decide it - the gap
-     between foundations, how many it will have open at once, how often it
-     thinks, how long before it first attacks, its economy and its worker
-     count. Scales with pace, so Blitz still moves. */
-  const APM=DIFF.apm===undefined?34:DIFF.apm;
-  AI.acts=Math.min(DIFF.burst===undefined?3:DIFF.burst,
-                   (AI.acts||0)+dt*PACE*APM/60);
-  /* Only a decision that actually happened costs attention. Being too poor
-     to pay is not a click. */
-  const botTrain=(b,type)=>{
-    if(AI.acts<1) return false;
-    const r=tryTrain(b,type); if(r) AI.acts-=1; return r;
-  };
+  /* There was an action budget here, meant to stop a bot starting six
+     things in one frame. It is gone, and the reason is worth keeping:
+     every action the bot took came out of one pool, and the worker block
+     below runs first and always wants something, so with a small pool it
+     spent the whole allowance on Sappers and the production loop below
+     never got a turn. Bots stopped building fighting units at all.
+     The thing it was supposed to fix is a construction problem, and
+     buildGap and siteCap already fix it properly: a minimum gap between
+     starting structures, and a limit on how many can be unfinished at
+     once. Those cost nothing anywhere else. */
   const mGate=v=>Math.max(1,Math.round(v*COST_RATE));
   /* Worked out here rather than at the point of use, because the savings plan
      below has to know whether an expansion is wanted before anything has had a
@@ -5319,9 +5348,8 @@ function aiRun(AI,ME,dt){
   const startB=(type,x,y,crew)=>{
     if(AI.t<(AI.nextBuild||0)) return false;
     if(sitesOpen()>=siteCap()) return false;
-    if(AI.acts<1) return false;
     const okS=startBuild(type,x,y,ME,crew);
-    if(okS){ AI.nextBuild=AI.t+buildGap(); AI.acts-=1; }
+    if(okS) AI.nextBuild=AI.t+buildGap();
     return !!okS;
   };
   const put=(type,anchor,bias)=>{
@@ -5410,7 +5438,7 @@ function aiRun(AI,ME,dt){
     const cores=bs.filter(b=>b.type==='keystone'&&b.done&&b.queue.length<2)
       .sort((a,b2)=>(lineLoad(a)/Math.max(1,mineCap(a)))-(lineLoad(b2)/Math.max(1,mineCap(b2))));
     const pick=cores.find(c=>!lineFull(c))||cores[0];
-    if(pick) botTrain(pick,'delver');
+    if(pick) tryTrain(pick,'delver');
   }
 
   /* ---- tech and production capacity ---- */
@@ -5497,7 +5525,7 @@ function aiRun(AI,ME,dt){
     if(b.type==='citadel'){
       const tc=priceOf('unit','titan',ME);
       if(!b.queue.length&&_ships<_shipCap&&
-         P[ME].m>=tc.m&&P[ME].g>=tc.g&&botTrain(b,'titan')){ AI.saveSince=0; continue; }
+         P[ME].m>=tc.m&&P[ME].g>=tc.g&&tryTrain(b,'titan')){ AI.saveSince=0; continue; }
       /* Moving the Vanguard onto this list meant no bot ever built one:
          this branch trained a capital ship or nothing. It is the cheaper
          thing to do with a Proving Ground that is standing idle, so it
@@ -5506,7 +5534,7 @@ function aiRun(AI,ME,dt){
         const cap=(DIFF.vans===undefined?2:DIFF.vans);
         const have=us.filter(u=>u.type==='vanguard').length;
         const vc=priceOf('unit','vanguard',ME);
-        if(have<cap&&P[ME].m>=vc.m&&P[ME].g>=vc.g) botTrain(b,'vanguard');
+        if(have<cap&&P[ME].m>=vc.m&&P[ME].g>=vc.g) tryTrain(b,'vanguard');
       }
       continue;
     }
@@ -5530,7 +5558,7 @@ function aiRun(AI,ME,dt){
       // answer enemy air with air, otherwise keep the ground mix rolling
       const foeAir=ents.some(e=>!e.dead&&e.kind==='unit'&&isFoe(e.owner,ME)&&UDEF[e.type].air);
       const want=(foeAir&&tl<4)?'talon':(tl<2&&AI.t>tGate(240)?'talon':(hr<sn?'harrower':'sunderer'));
-      botTrain(b,want); continue;
+      tryTrain(b,want); continue;
     }
     if(savingUp) continue;                      // banking for the capital ship
     if(P[ME].m>=mGate(workers.length<8?150:55)){
@@ -5544,7 +5572,7 @@ function aiRun(AI,ME,dt){
       const wd=us.filter(u=>u.type==='warden').length;
       const want=(AI.t>tGate(35)&&br*2<wd&&P[ME].m>=brCost*2)?'breaker'
                 :((P[ME].m>=mGate(380)&&AI.t>tGate(170))?'bulwark':'warden');
-      botTrain(b,want);
+      tryTrain(b,want);
     }
   }
 
@@ -7906,15 +7934,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{buildGap:20, sites:1, apm:240, burst:1, vans:1, refits:0, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, sites:1, vans:1, refits:0, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{buildGap:12, sites:2, apm:240, burst:2, vans:2, refits:1, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, sites:2, vans:2, refits:1, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:6, sites:3, apm:240, burst:3, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:6, sites:3, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
@@ -8233,13 +8261,16 @@ function menuInit(){
   manRender();
   idleTitle();
   document.getElementById('deploy').onclick=()=>{
-    /* Whether a scenario is in play is the mode's business, not this
-       button's - clearing it here threw away the one you just picked. */
-    modeChoose(modeKey);
+    /* The board is the scale's business now, so this re-applies the scale.
+       It used to call modeChoose, which was where a scenario lived; after
+       the move that call did nothing and a board loaded from storage could
+       be left over from a scale that is no longer selected. */
+    scaleChoose(scaleKey);
     SFX.unlock(); goFullscreen(); SFX.play('deploy'); startGame(diffKey); };
   const _mb=document.getElementById('btnMapBuilder');
   if(_mb) _mb.onclick=()=>{ SFX.play('click'); edOpen(); };
   edInit();
+  libInit();
   lobbyInit();
   requestAnimationFrame(menuFrame);
 }
@@ -8364,6 +8395,372 @@ document.getElementById('idle').onclick=function(){ SFX.play('click'); selectIdl
 window.addEventListener('pointerdown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 window.addEventListener('keydown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 musicInit(); updSnd(); musicPlay();
+/* ===================== MAP LIBRARY =====================
+   Maps other people made, and the ones you published.
+
+   The whole game is one HTML file on a static host, so there is no server of
+   ours in this: the browser talks to Firestore directly, as an anonymous
+   signed-in user, and the security rules are the only thing holding the line.
+   That shapes what is here. The owner of a map is whatever the signed-in
+   token says, never what the client sends. Likes are one document per person
+   counted with an aggregation query, because a counter field is a number any
+   caller could set to anything and there is no way to enforce an increment
+   from a browser.
+
+   The SDK is fetched from gstatic the first time the library is opened - the
+   only thing in this file that is loaded from anywhere else. Everything below
+   is written so that a failed fetch, a missing config or a refused read is a
+   message in this one panel and nothing more: the rest of the game neither
+   knows nor cares. */
+
+/* The web config from the Firebase console. The apiKey is not a secret: it
+   names the project rather than authorising anything, and Google intends it
+   to sit in public client code - which this is, since the whole game is one
+   file on a static host. The security rules are what protect the data, and
+   they are in firestore.rules beside this file.
+   measurementId is left out on purpose: that is for Analytics, which would
+   mean loading another script and tracking players, and the library does
+   not need either. */
+const FB_CFG = {
+  apiKey: 'AIzaSyDeBMDpWsntjCyA83hwTPB2bybOzO5m8Ms',
+  authDomain: 'field-craft.firebaseapp.com',
+  projectId: 'field-craft',
+  storageBucket: 'field-craft.firebasestorage.app',
+  messagingSenderId: '55577617627',
+  appId: '1:55577617627:web:d51fa9503e2d20405b18fe'
+};
+const FB_VER = '11.1.0';
+
+const LIB = {db:null, uid:null, fs:null, ready:false, tab:'browse', rows:[], err:null};
+
+function libConfigured(){ return !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId); }
+
+/* One connection, made on first use and kept. Anonymous sign-in gives each
+   browser a durable id, which is what makes "mine" and one-like-each work
+   without asking anybody to make an account. */
+async function libConnect(){
+  if(LIB.ready) return true;
+  if(!libConfigured()){ LIB.err='not-configured'; return false; }
+  try{
+    const base='https://www.gstatic.com/firebasejs/'+FB_VER+'/';
+    const [app,auth,fs]=await Promise.all([
+      import(base+'firebase-app.js'),
+      import(base+'firebase-auth.js'),
+      import(base+'firebase-firestore.js')
+    ]);
+    const a=app.getApps().length?app.getApps()[0]:app.initializeApp(FB_CFG);
+    const au=auth.getAuth(a);
+    const cred=au.currentUser||(await auth.signInAnonymously(au)).user;
+    LIB.fs=fs; LIB.db=fs.getFirestore(a); LIB.uid=cred.uid;
+    LIB.ready=true; LIB.err=null;
+    return true;
+  }catch(e){
+    LIB.err=String(e&&e.message||e);
+    return false;
+  }
+}
+
+function libSay(t,cls){
+  const el=document.getElementById('libMsg');
+  if(!el) return;
+  el.textContent=t||''; el.className=cls||'';
+}
+
+/* What a card needs, for a row that came from Firestore. */
+function libRowOf(d){
+  const v=d.data()||{};
+  return {id:d.id, name:String(v.name||'Untitled'), code:String(v.code||''),
+          seats:v.seats|0||2, size:v.size|0||112, owner:v.owner||'',
+          pub:v.public===true, likes:null, liked:false};
+}
+
+/* Random public maps. Firestore has no "random", so every map carries a fixed
+   random key and this takes a slice from a random point, wrapping round the
+   end so the maps with the lowest keys are reachable too. */
+async function libRandom(n){
+  if(!await libConnect()) return null;
+  const F=LIB.fs, col=F.collection(LIB.db,'maps'), r=Math.random();
+  const grab=async(op,val,dir)=>{
+    const q=F.query(col,F.where('public','==',true),F.where('rnd',op,val),
+                    F.orderBy('rnd',dir),F.limit(n));
+    return (await F.getDocs(q)).docs;
+  };
+  let docs=await grab('>=',r,'asc');
+  if(docs.length<n){
+    const more=await grab('<',r,'asc');
+    docs=docs.concat(more.slice(0,n-docs.length));
+  }
+  return docs.map(libRowOf);
+}
+
+/* Prefix search on a lower-cased copy of the name. Firestore cannot do
+   substring or fuzzy matching, so "des" finds Desert Pass and not Red Desert.
+   Saying that in the panel is better than pretending otherwise. */
+async function libSearch(text){
+  if(!await libConnect()) return null;
+  const q0=String(text||'').trim().toLowerCase();
+  if(!q0) return [];
+  const F=LIB.fs;
+  const q=F.query(F.collection(LIB.db,'maps'),
+    F.where('public','==',true), F.orderBy('nameLower'),
+    F.startAt(q0), F.endAt(q0+'\uf8ff'), F.limit(30));
+  return (await F.getDocs(q)).docs.map(libRowOf);
+}
+
+async function libMine(){
+  if(!await libConnect()) return null;
+  const F=LIB.fs;
+  const q=F.query(F.collection(LIB.db,'maps'),
+    F.where('owner','==',LIB.uid), F.orderBy('createdAt','desc'), F.limit(50));
+  return (await F.getDocs(q)).docs.map(libRowOf);
+}
+
+/* Counted, not stored. One read per thousand likes, and nobody can lie. */
+async function libLikes(rows){
+  if(!LIB.ready||!rows||!rows.length) return;
+  const F=LIB.fs;
+  await Promise.all(rows.map(async row=>{
+    try{
+      const c=await F.getCountFromServer(F.collection(LIB.db,'maps',row.id,'likes'));
+      row.likes=c.data().count|0;
+      const mine=await F.getDoc(F.doc(LIB.db,'maps',row.id,'likes',LIB.uid));
+      row.liked=mine.exists();
+    }catch(e){ row.likes=null; }
+  }));
+}
+
+async function libToggleLike(row){
+  if(!await libConnect()) return false;
+  const F=LIB.fs, ref=F.doc(LIB.db,'maps',row.id,'likes',LIB.uid);
+  if(row.liked){ await F.deleteDoc(ref); row.liked=false; row.likes=Math.max(0,(row.likes|0)-1); }
+  else { await F.setDoc(ref,{}); row.liked=true; row.likes=(row.likes|0)+1; }
+  return true;
+}
+
+/* Publishing one of your own saved maps. The owner comes from the token, so
+   there is nothing here a caller could forge. */
+async function libPublish(sc){
+  if(!await libConnect()) return null;
+  const F=LIB.fs;
+  const m=cmapDecode(sc.code);
+  if(m.err) throw new Error(m.err);
+  const ref=F.doc(F.collection(LIB.db,'maps'));
+  const name=cmapCleanName(sc.name)||'Untitled';
+  await F.setDoc(ref,{
+    owner:LIB.uid, name:name, nameLower:name.toLowerCase(),
+    code:sc.code, seats:Math.max(2,Math.min(4,sc.seats|0||2)),
+    public:true, rnd:Math.random(), createdAt:F.serverTimestamp()
+  });
+  return ref.id;
+}
+
+async function libUnpublish(row){
+  if(!await libConnect()) return false;
+  await LIB.fs.deleteDoc(LIB.fs.doc(LIB.db,'maps',row.id));
+  return true;
+}
+
+async function libReport(row){
+  if(!await libConnect()) return false;
+  const F=LIB.fs;
+  await F.addDoc(F.collection(LIB.db,'reports'),
+    {mapId:row.id, uid:LIB.uid, at:F.serverTimestamp()});
+  return true;
+}
+
+/* Saving somebody else's map onto this device, which is the same list the
+   SCALE section reads - so a saved map is picked for a match like any board. */
+function libSaveLocal(row){
+  const r=cmapDecode(row.code);
+  if(r.err) return r.err;
+  let name=cmapCleanName(row.name)||'Untitled';
+  if(CSCEN.some(x=>x.name.toLowerCase()===name.toLowerCase())){
+    // keep both rather than quietly replacing a map of the same name
+    for(let i=2;i<60;i++){
+      const t=name+' ('+i+')';
+      if(!CSCEN.some(x=>x.name.toLowerCase()===t.toLowerCase())){ name=t; break; }
+    }
+  }
+  scenAdd(name,row.code,(r.map.starts||[]).length,r.map.w);
+  refreshMenuModes();
+  return null;
+}
+
+/* ---------- the panel ---------- */
+function libOpen(){
+  document.getElementById('library').style.display='flex';
+  document.getElementById('menu').style.display='none';
+  libShow(LIB.tab||'browse');
+}
+function libClose(){
+  document.getElementById('library').style.display='none';
+  document.getElementById('menu').style.display='';
+  refreshMenuModes();
+}
+/* What to say when there is nothing to show, which is a different sentence
+   for each reason - "nothing here" and "I could not reach the server" and
+   "this has never been set up" are not the same problem. */
+function libExplain(){
+  if(!libConfigured())
+    return ['The shared library is not set up yet - this build has no project '+
+            'configured, so there is nowhere to publish to or browse. '+
+            'Maps saved on this device still work and appear under SCALE.','bad'];
+  if(LIB.err==='not-configured') return ['Not set up.','bad'];
+  if(LIB.err) return ['Could not reach the library: '+LIB.err,'bad'];
+  return ['Nothing here yet.',''];
+}
+
+async function libShow(tab){
+  LIB.tab=tab;
+  document.querySelectorAll('#libTabs button').forEach(b=>
+    b.classList.toggle('on',b.dataset.page===tab));
+  const find=document.getElementById('libFind');
+  if(find) find.style.display=(tab==='browse')?'':'none';
+  const host=document.getElementById('libList');
+  host.textContent='';
+
+  if(tab==='saved'){ libSay(''); libRenderLocal(); return; }
+
+  if(!libConfigured()){ const [t,c]=libExplain(); libSay(t,c); return; }
+  libSay('Loading\u2026');
+  let rows=null;
+  try{
+    rows=(tab==='mine')?await libMine():await libRandom(12);
+  }catch(e){ LIB.err=String(e&&e.message||e); }
+  if(!rows){ const [t,c]=libExplain(); libSay(t,c); return; }
+  await libLikes(rows);
+  LIB.rows=rows;
+  if(!rows.length){ const [t,c]=libExplain(); libSay(t,c); return; }
+  libSay(rows.length+(tab==='mine'?' published by you':' maps'),'good');
+  libRenderRows(rows);
+}
+
+function libCard(title,sub){
+  const el=document.createElement('div'); el.className='lc';
+  const b=document.createElement('b'); b.textContent=title; b.title=title;
+  const i=document.createElement('i'); i.textContent=sub;
+  const row=document.createElement('div'); row.className='lr';
+  el.appendChild(b); el.appendChild(i); el.appendChild(row);
+  el.btns=row;
+  return el;
+}
+function libBtn(row,label,fn,cls){
+  const b=document.createElement('button');
+  b.textContent=label; if(cls) b.className=cls;
+  b.onclick=fn; row.appendChild(b); return b;
+}
+
+/* Play a map straight out of the library without saving it first. */
+function libPlay(code){
+  const r=cmapDecode(code);
+  if(r.err){ libSay(r.err,'bad'); SFX.play('deny'); return; }
+  CMAP=r.map; cmapTouch();
+  if(scaleKey!=='standard'&&!(SCALES[scaleKey]&&SCALES[scaleKey].scen)) scaleKey='standard';
+  if(MODES[modeKey]&&MODES[modeKey].players>cmapSeats()) modeKey='duel';
+  libClose();
+  SFX.unlock(); goFullscreen(); SFX.play('deploy');
+  startGame(diffKey);
+}
+
+function libRenderRows(rows){
+  const host=document.getElementById('libList');
+  host.textContent='';
+  for(const row of rows){
+    const el=libCard(row.name,
+      row.size+' x '+row.size+' \u00b7 '+row.seats+' starts'+
+      (row.likes===null?'':' \u00b7 '+row.likes+' like'+(row.likes===1?'':'s')));
+    libBtn(el.btns,'PLAY',()=>{ SFX.play('click'); libPlay(row.code); });
+    libBtn(el.btns,'SAVE',()=>{ SFX.play('click');
+      const err=libSaveLocal(row);
+      libSay(err||('Saved \u201c'+row.name+'\u201d - it is in the SCALE list now.'),
+             err?'bad':'good'); });
+    if(LIB.tab==='mine'){
+      libBtn(el.btns,'UNPUBLISH',async()=>{ SFX.play('click');
+        try{ await libUnpublish(row); libSay('Unpublished.','good'); libShow('mine'); }
+        catch(e){ libSay('Could not unpublish: '+(e&&e.message||e),'bad'); } });
+    } else {
+      const lb=libBtn(el.btns,(row.liked?'\u2605 ':'\u2606 ')+(row.likes===null?'':row.likes),
+        async()=>{
+          try{ await libToggleLike(row);
+            lb.textContent=(row.liked?'\u2605 ':'\u2606 ')+row.likes;
+            lb.className=row.liked?'liked':'';
+            SFX.play('click');
+          }catch(e){ libSay('Could not record that: '+(e&&e.message||e),'bad'); }
+        }, row.liked?'liked':'');
+      libBtn(el.btns,'REPORT',async()=>{
+        if(!confirm('Report this map for review?')) return;
+        try{ await libReport(row); libSay('Reported. Thank you.','good'); }
+        catch(e){ libSay('Could not report that: '+(e&&e.message||e),'bad'); } });
+    }
+    host.appendChild(el);
+  }
+}
+
+/* The device's own list - the same one SCALE reads. Publishing starts here,
+   because you publish something you made and saved. */
+function libRenderLocal(){
+  const host=document.getElementById('libList');
+  host.textContent='';
+  if(!CSCEN.length){
+    libSay('No maps on this device yet. Make one in the MAP BUILDER.','');
+    return;
+  }
+  libSay(CSCEN.length+' on this device - these are the ones in the SCALE list','good');
+  for(const sc of CSCEN){
+    const el=libCard(sc.name,
+      (sc.size?sc.size+' x '+sc.size+' \u00b7 ':'')+(sc.seats||2)+' starts');
+    libBtn(el.btns,'PLAY',()=>{ SFX.play('click'); libPlay(sc.code); });
+    libBtn(el.btns,'COPY CODE',()=>{ SFX.play('click');
+      try{ navigator.clipboard.writeText(sc.code);
+        libSay('Share code copied.','good');
+      }catch(e){ libSay('Could not reach the clipboard.','bad'); } });
+    if(libConfigured()){
+      libBtn(el.btns,'PUBLISH',async()=>{ SFX.play('click');
+        libSay('Publishing\u2026');
+        try{ await libPublish(sc);
+          libSay('\u201c'+sc.name+'\u201d is public now. Anyone can find it.','good');
+        }catch(e){ libSay('Could not publish: '+(e&&e.message||e),'bad'); } });
+    }
+    libBtn(el.btns,'DELETE',()=>{ SFX.play('click');
+      scenRemove(sc.id); refreshMenuModes(); libRenderLocal(); });
+    host.appendChild(el);
+  }
+}
+
+function libInit(){
+  const b=document.getElementById('btnLibrary');
+  if(b) b.onclick=()=>{ SFX.play('click'); libOpen(); };
+  const done=document.getElementById('libDone');
+  if(done) done.onclick=()=>{ SFX.play('click'); libClose(); };
+  document.querySelectorAll('#libTabs button').forEach(t=>{
+    t.onclick=()=>{ SFX.play('click'); libShow(t.dataset.page); };
+  });
+  const go=document.getElementById('libGo');
+  const q=document.getElementById('libQ');
+  const run=async()=>{
+    if(!libConfigured()){ const [t,c]=libExplain(); libSay(t,c); return; }
+    libSay('Searching\u2026');
+    let rows=null;
+    try{ rows=await libSearch(q.value); }
+    catch(e){ LIB.err=String(e&&e.message||e); }
+    if(!rows){ const [t,c]=libExplain(); libSay(t,c); return; }
+    await libLikes(rows);
+    LIB.rows=rows; LIB.tab='browse';
+    if(!rows.length){
+      libSay('Nothing starting with \u201c'+q.value.trim()+'\u201d. '+
+             'Search matches the start of a name, not the middle.','');
+      document.getElementById('libList').textContent='';
+      return;
+    }
+    libSay(rows.length+' found','good');
+    libRenderRows(rows);
+  };
+  if(go) go.onclick=()=>{ SFX.play('click'); run(); };
+  if(q) q.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); run(); } };
+  const rnd=document.getElementById('libRandom');
+  if(rnd) rnd.onclick=()=>{ SFX.play('click'); libShow('browse'); };
+}
+
 /* ===================== MAP BUILDER ===================== */
 /* Paints the same three things a map is made of. The working map lives here
    as a plain object; nothing touches the running game until PLAY IT. */
