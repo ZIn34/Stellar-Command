@@ -1702,8 +1702,10 @@ test('an ordered squad walks past a closer decoy', () => {
   atkArena();
   run('decoy.dead=true');
   run('var idler=mkUnit("delver",1,a.x+40,a.y)');
-  run('var tough=ents.find(function(e){return !e.dead&&e.kind==="building"&&' +
-      'e.owner===1&&e.type==="keystone";})||want');
+  /* Given plenty of hit points on purpose: a Barracks falls inside ten
+     seconds to two Riflemen, and a target that dies mid-test reads as the
+     order being lost when it is the opposite. */
+  run('var tough=want; tough.maxHp=9000; tough.hp=9000');
   run('setSel([a,b]); orderAttackOn(tough)');
   for (let i = 0; i < 240; i++) { run('over=false'); run('simTick(0.05)'); }
   eq(run('a.cmd.target===tough'), true, 'still on the ordered target');
