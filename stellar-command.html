@@ -856,9 +856,18 @@ function priceOf(kind,type,owner){
   /* A scenario may set its own list price for a type; it replaces the base
      figure and then takes the army and scale multipliers like any other. */
   const bm=CRstat(type,'m'), bg=CRstat(type,'g');
-  const baseM=(bm===undefined?(d.m||0):bm), baseG=(bg===undefined?(d.g||0):bg);
-  // COST_RATE is the scale's doing - Blitz halves everything
-  const m=baseM*f*COST_RATE, g=baseG*f*COST_RATE;
+  /* A type may also name its own Blitz list price. Halving is right for
+     almost everything, but it cannot land on two chosen figures at once:
+     a Flame Squad is meant to be 25 normally and 10 in Blitz, and half of
+     25 is 13. Where one is given it IS the Blitz price, so the scale
+     multiplier is not applied on top of it. A scenario's own price still
+     wins over both. */
+  const bzM=(BLITZ&&d.blitzM!==undefined)?d.blitzM:undefined;
+  const baseM=(bm!==undefined)?bm:(bzM!==undefined?bzM:(d.m||0));
+  const baseG=(bg===undefined?(d.g||0):bg);
+  // COST_RATE is the scale's doing - Blitz halves everything else
+  const rateM=(bm===undefined&&bzM!==undefined)?1:COST_RATE;
+  const m=baseM*f*rateM, g=baseG*f*COST_RATE;
   return {m:Math.max(baseM?1:0,Math.round(m)), g:Math.max(baseG?1:0,Math.round(g))};
 }
 /* ...and every part-refund comes from here, off the same price. */
@@ -995,7 +1004,7 @@ const UDEF={
      it is meant to be the unit you open a match with, so it has to be
      affordable before anything else is standing and not eat the tiny
      population you start with. */
-  breaker: {n:'Flame Squad',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:23,  g:0,  sup:1, bt:16, r:12},
+  breaker: {n:'Flame Squad',  hp:150, sp:128, dmg:23, rng:28,  cd:.9,  sight:7, m:25,  g:0,  sup:1, bt:16, r:12, blitzM:10},
   /* The capital ship. One statline, three completely different machines built
      on it - see FSTYLE for what each doctrine actually fields. Three times the
      price of the old one and three times the machine: it is meant to be a

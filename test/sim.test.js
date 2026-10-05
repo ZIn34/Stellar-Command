@@ -701,7 +701,9 @@ test('the melee unit is cheap enough to open a match with', () => {
     const wd = run('priceOf("unit","warden",0)');
     const d = run('defFor("unit","breaker",0)');
     const purse = run('P[0].m');
-    ok(br.m < wd.m / 2, f + ': cheaper than half a rifle squad (' + br.m + ' vs ' + wd.m + ')');
+    /* Was a strict <. The price is now set deliberately at 25, which is
+       exactly half a Rifleman's 50, so the boundary is allowed. */
+    ok(br.m <= wd.m / 2, f + ': no dearer than half a rifle squad (' + br.m + ' vs ' + wd.m + ')');
     eq(d.sup, 1, f + ': one population, like the other light units');
     ok(Math.floor(purse / br.m) >= 4,
        f + ': you can afford ' + Math.floor(purse / br.m) + ' from your opening purse');
@@ -1787,6 +1789,40 @@ test('one order is still one mark, however much is in the bank', () => {
   run('setSel([w]); contextOrder(sel,v.x,v.y)');
   for (let i = 0; i < 400; i++) { run('over=false'); run('simTick(0.05)'); }
   eq(run('v.lvl'), 1, 'a full bank does not buy a second mark');
+});
+
+console.log('\nwhat a Flame Squad costs');
+
+test('a Flame Squad is 25 normally and 10 in Blitz', () => {
+  /* Blitz halves every price, and half of 25 is 13 - so hitting both figures
+     needs the type to name its own Blitz price rather than be derived. */
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  eq(run('priceOf("unit","breaker",0).m'), 25, 'standard is 25');
+  run('scaleKey="blitz"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  eq(run('priceOf("unit","breaker",0).m'), 10, 'Blitz is 10');
+});
+
+test('naming a Blitz price does not disturb anything else', () => {
+  run('scaleKey="blitz"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  // a Rifleman has no Blitz price of its own, so it still just halves
+  eq(run('priceOf("unit","warden",0).m'), Math.round(run('UDEF.warden.m') / 2),
+     'a Rifleman still halves as before');
+  eq(run('priceOf("building","musterhall",0).m'), Math.round(run('BDEF.musterhall.m') / 2),
+     'and so do structures');
+});
+
+test('a scenario price still beats the Blitz one', () => {
+  run('scaleKey="blitz"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('CMAP={w:112,h:112,starts:[[20,20],[90,90]],rock:"",res:[],blds:[],name:"x",' +
+      'rules:{stats:{breaker:{m:77}}}}; cmapTouch()');
+  // the scenario's figure takes the scale multiplier like any list price
+  eq(run('priceOf("unit","breaker",0).m'), Math.round(77 / 2),
+     'the builder wins over the built-in Blitz price');
+  run('CMAP=null; cmapTouch()');
 });
 
 console.log('\nshort reach against a wall');
