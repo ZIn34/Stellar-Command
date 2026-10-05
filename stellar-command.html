@@ -4982,10 +4982,14 @@ function aiRun(AI,ME,dt){
        mGate - an amount of aurite, scaled with what things actually cost */
   const PACE=BLITZ?2:1;
   const tGate=v=>v/PACE;
-  /* Actions per minute, the way a player has them. The bucket refills with
-     the match clock and is capped at a small burst, so a bot that has been
-     poor for a while cannot bank a minute of attention and then spend it
-     all in one frame. It scales with pace, so Blitz still moves. */
+  /* Actions per minute, the way a player has them.
+     The burst cap is the part that matters. What made a bot read as a
+     professional was not how much it got done over a match, it was six
+     queues and four foundations all starting in the same frame. A small
+     burst means one thing at a time, in order, like someone with one
+     mouse - while the rate stays high enough that it is not just slow.
+     Throttling the rate instead was the first attempt and it made every
+     setting sluggish. Scales with pace, so Blitz still moves. */
   const APM=DIFF.apm===undefined?34:DIFF.apm;
   AI.acts=Math.min(DIFF.burst===undefined?3:DIFF.burst,
                    (AI.acts||0)+dt*PACE*APM/60);
@@ -7621,15 +7625,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{buildGap:20, sites:1, apm:17, burst:2, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, sites:1, apm:50, burst:1, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{buildGap:12, sites:2, apm:52, burst:3, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, sites:2, apm:115, burst:3, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:6, sites:3, apm:140, burst:5, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:6, sites:3, apm:220, burst:5, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
