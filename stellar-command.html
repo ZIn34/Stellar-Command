@@ -4860,7 +4860,7 @@ function newAI(){ return {
      one building, then the next. A bot had no such limit and filled every
      queue in the frame the money landed, which is why a Recruit still
      macroed like a professional. */
-  acts:2
+  acts:2, thrT:0
 }; }
 const AIS=[null,null,null,null];
 let BOTS=[false,true,false,false];
@@ -5124,13 +5124,20 @@ function aiRun(AI,ME,dt){
   const PACE=BLITZ?2:1;
   const tGate=v=>v/PACE;
   /* Actions per minute, the way a player has them.
-     The burst cap is the part that matters. What made a bot read as a
-     professional was not how much it got done over a match, it was six
+     Only the burst cap earns its place here. What made a bot read as a
+     professional was never how much it got done over a match - it was six
      queues and four foundations all starting in the same frame. A small
      burst means one thing at a time, in order, like someone with one
-     mouse - while the rate stays high enough that it is not just slow.
-     Throttling the rate instead was the first attempt and it made every
-     setting sluggish. Scales with pace, so Blitz still moves. */
+     mouse, and that is the whole of the tell.
+     Using the rate as a throughput limit was two failed attempts: first
+     it made every setting sluggish, then, raised, it still left them
+     feeble, because a bot starved of actions loses fights, raises the
+     army it wants before attacking again, and goes quiet. So the rate is
+     now well clear of the binding constraint on every setting, and how
+     hard a bot plays comes from the knobs that should decide it - the gap
+     between foundations, how many it will have open at once, how often it
+     thinks, how long before it first attacks, its economy and its worker
+     count. Scales with pace, so Blitz still moves. */
   const APM=DIFF.apm===undefined?34:DIFF.apm;
   AI.acts=Math.min(DIFF.burst===undefined?3:DIFF.burst,
                    (AI.acts||0)+dt*PACE*APM/60);
@@ -5498,14 +5505,20 @@ function aiRun(AI,ME,dt){
     if(!AI.squad.length||AI.squad.length<AI.squadStart*(1-doc.bail)){
       AI.mode='retreat'; AI.target=null;
       // come back with more next time - the Legion barely bothers
-      AI.threshold=Math.min(32,AI.threshold+DIFF.step*doc.regroup);
+      /* Half the supply cap is roughly the most army it can hold, so a
+         demand above that is a demand it can never meet. */
+      const reach=Math.max(DIFF.thr,Math.floor((P[ME].cap||20)/2));
+      AI.threshold=Math.min(32,reach,AI.threshold+DIFF.step*doc.regroup);
       aiMoveGroup(AI.squad,rallyPt.x,rallyPt.y);
       return;
     }
     let cx=0,cy=0; AI.squad.forEach(u=>{cx+=u.x;cy+=u.y;}); cx/=AI.squad.length; cy/=AI.squad.length;
     let focus=null, fd=1e9;                        // concentrate fire like a player would
     for(const o of around(cx,cy,460)){
-      if(o.dead||o.owner!==0) continue;
+      /* This read owner!==0, so a bot would only ever concentrate on the
+         player in the first seat. In a 2v2 or a free-for-all it walked
+         into a second enemy's army and picked nothing to shoot at. */
+      if(o.dead||o.kind==='res'||!isFoe(o.owner,ME)) continue;
       const sc=Math.hypot(o.x-cx,o.y-cy)+o.hp*.35+(o.kind==='building'?260:0);
       if(sc<fd){ fd=sc; focus=o; }
     }
@@ -5535,6 +5548,16 @@ function aiRun(AI,ME,dt){
   }
   AI.mode='build';
   aiMoveGroup(army.filter(u=>u.cmd.t==='idle'&&dist(u,home)>360),rallyPt.x,rallyPt.y);
+  /* This ratchet only ever went up. Every failed push raised the army it
+     wanted before trying again, to a ceiling of 32 - and a bot that cannot
+     field 32 units, because of the supply cap or because it is simply
+     behind, then sat at home for the rest of the match. A player who loses
+     a fight rebuilds and tries again, so the demand relaxes while nothing
+     is happening. */
+  if(AI.threshold>DIFF.thr){
+    AI.thrT=(AI.thrT||0)+dt;
+    if(AI.thrT>=tGate(35)){ AI.thrT=0; AI.threshold=Math.max(DIFF.thr,AI.threshold-1); }
+  } else AI.thrT=0;
   if(AI.t>=tGate(DIFF.grace)&&army.length>=AI.threshold*aiDoc(ME).push&&AI.t-AI.lastPush>tGate(20)){
     AI.lastPush=AI.t;
     /* The Pact only mends near its own structures, so it masses closer to home
@@ -7802,15 +7825,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{buildGap:20, sites:1, apm:50, burst:1, vans:1, refits:0, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, sites:1, apm:240, burst:1, vans:1, refits:0, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{buildGap:12, sites:2, apm:115, burst:3, vans:2, refits:1, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, sites:2, apm:240, burst:2, vans:2, refits:1, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:6, sites:3, apm:220, burst:5, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:6, sites:3, apm:240, burst:3, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
