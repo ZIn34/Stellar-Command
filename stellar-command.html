@@ -7333,21 +7333,52 @@ window.addEventListener('pointerdown',()=>{ SFX.unlock(); musicSync(); },{once:t
 window.addEventListener('keydown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 musicInit(); updSnd(); musicPlay();
 /* ---------- installable / fullscreen on mobile ---------- */
+/* The app icon is the unit patch the menu wears: a shield, a star and a
+   chevron, brass on olive. It used to be the science-fiction hexagon with
+   an energy arrow in it, which stopped matching the game some time ago.
+   Drawn on a 64 grid and scaled, so one routine serves the tab favicon,
+   the installed app and the iOS home screen. */
 function makeIconURL(size){
   const c=newCv(size,size), g=c.getContext('2d'), k=size/64;
-  g.fillStyle='#05070c'; g.fillRect(0,0,size,size);
-  g.scale(k,k); g.lineJoin='round';
-  g.strokeStyle='#4bd6ff'; g.lineWidth=2.5;
-  poly(g,[[32,5],[56,18],[56,46],[32,59],[8,46],[8,18]]); g.stroke();
-  g.fillStyle='rgba(75,214,255,.12)';
-  poly(g,[[32,14],[48,23],[48,41],[32,50],[16,41],[16,23]]); g.fill();
-  g.fillStyle='#4bd6ff';
-  poly(g,[[32,20],[41,44],[32,38],[23,44]]); g.fill();
+  g.fillStyle='#14150d'; g.fillRect(0,0,size,size);
+  g.scale(k,k); g.lineJoin='round'; g.lineCap='round';
+  const shield=()=>{
+    g.beginPath();
+    g.moveTo(8,6); g.lineTo(56,6); g.lineTo(56,34);
+    g.quadraticCurveTo(56,49,32,60);
+    g.quadraticCurveTo(8,49,8,34);
+    g.closePath();
+  };
+  shield();
+  const gr=g.createLinearGradient(0,6,0,60);
+  gr.addColorStop(0,'#38401f'); gr.addColorStop(1,'#1e2412');
+  g.fillStyle=gr; g.fill();
+  g.strokeStyle='#c7b583'; g.lineWidth=3; g.stroke();
+  g.save();                                   // an inner hairline, inset
+  shield(); g.clip();
+  g.strokeStyle='rgba(199,181,131,.45)'; g.lineWidth=1.4;
+  g.beginPath();
+  g.moveTo(13,11); g.lineTo(51,11); g.lineTo(51,34);
+  g.quadraticCurveTo(51,45,32,54.5);
+  g.quadraticCurveTo(13,45,13,34);
+  g.closePath(); g.stroke();
+  g.restore();
+  g.fillStyle='#e8cf8a';                      // five-pointed star
+  poly(g,[[32,13],[34.4,19.4],[41.2,19.7],[35.8,23.9],[37.7,30.5],
+          [32,26.8],[26.3,30.5],[28.2,23.9],[22.8,19.7],[29.6,19.4]]);
+  g.fill();
+  g.fillStyle='#c7b583';                      // chevron under it
+  poly(g,[[19,45],[32,36],[45,45],[45,51],[32,42],[19,51]]); g.fill();
   return c.toDataURL('image/png');
 }
 (function installMeta(){
   try{
     const icon=makeIconURL(192);
+    /* There was no tab icon at all, so the browser fell back to a blank
+       page glyph. 64 is sharper than letting it downscale the 192. */
+    const fav=document.createElement('link');
+    fav.rel='icon'; fav.type='image/png'; fav.href=makeIconURL(64);
+    document.head.appendChild(fav);
     const man={name:'Field Craft',short_name:'Field Craft',description:'Combined-arms real-time strategy',
       start_url:'.',scope:'.',display:'fullscreen',orientation:'landscape',
       background_color:'#05070c',theme_color:'#05070c',
