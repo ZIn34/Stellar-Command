@@ -1,0 +1,93 @@
+rules_version = '2';
+
+/* Field Craft - the shared map library.
+
+   The game is a single HTML file served from GitHub Pages, so there is no
+   server of ours in the loop: every read and write below comes straight from
+   somebody's browser. That means these rules are the only thing standing
+   between the library and anyone who opens the console, so they are written to
+   assume the caller is hostile. In particular a map's owner is taken from the
+   signed-in token, never from the data sent with the request, and the like
+   count is not a number anyone can set - it is counted from one document per
+   person, which is the only way to make "one like each" true.
+
+   No Cloud Functions, so this needs no billing: the Spark plan covers it. */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function owns(d) {
+      return signedIn() && request.auth.uid == d.owner;
+    }
+
+    match /maps/{mapId} {
+
+      /* Public maps are readable by anyone signed in; your own are readable
+         whether or not you published them, so "find mine" works. A query has
+         to be provably safe under these rules, so the browser always filters
+         on either public == true or owner == its own uid. */
+      allow read: if resource.data.public == true || owns(resource.data);
+
+      allow create: if signedIn()
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.keys().hasOnly(
+             ['owner','name','nameLower','code','seats','public','rnd','createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 40
+        // held separately so a search can be case-insensitive
+        && request.resource.data.nameLower == request.resource.data.name.lower()
+        && request.resource.data.code is string
+        && request.resource.data.code.size() <= 4000
+        && request.resource.data.seats is int
+        && request.resource.data.seats >= 2
+        && request.resource.data.seats <= 4
+        && request.resource.data.public is bool
+        // a fixed random key, so "show me a random one" is a cheap range query
+        && request.resource.data.rnd is number
+        && request.resource.data.rnd >= 0
+        && request.resource.data.rnd <= 1
+        && request.resource.data.createdAt == request.time;
+
+      /* Editing your own: the owner and the creation time cannot be rewritten,
+         so a map cannot be reassigned or back-dated to the top of a listing. */
+      allow update: if owns(resource.data)
+        && request.resource.data.owner == resource.data.owner
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.rnd == resource.data.rnd;
+
+      allow delete: if owns(resource.data);
+
+      /* One document per person, named after them. That is what makes a like
+         count honest: a denormalised counter would be a number any caller
+         could set to anything, and incrementing it safely from the browser
+         cannot be enforced here. The game counts these with an aggregation
+         query, which bills as a single read per thousand. */
+      match /likes/{uid} {
+        allow read:          if signedIn();
+        allow create, delete: if signedIn() && request.auth.uid == uid;
+        allow update:        if false;
+      }
+    }
+
+    /* Anyone can report a map; nobody can read or clear the reports from the
+       game. They are for looking at in the console. Public submissions carry
+       names and content somebody else wrote, so there has to be a way to find
+       the bad ones. */
+    match /reports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['mapId','uid','at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow read, update, delete: if false;
+    }
+
+    // nothing else is reachable
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
