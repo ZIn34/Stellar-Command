@@ -1665,6 +1665,50 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
 });
 
+console.log('\nshort reach against a wall');
+
+test('a short-ranged unit can hit a building from any side', () => {
+  /* inRange treated a building as a circle of max(w,h)*0.42 around its
+     centre. That circle is inside the building on every face and well inside
+     it at the corners, so a Sapper touching a 96-wide wall sat 58px out with
+     58.3 allowed - a third of a pixel of margin - and on a corner it could
+     not reach at all. Which is why only one approach ever seemed to work. */
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran"); BOTS=[false,false,false,false]');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var B=mkBuilding("musterhall",1,k.x+700,k.y+700); B.done=true; B.prog=1');
+  const spots = [['left', -1, 0], ['right', 1, 0], ['top', 0, -1], ['bottom', 0, 1],
+                 ['top-left', -1, -1], ['top-right', 1, -1],
+                 ['bottom-left', -1, 1], ['bottom-right', 1, 1]];
+  for (const type of ['delver', 'breaker']) {
+    const r = run('UDEF.' + type + '.r');
+    for (const [where, sx, sy] of spots) {
+      run('var u=mkUnit("' + type + '",0,B.x+' + sx + '*(B.w/2+' + r + '),' +
+          'B.y+' + sy + '*(B.h/2+' + r + '))');
+      eq(run('inRange(u,B)'), true,
+         type + ' touching the ' + where + ' can reach it' +
+         ' (edge gap ' + run('edgeDist(u,B)').toFixed(1) + 'px, reach ' +
+         run('UDEF.' + type + '.rng') + ')');
+      run('u.dead=true');
+    }
+  }
+});
+
+test('a melee unit ordered onto a building actually breaks it', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran"); BOTS=[false,false,false,false]');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var B=mkBuilding("musterhall",1,k.x+400,k.y); B.done=true; B.prog=1');
+  // come at it from above, which is the approach that used to fail
+  run('var u=mkUnit("breaker",0,B.x,B.y-260)');
+  run('setSel([u]); orderAttackOn(B)');
+  const before = run('B.hp');
+  for (let i = 0; i < 200; i++) { run('over=false'); run('simTick(0.05)'); }
+  ok(run('B.hp') < before,
+     'it took damage coming from above (' + Math.round(before) + ' -> ' +
+     Math.round(run('B.hp')) + ')');
+});
+
 console.log('\nattack this, not that');
 
 function atkArena() {

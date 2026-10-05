@@ -2575,7 +2575,27 @@ function separate(){
 }
 
 /* ===================== UNIT BEHAVIOUR ===================== */
-function inRange(a,t,extra){ return Math.hypot(t.x-a.x,t.y-a.y) <= DEF(a).rng+hitRadius(t)+(extra||0) }
+/* A building is a rectangle and this used to treat it as a circle of
+   max(w,h)*0.42 around the centre, which is smaller than the building on
+   every side and much smaller at the corners. A Sapper (reach 18, body 10)
+   pressed flat against a 96-wide wall sits 58px from the centre and the
+   circle allowed 58.3 - so whether it could hit at all came down to a
+   third of a pixel, and on a corner it simply could not. Measure to the
+   edge and every face and corner works the same. */
+function inRange(a,t,extra){
+  const rng=DEF(a).rng+(extra||0);
+  if(t.kind==='building') return edgeDist(a,t)<=rng;
+  return Math.hypot(t.x-a.x,t.y-a.y) <= rng+hitRadius(t);
+}
+/* How close to walk before stopping. Aiming at the centre of a building
+   means walking into it and being stopped by the wall wherever the push
+   happens to leave you, which is the other half of why one side worked
+   and the others did not. */
+function atkStop(u,t){
+  const rng=DEF(u).rng;
+  if(t.kind!=='building') return rng*.8;
+  return Math.max(t.w,t.h)*.5+(u.r||0)+rng*.5;
+}
 
 function updateUnit(u,dt){
   const d=DEF(u);                          // the doctrine's statline, not the shared one
@@ -2665,7 +2685,7 @@ function updateUnit(u,dt){
          all turn on whoever hits them. */
       u.target=c.target;
       if(inRange(u,u.target)){ if(u.atkCd<=0) fire(u,u.target); }
-      else navigate(u,u.target.x,u.target.y,dt,d.rng*.8);
+      else navigate(u,u.target.x,u.target.y,dt,atkStop(u,u.target));
       return; }
   }
   // opportunistic combat
@@ -2674,7 +2694,7 @@ function updateUnit(u,dt){
       if(u.atkCd<=0) fire(u,u.target);
       if(c.t==='amove'||c.t==='idle'||c.t==='hold') return;
     } else if(c.t==='amove'){
-      navigate(u,u.target.x,u.target.y,dt,d.rng*.75); return;   // chasing is the point
+      navigate(u,u.target.x,u.target.y,dt,atkStop(u,u.target)); return;   // chasing is the point
     } else if(c.t==='idle'){
       /* A unit holding ground will step out to meet something, but only a
          few tiles, and it judges that against the spot it was left on
