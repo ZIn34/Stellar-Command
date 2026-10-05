@@ -64,6 +64,22 @@ body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
 body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
 #editor{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;
   align-items:center;justify-content:center;gap:10px;background:#0d0c08}
+.edTabs{display:flex;gap:6px}
+.edTabs button{font-family:inherit;font-size:10.5px;letter-spacing:2px;padding:6px 14px;cursor:pointer;
+  background:#201d15;color:#a49d8c;border:1px solid #4c4533;border-radius:6px}
+.edTabs button.on{color:#f5f2e9;border-color:#c7b583;background:#2b2619}
+.edPage{display:none;max-width:min(900px,96vw);max-height:48vh;overflow:auto}
+.edPage.on{display:block}
+.edRow{display:flex;align-items:center;gap:8px;padding:3px 0}
+.edRow label{flex:0 0 190px;font-size:10px;letter-spacing:1.5px;color:#a49d8c}
+.edRow input{font-family:inherit;font-size:11px;width:84px;padding:4px 6px;
+  color:#e8e4d9;background:#16140e;border:1px solid #4c4533;border-radius:5px}
+.edRow i{font-size:9.5px;color:#7d7765;font-style:normal;letter-spacing:.5px}
+.edGrid{display:grid;grid-template-columns:120px repeat(5,66px);gap:4px 6px;align-items:center}
+.edGrid span{font-size:9.5px;letter-spacing:1px;color:#a49d8c}
+.edGrid input{font-family:inherit;font-size:10.5px;width:100%;padding:3px 4px;
+  color:#e8e4d9;background:#16140e;border:1px solid #4c4533;border-radius:4px}
+.edGrid b{font-size:10px;letter-spacing:1px;color:#c7b583;font-weight:400}
 #editor h2{font-size:13px;letter-spacing:5px;color:#c7b583;font-weight:400}
 #edWrap{position:relative;border:2px solid #564e39;border-radius:6px;background:#1a1810;overflow:hidden}
 #edCv{display:block;cursor:crosshair;touch-action:none}
@@ -604,7 +620,16 @@ body.touch .mouse-only{display:none}
 </div>
 <div id="editor">
   <h2>MAP BUILDER</h2>
-  <div id="edWrap"><canvas id="edCv"></canvas></div>
+  <div class="edTabs">
+    <button data-page="map" class="on">MAP</button>
+    <button data-page="rules">RULES</button>
+    <button data-page="units">UNITS</button>
+  </div>
+  <div class="edPage on" data-page="map">
+    <div id="edWrap"><canvas id="edCv"></canvas></div>
+  </div>
+  <div class="edPage" data-page="rules"><div id="edRules"></div></div>
+  <div class="edPage" data-page="units"><div id="edUnits"></div></div>
   <div id="edMsg"></div>
   <div class="edBar">
     <button data-tool="rock" class="on">ROCK</button>
@@ -622,6 +647,7 @@ body.touch .mouse-only{display:none}
     <button id="edClear">CLEAR</button>
     <button id="edShare">COPY SHARE CODE</button>
     <button id="edLoad">LOAD CODE</button>
+    <button id="edSave">SAVE AS MODE</button>
     <button id="edPlay">PLAY IT</button>
     <button id="edDone">BACK</button>
   </div>
@@ -662,6 +688,14 @@ function applyScale(){
   TRAIN_RATE=GRAND?7:(BLITZ?2:1);
   MOVE_RATE=GRAND?1.5:1;      // only enough to cope with a ten-times-bigger map
   COST_RATE=costRateFor(BLITZ?'blitz':(GRAND?'grand':'standard'));   // every price, through priceOf
+  /* A scenario multiplies the scale rather than replacing it, so a custom
+     map can be built on top of Blitz or Grand War and still mean the same
+     thing by 'twice as fast'. */
+  if(typeof CMAP!=='undefined'&&CMAP&&CMAP.rules){
+    SPEED*=CR('speed'); ECO*=CR('eco');
+    BUILD_RATE*=CR('build'); TRAIN_RATE*=CR('build');
+    COST_RATE*=CR('cost');
+  }
 }
 let VW=0, VH=0, DPR=1;
 function resize(){
@@ -763,9 +797,13 @@ function priceOf(kind,type,owner){
      price. A capital ship is flat for everyone - it is meant to be the same
      commitment whichever doctrine you run. */
   const f=(kind==='building'||d.flatCost)?1:facOf(owner).cost;
+  /* A scenario may set its own list price for a type; it replaces the base
+     figure and then takes the army and scale multipliers like any other. */
+  const bm=CRstat(type,'m'), bg=CRstat(type,'g');
+  const baseM=(bm===undefined?(d.m||0):bm), baseG=(bg===undefined?(d.g||0):bg);
   // COST_RATE is the scale's doing - Blitz halves everything
-  const m=(d.m||0)*f*COST_RATE, g=(d.g||0)*f*COST_RATE;
-  return {m:Math.max(d.m?1:0,Math.round(m)), g:Math.max(d.g?1:0,Math.round(g))};
+  const m=baseM*f*COST_RATE, g=baseG*f*COST_RATE;
+  return {m:Math.max(baseM?1:0,Math.round(m)), g:Math.max(baseG?1:0,Math.round(g))};
 }
 /* ...and every part-refund comes from here, off the same price. */
 function refundOf(kind,type,owner,frac){
@@ -1000,7 +1038,9 @@ function styleOf(kind,type,owner){
 function defFor(kind,type,owner){
   const base=(kind==='unit'?UDEF:BDEF)[type];
   if(!base) return base;
-  const fk=facKeyOf(owner), key=kind+type+fk;
+  /* The stamp is in the key so loading a scenario cannot be served stale
+     numbers from the one before it. */
+  const fk=facKeyOf(owner), key=kind+type+fk+'#'+CMAP_STAMP;
   const hit=DEFC.get(key);
   if(hit) return hit;
   const st=(FSTYLE[fk]||{})[type];
@@ -1014,6 +1054,16 @@ function defFor(kind,type,owner){
     if(st.splash!==undefined) d.splash=st.splash;
     if(st.air!==undefined) d.air=st.air;
     d.style=st;
+  }
+  /* Scenario overrides sit on top of the army's own style, because a map
+     author is setting the number they want to see, not a modifier. */
+  const ov=CMAP&&CMAP.rules&&CMAP.rules.stats&&CMAP.rules.stats[type];
+  if(ov){
+    d=Object.assign({},d);
+    for(const f of ['hp','dmg','sp','rng','cd','bt','sight','sup','splash']){
+      const v=CRstat(type,f);
+      if(v!==undefined) d[f]=v;
+    }
   }
   DEFC.set(key,d);
   return d;
@@ -1125,6 +1175,56 @@ function genMap(){
   for(let y=0;y<MAP_H;y++){blocked[ti(0,y)]=1;blocked[ti(MAP_W-1,y)]=1;}
 }
 /* ===================== CUSTOM MAPS ===================== */
+/* ---------- saved scenarios ---------- */
+/* A scenario the player keeps turns into an entry in the SIDES list beside
+   1v1 and Free For All, because that is where you pick what you are about to
+   play. They live in local storage; a share code is how one travels. */
+let CSCEN=[];
+function scenLoad(){
+  CSCEN=[];
+  try{
+    const raw=localStorage.getItem('fc_scen');
+    if(raw){
+      const list=JSON.parse(raw);
+      if(Array.isArray(list)) CSCEN=list.filter(x=>x&&typeof x.code==='string').slice(0,24);
+    }
+  }catch(e){}
+}
+function scenSave(){
+  try{ localStorage.setItem('fc_scen',JSON.stringify(CSCEN)); }catch(e){}
+}
+function scenAdd(name,code,seats){
+  const id='cm_'+Date.now().toString(36);
+  CSCEN=CSCEN.filter(x=>x.name!==name);          // same name replaces
+  CSCEN.unshift({id,name:cmapCleanName(name)||'Untitled',code,seats:seats|0||2});
+  CSCEN=CSCEN.slice(0,24);
+  scenSave(); scenSync();
+  return id;
+}
+function scenRemove(id){
+  CSCEN=CSCEN.filter(x=>x.id!==id);
+  scenSave(); scenSync();
+  if(modeKey===id){ modeKey='duel'; CMAP=null; cmapTouch(); }
+}
+/* Keeps MODES in step with the saved list, so the menu needs no special case:
+   a scenario is a mode like any other, with its own seat count. */
+function scenSync(){
+  for(const k in MODES) if(k.indexOf('cm_')===0) delete MODES[k];
+  for(const sc of CSCEN)
+    MODES[sc.id]={n:sc.name.toUpperCase(),d:(sc.seats||2)+' starts - custom',
+                  players:Math.max(2,Math.min(4,sc.seats||2)),scen:sc.id};
+}
+/* Picking a mode is also picking whether a scenario is in play. */
+function modeChoose(k){
+  modeKey=k;
+  const sc=CSCEN.find(x=>x.id===k);
+  if(!sc){ CMAP=null; cmapTouch(); return true; }
+  const r=cmapDecode(sc.code);
+  if(r.err){ say&&say(r.err); CMAP=null; cmapTouch(); return false; }
+  CMAP=r.map; cmapTouch();
+  return true;
+}
+
 /* A hand-built map is three things: where the rock is, where the starts are,
    and where the resources are. Everything else about a match - scale, mode,
    armies - is still chosen in the menu, so a map does not carry any of it.
@@ -1132,7 +1232,39 @@ function genMap(){
    change the board itself, so a map built for one would not fit the others.
    CMAP is null for a generated map, which is the normal case. */
 let CMAP=null;
-const CMAP_VER='FC1';
+const CMAP_VER='FC2';
+/* A scenario is a map plus the rules it is played under. Everything here has
+   a default equal to a standard match, so an older map with no rules block
+   plays exactly as it always did. Every value is read through CR() rather
+   than off CMAP, so there is one place that knows the defaults. */
+const CRULES_DEF={
+  speed:1,      // the match clock
+  eco:1,        // how much a trip home is worth
+  build:1,      // construction and training rate
+  cost:1,       // every price, on top of the army's own multiplier
+  startM:150, startG:0,
+  crew:5,       // workers each side opens with
+  pop:0,        // 0 = the normal cap from structures; a number = fixed cap
+  stats:null    // per-type overrides: {warden:{hp,dmg,sp,rng,cd,m,g,bt}}
+};
+const CR_KEYS=['speed','eco','build','cost','startM','startG','crew','pop'];
+function CR(k){
+  const r=CMAP&&CMAP.rules;
+  const v=r?r[k]:undefined;
+  return (v===undefined||v===null||v!==v)?CRULES_DEF[k]:v;
+}
+/* A per-type override, or undefined. Units and structures share the table. */
+function CRstat(type,field){
+  const st=CMAP&&CMAP.rules&&CMAP.rules.stats;
+  if(!st||!st[type]) return undefined;
+  const v=st[type][field];
+  return (v===undefined||v===null||v!==v)?undefined:v;
+}
+/* Bumped whenever a scenario is loaded or edited, so the statline cache
+   cannot serve numbers from the last one. */
+let CMAP_STAMP=0;
+function cmapTouch(){ CMAP_STAMP++; clearDefs(); applyScale(); }
+
 const CMAP_MAX_STARTS=4;
 
 /* The rock layer is one bit a tile - 12544 of them on a standard board. Stored
@@ -1164,12 +1296,35 @@ function cmapUnpackRock(str,w,h){
 /* The wire form. A compact field string first, so a broken code can be read
    by eye, then base64url so the whole thing survives a paste into a chat
    window or a URL. */
+/* The separators are ; : , . and = - a name is stripped of all of them
+   rather than escaped, because a scenario name does not need them. */
+function cmapCleanName(n){
+  return String(n||'').replace(/[;:,.=|]/g,' ').replace(/\s+/g,' ').trim().slice(0,28);
+}
 function cmapEncode(m){
+  const r=m.rules||{};
+  const num=k=>{ const v=r[k]; return (v===undefined||v===null||v!==v)?'':String(v); };
+  const statPart=()=>{
+    const st=r.stats; if(!st) return '';
+    const out=[];
+    for(const t in st){
+      const f=[];
+      for(const k in st[t]){
+        const v=st[t][k];
+        if(v!==undefined&&v!==null&&v===v) f.push(k+'='+v);
+      }
+      if(f.length) out.push(t+':'+f.join(','));
+    }
+    return out.join('|');
+  };
   const parts=[CMAP_VER, m.w+','+m.h,
     'S:'+m.starts.map(p=>p[0]+'.'+p[1]).join(','),
     'R:'+m.rock,
-    'A:'+m.res.filter(r=>r[0]==='a').map(r=>r[1]+'.'+r[2]).join(','),
-    'V:'+m.res.filter(r=>r[0]==='v').map(r=>r[1]+'.'+r[2]).join(',')];
+    'A:'+m.res.filter(r2=>r2[0]==='a').map(r2=>r2[1]+'.'+r2[2]).join(','),
+    'V:'+m.res.filter(r2=>r2[0]==='v').map(r2=>r2[1]+'.'+r2[2]).join(','),
+    'N:'+cmapCleanName(m.name),
+    'P:'+CR_KEYS.map(num).join('|'),
+    'T:'+statPart()];
   const raw=parts.join(';');
   let b64='';
   // the field string is pure ASCII by construction, so btoa is enough
@@ -1184,9 +1339,12 @@ function cmapDecode(code){
     raw=atob(b);
   }catch(e){ return {err:'That is not a map code.'}; }
   const parts=raw.split(';');
-  if(parts[0]!==CMAP_VER) return {err:'That code is from a different version of the game.'};
+  /* FC1 is the same map with no rules block, so it still loads - it just
+     plays under the standard ones. */
+  if(parts[0]!=='FC1'&&parts[0]!==CMAP_VER)
+    return {err:'That code is from a different version of the game.'};
   const wh=(parts[1]||'').split(',').map(n=>n|0);
-  const m={w:wh[0]|0,h:wh[1]|0,starts:[],rock:'',res:[]};
+  const m={w:wh[0]|0,h:wh[1]|0,starts:[],rock:'',res:[],name:'',rules:{}};
   const pairs=t=>t?t.split(',').filter(Boolean).map(p=>p.split('.').map(n=>n|0)):[];
   for(const p of parts.slice(2)){
     const k=p.slice(0,2);
@@ -1194,6 +1352,31 @@ function cmapDecode(code){
     else if(k==='R:') m.rock=p.slice(2);
     else if(k==='A:') for(const q of pairs(p.slice(2))) m.res.push(['a',q[0],q[1]]);
     else if(k==='V:') for(const q of pairs(p.slice(2))) m.res.push(['v',q[0],q[1]]);
+    else if(k==='N:') m.name=cmapCleanName(p.slice(2));
+    else if(k==='P:'){
+      const vals=p.slice(2).split('|');
+      CR_KEYS.forEach((key,i)=>{
+        const t=(vals[i]||'').trim();
+        if(t!==''){ const n=parseFloat(t); if(n===n) m.rules[key]=n; }
+      });
+    }
+    else if(k==='T:'&&p.length>2){
+      const st={};
+      for(const grp of p.slice(2).split('|')){
+        if(!grp) continue;
+        const c=grp.indexOf(':'); if(c<1) continue;
+        const type=grp.slice(0,c);
+        if(!UDEF[type]&&!BDEF[type]) continue;      // ignore types we do not have
+        const fields={};
+        for(const kv of grp.slice(c+1).split(',')){
+          const eq=kv.indexOf('='); if(eq<1) continue;
+          const n=parseFloat(kv.slice(eq+1));
+          if(n===n) fields[kv.slice(0,eq)]=n;
+        }
+        if(Object.keys(fields).length) st[type]=fields;
+      }
+      if(Object.keys(st).length) m.rules.stats=st;
+    }
   }
   const bad=cmapProblem(m);
   return bad?{err:bad}:{map:m};
@@ -1254,7 +1437,7 @@ function tileBlocked(x,y){
 
 /* ===================== ENTITY FACTORY ===================== */
 function mkUnit(type,owner,x,y){
-  const d=UDEF[type];
+  const d=defFor('unit',type,owner)||UDEF[type];
   const mh=Math.round(d.hp*(isBot(owner)?ELITE.hp:1)*facOf(owner).hp);
   const u={id:nextId++,kind:'unit',type,owner,x,y,vx:0,vy:0,hp:mh,maxHp:mh,r:d.r,muzzle:0,
     cmd:{t:'idle'},target:null,atkCd:Math.random()*.5,face:owner?Math.PI*.75:-Math.PI*.25,
@@ -1262,7 +1445,7 @@ function mkUnit(type,owner,x,y){
   ents.push(u); return u;
 }
 function mkBuilding(type,owner,x,y,done){
-  const d=BDEF[type];
+  const d=defFor('building',type,owner)||BDEF[type];
   const b={id:nextId++,kind:'building',type,owner,x,y,w:d.w,h:d.h,r:Math.max(d.w,d.h)/2,
     maxHp:d.hp,hp:done?d.hp:Math.max(20,d.hp*.12),done:!!done,prog:done?1:0,
     queue:[],ptime:0,rally:{x:x,y:y+d.h/2+56},atkCd:0,dead:false,flash:0,geyser:null};
@@ -1505,8 +1688,10 @@ function recalcSupply(o){
       cap+=supplyOf(e.type,o);
     if(e.kind==='unit'&&!e.spawned) used+=UDEF[e.type].sup;   // brood is free
     if(e.kind==='building'&&e.queue) for(const q of e.queue) used+=UDEF[q].sup; }
-  // no clamp: the cap is exactly what has been built
-  P[o].cap=cap; P[o].sup=used;
+  /* Normally the cap is exactly what has been built. A scenario may pin it
+     instead, which is how you make a fixed-army skirmish. */
+  const fixed=(CMAP&&CMAP.rules)?CR('pop'):0;
+  P[o].cap=fixed>0?fixed:cap; P[o].sup=used;
 }
 function nearest(list,x,y,f){
   let best=null,bd=1e9;
@@ -7106,8 +7291,9 @@ function init(){
   recReset();
   LOCAL_OUT=false; NET.told={}; statsReset();
   for(const k in groups) delete groups[k];
-  const startM=GRAND?600:150;
-  for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=0; P[i].sup=0; P[i].cap=0; UP[i]={wep:0,arm:0}; }
+  const startM=(CMAP&&CMAP.rules)?CR('startM'):(GRAND?600:150);
+  const startG=(CMAP&&CMAP.rules)?CR('startG'):0;
+  for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=startG; P[i].sup=0; P[i].cap=0; UP[i]={wep:0,arm:0}; }
   explored.fill(0); visible.fill(0); blocked.fill(0); nav.fill(0);
   document.getElementById('pause').style.display='none';
   document.getElementById('over').style.display='none';
@@ -7125,7 +7311,7 @@ function init(){
     const cc=mkBuilding('keystone',o,b.tx*TILE,b.ty*TILE,true);
     const inward=cc.x<WW/2?1:-1;
     cc.rally={x:cc.x+inward*80,y:cc.y+(cc.y<WH/2?80:-80)};
-    const crew=GRAND?9:5;
+    const crew=(CMAP&&CMAP.rules)?Math.max(0,Math.min(24,CR('crew'))):(GRAND?9:5);
     for(let i=0;i<crew;i++){
       const a=-Math.PI/2+(i-(crew-1)/2)*.38;
       const u=mkUnit('delver',o,cc.x+Math.cos(a)*84,cc.y+Math.sin(a)*84);
@@ -7348,7 +7534,37 @@ function dmgOf(e,w){
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
 let menuOn=true, mstars=[], mshards=[], mt=0;
 function menuSize(){ mcv.width=window.innerWidth; mcv.height=window.innerHeight; }
+/* The SIDES list, redrawn. Saved scenarios sit in it beside 1v1 and Free For
+   All, each with a small X to drop it, because a mode you cannot remove is a
+   mode you are stuck with. */
+function refreshMenuModes(){
+  const mw=document.getElementById('modes');
+  if(!mw) return;
+  scenSync();
+  if(!MODES[modeKey]){ modeKey='duel'; CMAP=null; }
+  mw.innerHTML='';
+  Object.keys(MODES).forEach(k=>{
+    const d=MODES[k], el=document.createElement('div');
+    el.className='scard'+(k===modeKey?' on':'');
+    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
+    if(d.scen){
+      const x=document.createElement('button');
+      x.textContent='\u00d7';
+      x.title='Remove this scenario';
+      x.style.cssText='position:absolute;top:4px;right:5px;font-family:inherit;'+
+        'background:none;border:0;color:#a49d8c;font-size:13px;line-height:1;cursor:pointer';
+      x.onclick=ev=>{ ev.stopPropagation(); SFX.play('click');
+        scenRemove(d.scen); refreshMenuModes(); };
+      el.style.position='relative';
+      el.appendChild(x);
+    }
+    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); modeChoose(k);
+      mw.querySelectorAll('.scard').forEach(x2=>x2.classList.remove('on')); el.classList.add('on'); };
+    mw.appendChild(el);
+  });
+}
 function menuInit(){
+  scenLoad(); scenSync();
   menuSize();
   mstars=[]; mshards=[];
   for(let i=0;i<260;i++) mstars.push({x:Math.random(),y:Math.random(),z:.3+Math.random()*1,
@@ -7366,16 +7582,7 @@ function menuInit(){
       dw.querySelectorAll('.dcard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
     dw.appendChild(el);
   });
-  const mw=document.getElementById('modes');
-  mw.innerHTML='';
-  Object.keys(MODES).forEach(k=>{
-    const d=MODES[k], el=document.createElement('div');
-    el.className='scard'+(k===modeKey?' on':'');
-    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
-    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); modeKey=k;
-      mw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
-    mw.appendChild(el);
-  });
+  refreshMenuModes();
   const fw=document.getElementById('factions');
   fw.innerHTML='';
   Object.keys(FACTIONS).forEach(k=>{
@@ -7454,7 +7661,9 @@ function menuInit(){
   manRender();
   idleTitle();
   document.getElementById('deploy').onclick=()=>{
-    CMAP=null;                      // DEPLOY always means a fresh generated map
+    /* Whether a scenario is in play is the mode's business, not this
+       button's - clearing it here threw away the one you just picked. */
+    modeChoose(modeKey);
     SFX.unlock(); goFullscreen(); SFX.play('deploy'); startGame(diffKey); };
   const _mb=document.getElementById('btnMapBuilder');
   if(_mb) _mb.onclick=()=>{ SFX.play('click'); edOpen(); };
@@ -7587,12 +7796,13 @@ musicInit(); updSnd(); musicPlay();
 /* Paints the same three things a map is made of. The working map lives here
    as a plain object; nothing touches the running game until PLAY IT. */
 const ED={on:false,tool:'rock',brush:1,painting:false,
-          rock:null,res:[],starts:[],cell:0};
+          rock:null,res:[],starts:[],cell:0,name:'',rules:{}};
 function edOpen(){
   ED.on=true;
   if(!ED.rock) edReset();
   document.getElementById('editor').style.display='flex';
   document.getElementById('menu').style.display='none';
+  edRulesRender(); edUnitsRender();
   edFit(); edDraw(); edCheck();
 }
 function edClose(){
@@ -7603,6 +7813,8 @@ function edClose(){
 function edReset(){
   ED.rock=new Uint8Array(112*112);
   ED.res=[]; ED.starts=[];
+  ED.name=''; ED.rules={};
+  edRulesRender&&edRulesRender(); edUnitsRender&&edUnitsRender();
 }
 function edFit(){
   const cv=document.getElementById('edCv');
@@ -7638,7 +7850,8 @@ function edDraw(){
 function edMap(){
   return {w:112,h:112,starts:ED.starts.map(p=>[p[0],p[1]]),
           rock:cmapPackRock(ED.rock,112,112),
-          res:ED.res.map(r=>[r[0],r[1],r[2]])};
+          res:ED.res.map(r=>[r[0],r[1],r[2]]),
+          name:ED.name,rules:JSON.parse(JSON.stringify(ED.rules))};
 }
 function edCheck(){
   const el=document.getElementById('edMsg');
@@ -7684,6 +7897,90 @@ function edMirror(){
   ED.starts=ED.starts.concat(ED.starts.map(p=>[111-p[0],111-p[1]]));
   if(ED.starts.length>CMAP_MAX_STARTS) ED.starts.length=CMAP_MAX_STARTS;
 }
+/* The rules a scenario can set, as the builder sees them. Each row is the key
+   in the rules block, a label, a hint, and what a standard match uses - the
+   hint says so, because "1" means nothing on its own. */
+const ED_RULES=[
+  ['name',   'SCENARIO NAME', 'shown in the SIDES list',          ''],
+  ['speed',  'GAME SPEED',    '1 = normal, 2 = twice as fast',    1],
+  ['build',  'BUILD + TRAIN', '1 = normal',                       1],
+  ['eco',    'INCOME',        '1 = normal, 7 = Grand War',        1],
+  ['cost',   'ALL PRICES',    '1 = normal, 0.5 = half',           1],
+  ['startM', 'STARTING SUPPLY','150 normally',                    150],
+  ['startG', 'STARTING FUEL', '0 normally',                       0],
+  ['crew',   'STARTING WORKERS','5 normally, 0 to 24',            5],
+  ['pop',    'FIXED POP CAP', '0 = earn it from structures',      0]
+];
+/* Which types are worth exposing, and which of their numbers. Prices go
+   through priceOf, the rest through the statline, but to a builder they are
+   all just numbers on a unit. */
+const ED_STAT_FIELDS=['hp','dmg','rng','m','g'];
+const ED_STAT_TYPES=['delver','warden','breaker','bulwark','sunderer','harrower','talon','titan'];
+function edRulesRender(){
+  const host=document.getElementById('edRules');
+  if(!host) return;
+  host.textContent='';
+  for(const [key,label,hint,dflt] of ED_RULES){
+    const row=document.createElement('div'); row.className='edRow';
+    const l=document.createElement('label'); l.textContent=label;
+    const inp=document.createElement('input');
+    inp.type=key==='name'?'text':'number';
+    if(key!=='name'){ inp.step='any'; inp.min='0'; }
+    inp.value=key==='name'?(ED.name||''):
+      (ED.rules[key]===undefined?'':ED.rules[key]);
+    inp.placeholder=String(dflt);
+    inp.oninput=()=>{
+      if(key==='name'){ ED.name=inp.value; edCheck(); return; }
+      const t=inp.value.trim();
+      if(t===''){ delete ED.rules[key]; }
+      else { const n=parseFloat(t); if(n===n) ED.rules[key]=n; }
+      edCheck();
+    };
+    const h=document.createElement('i'); h.textContent=hint;
+    row.appendChild(l); row.appendChild(inp); row.appendChild(h);
+    host.appendChild(row);
+  }
+}
+function edUnitsRender(){
+  const host=document.getElementById('edUnits');
+  if(!host) return;
+  host.textContent='';
+  const grid=document.createElement('div'); grid.className='edGrid';
+  const head=document.createElement('b'); head.textContent='UNIT'; grid.appendChild(head);
+  for(const f of ED_STAT_FIELDS){
+    const b=document.createElement('b');
+    b.textContent={hp:'HP',dmg:'DMG',rng:'RANGE',m:'SUPPLY',g:'FUEL'}[f]||f.toUpperCase();
+    grid.appendChild(b);
+  }
+  for(const t of ED_STAT_TYPES){
+    const nm=document.createElement('span'); nm.textContent=nameOf(t,0); grid.appendChild(nm);
+    for(const f of ED_STAT_FIELDS){
+      const inp=document.createElement('input');
+      inp.type='number'; inp.step='any'; inp.min='0';
+      const base=UDEF[t];
+      inp.placeholder=String(base?(base[f]===undefined?0:base[f]):0);
+      const cur=ED.rules.stats&&ED.rules.stats[t]&&ED.rules.stats[t][f];
+      inp.value=(cur===undefined||cur===null)?'':cur;
+      inp.oninput=()=>{
+        ED.rules.stats=ED.rules.stats||{};
+        ED.rules.stats[t]=ED.rules.stats[t]||{};
+        const v=inp.value.trim();
+        if(v===''){ delete ED.rules.stats[t][f];
+          if(!Object.keys(ED.rules.stats[t]).length) delete ED.rules.stats[t];
+          if(!Object.keys(ED.rules.stats).length) delete ED.rules.stats;
+        } else { const n=parseFloat(v); if(n===n) ED.rules.stats[t][f]=n; }
+        edCheck();
+      };
+      grid.appendChild(inp);
+    }
+  }
+  host.appendChild(grid);
+  const note=document.createElement('div'); note.className='edRow';
+  note.innerHTML='<i>Blank means leave it as the game has it. These are list '+
+    'values: an army\u2019s own multipliers still apply on top, so the Steel '+
+    'Legion is still tougher than the Militia.</i>';
+  host.appendChild(note);
+}
 function edInit(){
   const cv=document.getElementById('edCv');
   const at=ev=>{
@@ -7704,6 +8001,26 @@ function edInit(){
     b.onclick=()=>{ ED.brush=+b.dataset.brush; SFX.play('click');
       document.querySelectorAll('#editor [data-brush]').forEach(o=>o.classList.toggle('on',o===b)); };
   });
+  document.querySelectorAll('#editor .edTabs button').forEach(b=>{
+    b.onclick=()=>{ SFX.play('click');
+      document.querySelectorAll('#editor .edTabs button').forEach(o=>o.classList.toggle('on',o===b));
+      document.querySelectorAll('#editor .edPage').forEach(p=>
+        p.classList.toggle('on',p.dataset.page===b.dataset.page));
+      if(b.dataset.page==='map'){ edFit(); edDraw(); } };
+  });
+  document.getElementById('edSave').onclick=()=>{
+    if(!edCheck()){ SFX.play('deny'); return; }
+    const m=edMap();
+    const nm=cmapCleanName(m.name)||('Scenario '+(CSCEN.length+1));
+    ED.name=nm; edRulesRender();
+    m.name=nm;
+    scenAdd(nm,cmapEncode(m),m.starts.length);
+    refreshMenuModes();
+    SFX.play('complete');
+    const el=document.getElementById('edMsg');
+    el.textContent='Saved. \u201c'+nm+'\u201d is in the SIDES list now.';
+    el.className='good';
+  };
   document.getElementById('edClear').onclick=()=>{ SFX.play('click'); edReset(); edDraw(); edCheck(); };
   document.getElementById('edMirror').onclick=()=>{ SFX.play('click'); edMirror(); edDraw(); edCheck(); };
   document.getElementById('edDone').onclick=()=>{ SFX.play('click'); edClose(); };
@@ -7729,11 +8046,14 @@ function edInit(){
     ED.rock=cmapUnpackRock(r.map.rock,112,112);
     ED.res=r.map.res.map(x=>[x[0],x[1],x[2]]);
     ED.starts=r.map.starts.map(p=>[p[0],p[1]]);
+    ED.name=r.map.name||''; ED.rules=r.map.rules||{};
+    edRulesRender(); edUnitsRender();
     SFX.play('complete'); edDraw(); edCheck();
   };
   document.getElementById('edPlay').onclick=()=>{
     if(!edCheck()){ SFX.play('deny'); return; }
     CMAP=edMap();
+    cmapTouch();                   // the rules have to be live before the match starts
     try{ localStorage.setItem('fc_map',cmapEncode(CMAP)); }catch(e){}
     /* A two-start map cannot seat a 2v2, so fall back rather than putting two
        commanders in one corner. */
@@ -7750,7 +8070,8 @@ function edInit(){
       const r=cmapDecode(saved);
       if(r.map){ ED.rock=cmapUnpackRock(r.map.rock,112,112);
         ED.res=r.map.res.map(x=>[x[0],x[1],x[2]]);
-        ED.starts=r.map.starts.map(p=>[p[0],p[1]]); }
+        ED.starts=r.map.starts.map(p=>[p[0],p[1]]);
+        ED.name=r.map.name||''; ED.rules=r.map.rules||{}; }
     }
   }catch(e){}
 }
