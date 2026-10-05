@@ -1293,10 +1293,11 @@ function scenAutoName(){
   }
   return 'Scenario '+Date.now().toString(36);
 }
-function scenAdd(name,code,seats){
+function scenAdd(name,code,seats,size){
   const id='cm_'+Date.now().toString(36);
   CSCEN=CSCEN.filter(x=>x.name!==name);          // same name replaces
-  CSCEN.unshift({id,name:cmapCleanName(name)||'Untitled',code,seats:seats|0||2});
+  CSCEN.unshift({id,name:cmapCleanName(name)||'Untitled',code,
+                 seats:seats|0||2, size:size|0||112});
   CSCEN=CSCEN.slice(0,24);
   scenSave(); scenSync();
   return id;
@@ -4325,7 +4326,15 @@ window.addEventListener('keydown',e=>{
        the pause button is for. */
     if(placing||pending||cardMode==='build'){
       placing=null; pending=null; cardMode='main'; SFX.play('click');
-    } else if(sel.length){ setSel([]); SFX.play('click'); }
+    } else {
+      /* With a production building up, the thing you most want to take back
+         is the unit you just queued - so Escape is that button. Driving the
+         button itself rather than repeating what it does, because it already
+         knows which of a grouped set of halls to take it off. */
+      const cancel=cardButtons.find(b=>b.name==='Cancel Last'&&!b.dis);
+      if(cancel){ SFX.play('click'); cancel.act(); }
+      else if(sel.length){ setSel([]); SFX.play('click'); }
+    }
     refreshUI();
     e.preventDefault(); return;
   }
@@ -4663,7 +4672,7 @@ function buildCard(){
       }
       while(cardButtons.length<8) cardButtons.push({empty:true});
       const anyQ=bGroup.some(x=>x.queue&&x.queue.length);
-      cardButtons.push({ic:'✕',name:'Cancel Last',hk:'X',dis:!anyQ,
+      cardButtons.push({ic:'✕',name:'Cancel Last',hk:'ESC',dis:!anyQ,
         act:function(){ for(let i=bGroup.length-1;i>=0;i--){ const g=bGroup[i];
           if(g.queue&&g.queue.length){ cancelQueue(g,g.queue.length-1); return; } } }});
     }
@@ -8462,7 +8471,10 @@ function edFit(){
   const cv=document.getElementById('edCv');
   /* The board is square, so the cell size is whatever squares fit the smaller
      of the space left over beside the toolbars. */
-  const room=Math.min(window.innerWidth*.92,window.innerHeight-230);
+  /* 230 was right for two toolbars; the board-size row is a third, and
+     without the extra allowance the map page needed 23px of scroll on a
+     620px-tall window where it used to fit outright. */
+  const room=Math.min(window.innerWidth*.92,window.innerHeight-272);
   const N=ED.size||112;
   ED.cell=Math.max(2,Math.floor(room/N));
   cv.width=N*ED.cell; cv.height=N*ED.cell;
@@ -8789,7 +8801,7 @@ function edInit(){
     const nm=cmapCleanName(m.name)||scenAutoName();
     ED.name=nm; edRulesRender();
     m.name=nm;
-    const newId=scenAdd(nm,cmapEncode(m),m.starts.length);
+    const newId=scenAdd(nm,cmapEncode(m),m.starts.length,m.w);
     refreshMenuModes();
     // pick it, so pressing PLAY next actually plays the thing you saved
     if(newId&&SCALES[newId]) scaleChoose(newId);

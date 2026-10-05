@@ -1795,6 +1795,72 @@ test('one order is still one mark, however much is in the bank', () => {
   eq(run('v.lvl'), 1, 'a full bank does not buy a second mark');
 });
 
+console.log('\nboards that are not 112 wide');
+
+function sizedMap(n, starts) {
+  return '{w:' + n + ',h:' + n + ',starts:' + JSON.stringify(starts) + ',' +
+    'rock:cmapPackRock(new Uint8Array(' + n + '*' + n + '),' + n + ',' + n + '),' +
+    'res:[["a",10,10],["a",' + (n - 12) + ',' + (n - 12) + ']],blds:[],' +
+    'name:"Sized",rules:{}}';
+}
+
+test('a board of any allowed size round-trips', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  for (const n of [64, 112, 160, 224]) {
+    const back = run('cmapDecode(cmapEncode(' + sizedMap(n, [[12, 12], [n - 14, n - 14]]) + '))');
+    ok(!back.err, n + ' encodes and decodes (' + (back.err || 'clean') + ')');
+    eq(back.map.w, n, n + ' comes back the same width');
+    eq(back.map.h, n, 'and height');
+  }
+});
+
+test('the match allocates the board the map asks for', () => {
+  for (const n of [64, 160]) {
+    run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("veteran")');
+    run('CMAP=cmapDecode(cmapEncode(' + sizedMap(n, [[12, 12], [n - 14, n - 14]]) + ')).map');
+    run('cmapTouch(); startGame("veteran")');
+    eq(run('MAP_W'), n, n + ': the world is ' + n + ' tiles wide');
+    eq(run('MAP_H'), n, 'and ' + n + ' tall');
+    eq(run('WW'), n * 32, 'with world pixels to match');
+    // and it runs without falling over on the different board
+    for (let i = 0; i < 40; i++) { run('over=false'); run('simTick(0.1)'); }
+    ok(run('ents.length') > 0, n + ': the match ticks on it');
+  }
+  run('CMAP=null; cmapTouch()');
+});
+
+test('rock lands on the right rows, whatever the size', () => {
+  /* cmapApply used to copy the rock field as one flat run, which is only
+     right while the map is exactly the size of the board - one tile of
+     difference slides every row sideways from the one above. */
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('var N=160; var bits=new Uint8Array(N*N); bits[40*N+70]=1; bits[41*N+70]=1');
+  run('CMAP=cmapDecode(cmapEncode({w:N,h:N,starts:[[12,12],[140,140]],' +
+      'rock:cmapPackRock(bits,N,N),res:[["a",10,10],["a",148,148]],blds:[],' +
+      'name:"Sized",rules:{}})).map');
+  run('cmapTouch(); startGame("veteran")');
+  eq(run('blocked[ti(70,40)]'), 1, 'the marked tile is solid');
+  eq(run('blocked[ti(70,41)]'), 1, 'and the one below it');
+  eq(run('blocked[ti(71,40)]'), 0, 'its neighbour is not, so no row has slid');
+  run('CMAP=null; cmapTouch()');
+});
+
+test('a board that cannot work is refused with a reason', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  const oblong = run('cmapProblem({w:120,h:90,starts:[[5,5]],res:[],blds:[]})');
+  ok(/square/i.test(String(oblong)), 'an oblong is refused: ' + oblong);
+  const huge = run('cmapProblem({w:400,h:400,starts:[[5,5]],res:[],blds:[]})');
+  ok(/between/i.test(String(huge)), 'too big is refused: ' + huge);
+  const outside = run('cmapProblem({w:112,h:112,starts:[[200,5]],res:[],blds:[]})');
+  ok(/outside/i.test(String(outside)), 'a start off the board is refused: ' + outside);
+  eq(run('cmapProblem(' + sizedMap(160, [[12, 12], [146, 146]]) + ')'), null,
+     'and a good one passes');
+});
+
 console.log('\nwhat a Flame Squad costs');
 
 test('a Flame Squad is 25 normally and 10 in Blitz', () => {
