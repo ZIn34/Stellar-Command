@@ -874,12 +874,12 @@ const UDEF={
             second:{dmg:26, cd:.2, rng:124, off:.62, snd:0}}
 };
 const BDEF={
-  keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'H'},
-  habitat:   {n:'Billet',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'B'},
+  keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'Q'},
+  habitat:   {n:'Billet',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
   musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker'],hk:'R'},
   siphon:    {n:'Refinery',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'F'},
-  forgeworks:{n:'Workshop', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'W'},
-  watchspire:{n:'Bunker', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'K'},
+  forgeworks:{n:'Workshop', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'S'},
+  watchspire:{n:'Bunker', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
   // the only place a Titan can be built, and it needs a Workshop first
   citadel:   {n:'Proving Ground',    hp:1300,w:112,h:112,m:350,g:150,bt:62,sight:7,
               trains:['titan'],req:'forgeworks',hk:'G'}
@@ -5068,10 +5068,25 @@ const MUZZLE={ delver:{d:1.75,off:0,s:1.0}, warden:{d:1.95,off:0,s:1.35},
 /* ---------- units (drawn facing +x) ---------- */
 function makeUnitSpr(type,owner){
   const d=UDEF[type], R=d.r;
-  const _H=hullSet(owner), HULL_HI=_H.hi, HULL=_H.mid, HULL_LO=_H.lo;
+  const _H=hullSet(owner);
   const _fk=facKeyOf(owner), _fs=FBUILD[_fk].scale;
   const t={c:facAcc(owner)};              // shadows TEAM[owner]: doctrine accent
-  const _sh=hx=>facShade(hx,_fk), _lt=hx=>facLight(hx,_fk);
+  /* Same problem the structures had: at the size these are played at, all
+     eight were the same mid tone and only the outline separated them, and
+     three of them are men. A value ladder across the roster does most of
+     the work - infantry light, artillery and armour dark - so even a
+     smudge on the screen tells you roughly what you are looking at. */
+  const _TONE={warden:1.26, talon:1.16, breaker:1.06, delver:1.0,
+               bulwark:.9, titan:.84, sunderer:.78, harrower:.66}[type]||1;
+  const _tone=hx=>{
+    if(_TONE===1||typeof hx!=='string'||hx.charAt(0)!=='#'||hx.length!==7) return hx;
+    const p=parseInt(hx.slice(1),16);
+    const ch=[p>>16&255,p>>8&255,p&255]
+      .map(v=>Math.max(0,Math.min(255,Math.round(v*_TONE))));
+    return '#'+((1<<24)|(ch[0]<<16)|(ch[1]<<8)|ch[2]).toString(16).slice(1);
+  };
+  const HULL_HI=_tone(_H.hi), HULL=_tone(_H.mid), HULL_LO=_tone(_H.lo);
+  const _sh=hx=>_tone(facShade(hx,_fk)), _lt=hx=>facLight(hx,_fk);
   const poly=(gg,pts)=>facPoly(gg,pts,_fk);
   const rr=(gg,x,y,w,h,r)=>facRR(gg,x,y,w,h,r,_fk);
   const plate=(gg,x,y,w,h,r,a,b)=>facPlate(gg,x,y,w,h,r,a,b,_fk);
@@ -5296,7 +5311,7 @@ function makeUnitSpr(type,owner){
     man(-R*.68, R*.56,.72,'rifle',.34);                    // loader
     man(-R*.16,-R*.12,1.3,'mg',0);                         // gunner
     g.fillStyle=HULL_HI;                                   // gun shield
-    poly(g,[[R*.5,-R*.86],[R*.9,-R*.54],[R*.9,R*.14],[R*.5,R*.26]]); g.fill();
+    poly(g,[[R*.46,-R*1.02],[R*1.02,-R*.62],[R*1.02,R*.24],[R*.46,R*.38]]); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
     g.fillStyle=t.c;                                       // painted stripe on it
     poly(g,[[R*.56,-R*.66],[R*.86,-R*.42],[R*.86,-R*.3],[R*.56,-R*.54]]); g.fill();
@@ -5333,8 +5348,8 @@ function makeUnitSpr(type,owner){
   } else if(type==='harrower'){
     /* Battle tank. Wide tracks, a sloped glacis and a cast turret set back off
        centre, which is what makes it read as the heaviest thing on the field. */
-    const H=R*.6;
-    treads(R*1.95,H,R*.4,10);
+    const H=R*.78;                                       // a visibly fatter body
+    treads(R*1.95,H,R*.44,10);
     poly(g,[[-R*.92,-H],[R*.46,-H],[R*.94,-H*.52],[R*.94,H*.52],[R*.46,H],[-R*.92,H]]);
     g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.7; g.stroke();
     g.fillStyle=HULL_HI;                                 // glacis
@@ -5361,12 +5376,12 @@ function makeUnitSpr(type,owner){
     const H=R*.5;
     treads(R*1.6,H,R*.36,8);
     g.fillStyle=DARK;                                    // recoil spades
-    poly(g,[[-R*.85,-H*.9],[-R*1.3,-H*1.5],[-R*1.3,-H*.85]]); g.fill();
-    poly(g,[[-R*.85, H*.9],[-R*1.3, H*1.5],[-R*1.3, H*.85]]); g.fill();
+    poly(g,[[-R*.8,-H*.95],[-R*1.5,-H*1.9],[-R*1.5,-H*.8]]); g.fill();
+    poly(g,[[-R*.8, H*.95],[-R*1.5, H*1.9],[-R*1.5, H*.8]]); g.fill();
     poly(g,[[-R*.92,-H],[R*.3,-H],[R*.46,0],[R*.3,H],[-R*.92,H]]);
     g.fillStyle=hullGrad(); g.fill(); g.strokeStyle=DARK; g.lineWidth=1.6; g.stroke();
-    g.fillStyle=DARK; rr(g,R*.18,-2.8,R*1.45,5.6,1.5); g.fill();
-    g.fillStyle=HULL_LO; rr(g,R*1.4,-4,R*.28,8,1.5); g.fill();
+    g.fillStyle=DARK; rr(g,R*.18,-2.8,R*1.92,5.6,1.5); g.fill();
+    g.fillStyle=HULL_LO; rr(g,R*1.88,-4.4,R*.3,8.8,1.5); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
     g.fillStyle=HULL_HI; rr(g,-R*.16,-R*.3,R*.44,R*.6,2); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
@@ -6968,7 +6983,7 @@ const SCALES={
 };
 /* Each doctrine calls the same roster by its own names. Hotkeys stay pinned to
    the underlying type so a rename can never shuffle or collide with them. */
-const HK={delver:'S',warden:'R',bulwark:'G',sunderer:'H',harrower:'T',talon:'W',
+const HK={delver:'D',warden:'R',bulwark:'G',sunderer:'H',harrower:'T',talon:'W',
           breaker:'F',titan:'B'};
 const FNAMES={
   /* One roster, three armies. Only the names differ - every type keeps its
@@ -7732,7 +7747,7 @@ const KEY_ACTS=[
   /* v + t instead of a fixed label: the name comes from the roster when the
      row is drawn, so this list reads in the army you are playing and can
      never fall out of step with a rename again. */
-  {id:'u_delver',  v:'TRAIN', t:'delver',  def:'s'},
+  {id:'u_delver',  v:'TRAIN', t:'delver',  def:'d'},
   {id:'u_warden',  v:'TRAIN', t:'warden',  def:'r'},
   {id:'u_bulwark', v:'TRAIN', t:'bulwark', def:'g'},
   {id:'u_sunderer',v:'TRAIN', t:'sunderer',def:'h'},
@@ -7740,12 +7755,12 @@ const KEY_ACTS=[
   {id:'u_breaker', v:'TRAIN', t:'breaker', def:'f'},
   {id:'u_talon',   v:'TRAIN', t:'talon',   def:'w'},
   {id:'u_titan',   v:'TRAIN', t:'titan',   def:'b'},
-  {id:'b_keystone',  v:'BUILD', t:'keystone',  def:'h'},
-  {id:'b_habitat',   v:'BUILD', t:'habitat',   def:'b'},
+  {id:'b_keystone',  v:'BUILD', t:'keystone',  def:'q'},
+  {id:'b_habitat',   v:'BUILD', t:'habitat',   def:'h'},
   {id:'b_musterhall',v:'BUILD', t:'musterhall',def:'r'},
   {id:'b_siphon',    v:'BUILD', t:'siphon',    def:'f'},
-  {id:'b_forgeworks',v:'BUILD', t:'forgeworks',def:'w'},
-  {id:'b_watchspire',v:'BUILD', t:'watchspire',def:'k'},
+  {id:'b_forgeworks',v:'BUILD', t:'forgeworks',def:'s'},
+  {id:'b_watchspire',v:'BUILD', t:'watchspire',def:'w'},
   {id:'b_citadel',   v:'BUILD', t:'citadel',   def:'g'}
 ];
 function keyActLabel(a){
