@@ -623,7 +623,7 @@ body.touch .mouse-only{display:none}
   <div class="edTabs">
     <button data-page="map" class="on">MAP</button>
     <button data-page="rules">RULES</button>
-    <button data-page="units">UNITS</button>
+    <button data-page="units">UNITS &amp; BUILDINGS</button>
   </div>
   <div class="edPage on" data-page="map">
     <div id="edWrap"><canvas id="edCv"></canvas></div>
@@ -8049,7 +8049,12 @@ const ED_RULES=[
    through priceOf, the rest through the statline, but to a builder they are
    all just numbers on a unit. */
 const ED_STAT_FIELDS=['hp','dmg','rng','m','g'];
-const ED_STAT_TYPES=['delver','warden','breaker','bulwark','sunderer','harrower','talon','titan'];
+const ED_STAT_TYPES=['delver','warden','breaker','bulwark','sunderer','harrower','talon','titan','vanguard'];
+/* Structures take the same treatment. Most have no gun, so the columns are
+   what a builder actually wants to set: how much punishment it takes, what
+   it costs, and how long it takes to put up. */
+const ED_BLD_FIELDS=['hp','m','g','bt'];
+const ED_BLD_TYPES=['keystone','habitat','musterhall','siphon','forgeworks','watchspire','citadel'];
 function edRulesRender(){
   const host=document.getElementById('edRules');
   if(!host) return;
@@ -8109,6 +8114,44 @@ function edUnitsRender(){
     }
   }
   host.appendChild(grid);
+
+  const bgrid=document.createElement('div'); bgrid.className='edGrid';
+  bgrid.style.marginTop='10px';
+  const bh=document.createElement('b'); bh.textContent='STRUCTURE'; bgrid.appendChild(bh);
+  for(const f of ED_BLD_FIELDS){
+    const b=document.createElement('b');
+    b.textContent={hp:'HP',m:'SUPPLY',g:'FUEL',bt:'BUILD S'}[f]||f.toUpperCase();
+    bgrid.appendChild(b);
+  }
+  // one blank cell so the two grids line up under each other
+  for(let i=ED_BLD_FIELDS.length;i<ED_STAT_FIELDS.length;i++)
+    bgrid.appendChild(document.createElement('span'));
+  for(const ty of ED_BLD_TYPES){
+    const nm=document.createElement('span'); nm.textContent=nameOf(ty,0); bgrid.appendChild(nm);
+    for(const f of ED_BLD_FIELDS){
+      const inp=document.createElement('input');
+      inp.type='number'; inp.step='any'; inp.min='0';
+      const base=BDEF[ty];
+      inp.placeholder=String(base?(base[f]===undefined?0:base[f]):0);
+      const cur=ED.rules.stats&&ED.rules.stats[ty]&&ED.rules.stats[ty][f];
+      inp.value=(cur===undefined||cur===null)?'':cur;
+      inp.oninput=()=>{
+        ED.rules.stats=ED.rules.stats||{};
+        ED.rules.stats[ty]=ED.rules.stats[ty]||{};
+        const v=inp.value.trim();
+        if(v===''){ delete ED.rules.stats[ty][f];
+          if(!Object.keys(ED.rules.stats[ty]).length) delete ED.rules.stats[ty];
+          if(!Object.keys(ED.rules.stats).length) delete ED.rules.stats;
+        } else { const n=parseFloat(v); if(n===n) ED.rules.stats[ty][f]=n; }
+        edCheck();
+      };
+      bgrid.appendChild(inp);
+    }
+    for(let i=ED_BLD_FIELDS.length;i<ED_STAT_FIELDS.length;i++)
+      bgrid.appendChild(document.createElement('span'));
+  }
+  host.appendChild(bgrid);
+
   const note=document.createElement('div'); note.className='edRow';
   note.innerHTML='<i>Blank means leave it as the game has it. These are list '+
     'values: an army\u2019s own multipliers still apply on top, so the Steel '+

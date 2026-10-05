@@ -1698,11 +1698,19 @@ test('every refit makes it tougher and the next one dearer', () => {
 });
 
 test('there is no ceiling, only the price', () => {
+  /* The first version of this asserted twenty marks and got sixteen, because
+     two hundred thousand supply ran out - which is the mechanic working. The
+     claim is that nothing caps the level and the cost keeps climbing, so the
+     bank is topped up and both are checked. */
   vgArena();
-  for (let i = 0; i < 20; i++) run('refitApply(v)');
-  eq(run('v.lvl'), 20, 'it kept going for twenty marks');
+  for (let i = 0; i < 20; i++) {
+    run('P[0].m=1e9; P[0].g=1e9');
+    run('refitApply(v)');
+  }
+  eq(run('v.lvl'), 20, 'nothing stops it climbing while you can pay');
   ok(run('refitCost(v).m') > run('UDEF.titan.m'),
-     'by then a refit costs more than a capital ship');
+     'and by then one more mark costs more than a capital ship (' +
+     run('refitCost(v).m') + ' vs ' + run('UDEF.titan.m') + ')');
 });
 
 test('a worker refits it, one mark per order', () => {
