@@ -981,7 +981,8 @@ const UDEF={
      rolled off the line. It also means every refit is at risk: the money is
      in the unit, not in a building. */
   vanguard:{n:'Vanguard', hp:210, sp:104, dmg:20, rng:104, cd:.8, sight:8, m:130, g:40, sup:2, bt:30, r:13,
-            refit:{m:90, g:30, growth:1.55, hp:.34, dmg:.27, size:.05}}
+            splash:34,
+            refit:{m:90, g:30, growth:1.55, hp:.34, dmg:.27, size:.05, splash:.07}}
 };
 const BDEF={
   keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'Q'},
@@ -2197,7 +2198,7 @@ function fire(a,t,w){
   if(rng>40){
     shots.push({x:sx,y:sy,tx:t.x,ty:t.y,t:0,dur:Math.max(.06,Math.hypot(t.x-sx,t.y-sy)/900),
       c:TEAM[a.owner].c,big:!!(w?w.splash:d.splash),target:t,dmg,
-      splash:(w?w.splash:d.splash)||0,owner:a.owner,
+      splash:Math.round(((w?w.splash:d.splash)||0)*refitSplash(a)),owner:a.owner,
       src:a,                               // so the target knows who to shoot back at
       // a capital ship's blast is shared out; ordinary artillery is not
       share:(a.type==='titan')?TITAN_SPLASH_SHARE:1,
@@ -2755,6 +2756,13 @@ function refitDmgMul(e){
 function refitScale(e){
   const r=refitSpec(e); if(!r) return 1;
   return Math.min(2.4,1+(e.lvl||0)*(r.size||0));
+}
+/* The blast widens with the marks too. Without this a mark fifteen hit one
+   target as tightly as a fresh one, which is not what a unit you have been
+   pouring supply into for ten minutes should feel like. */
+function refitSplash(e){
+  const r=refitSpec(e); if(!r) return 1;
+  return Math.min(2.2,1+(e.lvl||0)*(r.splash||0));
 }
 /* One step up. Charged against the owner, so a bot pays for its own. */
 function refitApply(e){
@@ -4987,10 +4995,6 @@ function aiRun(AI,ME,dt){
     if(AI.acts<1) return false;
     const r=tryTrain(b,type); if(r) AI.acts-=1; return r;
   };
-  const botResearch=(b,key)=>{
-    if(AI.acts<1) return false;
-    const r=tryResearch(b,key); if(r) AI.acts-=1; return r;
-  };
   const mGate=v=>Math.max(1,Math.round(v*COST_RATE));
   /* Worked out here rather than at the point of use, because the savings plan
      below has to know whether an expansion is wanted before anything has had a
@@ -5254,7 +5258,11 @@ function aiRun(AI,ME,dt){
          it happens to be sitting on a pile. */
       if(!b.res&&wantUp){
         const c=upCost(upKey,UP[ME][upKey],ME);
-        if(P[ME].m>=c.m&&P[ME].g>=c.g&&botResearch(b,upKey)) continue;
+        /* Not charged against attention. Research is a handful of clicks in
+           a whole match, and when it had to queue behind every hall and
+           every worker a Warlord finished a match having researched
+           nothing at all. */
+        if(P[ME].m>=c.m&&P[ME].g>=c.g&&tryResearch(b,upKey)) continue;
       }
       // saving for the ship: stop buying ichor units until the bank is there
       if(savingUp) continue;
@@ -7613,15 +7621,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{buildGap:20, sites:1, apm:14, burst:2, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, sites:1, apm:17, burst:2, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{buildGap:12, sites:2, apm:34, burst:3, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, sites:2, apm:52, burst:3, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:6, sites:3, apm:75, burst:4, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:6, sites:3, apm:140, burst:5, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
