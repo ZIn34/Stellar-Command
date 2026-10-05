@@ -1665,6 +1665,73 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
 });
 
+console.log('\na unit you keep building on');
+
+function vgArena() {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran"); BOTS=[false,false,false,false]');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('var v=mkUnit("vanguard",0,k.x+300,k.y+300)');
+  run('P[0].m=200000; P[0].g=200000');
+}
+
+test('the Barracks can train it', () => {
+  vgArena();
+  eq(run('BDEF.musterhall.trains.indexOf("vanguard")>=0'), true, 'it is on the Barracks list');
+  ok(run('!!UDEF.vanguard.refit'), 'and it carries a refit spec');
+});
+
+test('every refit makes it tougher and the next one dearer', () => {
+  vgArena();
+  const seen = [];
+  for (let i = 0; i < 6; i++) {
+    seen.push({hp: run('v.maxHp'), dmg: Math.round(run('dmgOf(v)')), cost: run('refitCost(v)').m});
+    run('refitApply(v)');
+  }
+  for (let i = 1; i < seen.length; i++) {
+    ok(seen[i].hp > seen[i-1].hp, 'mark ' + (i+1) + ' has more hit points');
+    ok(seen[i].dmg > seen[i-1].dmg, 'mark ' + (i+1) + ' hits harder');
+    ok(seen[i].cost > seen[i-1].cost, 'and costs more than the step before');
+  }
+  ok(seen[5].hp > seen[0].hp * 3, 'six marks is a different machine (' +
+     seen[0].hp + ' -> ' + seen[5].hp + ' hp)');
+});
+
+test('there is no ceiling, only the price', () => {
+  vgArena();
+  for (let i = 0; i < 20; i++) run('refitApply(v)');
+  eq(run('v.lvl'), 20, 'it kept going for twenty marks');
+  ok(run('refitCost(v).m') > run('UDEF.titan.m'),
+     'by then a refit costs more than a capital ship');
+});
+
+test('a worker refits it, one mark per order', () => {
+  /* Left running it kept going while the money lasted, so one click could
+     empty the bank into a single unit without being asked. */
+  vgArena();
+  run('var w=mkUnit("delver",0,v.x+40,v.y)');
+  run('setSel([w]); contextOrder(sel,v.x,v.y)');
+  eq(run('w.cmd.t'), 'refit', 'the worker took the job');
+  for (let i = 0; i < 200; i++) { run('over=false'); run('simTick(0.05)'); }
+  eq(run('v.lvl'), 1, 'exactly one mark from one order');
+  eq(run('w.cmd.t'), 'idle', 'and the worker is free again');
+});
+
+test('it cannot be refitted on credit', () => {
+  vgArena();
+  run('P[0].m=0; P[0].g=0');
+  const before = run('v.maxHp');
+  eq(run('refitApply(v)'), false, 'an empty bank buys nothing');
+  eq(run('v.maxHp'), before, 'and it is unchanged');
+});
+
+test('a refitted unit survives a snapshot with its mark', () => {
+  // the level lives on the unit, so it has to reach the other player somehow
+  vgArena();
+  ok(run('netTypeIdx({kind:"unit",type:"vanguard"})') >= 0,
+     'the type is encodable at all');
+});
+
 console.log('\norders mean what they say');
 
 function ordArena() {

@@ -952,12 +952,22 @@ const UDEF={
      they are single-target they do that without the blast reaching a
      whole army at once. */
   titan:   {n:'Land Battleship',    hp:4500,sp:54,  dmg:185,rng:160, cd:1.6, sight:13,m:1500,g:1500,sup:10,bt:118,r:34, aa:true, flatCost:true,
-            second:{dmg:26, cd:.2, rng:124, off:.62, snd:0}}
+            second:{dmg:26, cd:.2, rng:124, off:.62, snd:0}},
+  /* Comes out of the Barracks as an ordinary vehicle and never stops being
+     upgradable: send a worker to it and it is refitted a step tougher and a
+     step harder-hitting, as many times as you can pay for. There is no
+     ceiling - the cost is what stops you, going up by half again each time,
+     so the tenth refit costs more than a capital ship. One of these kept
+     alive and fed all match is a different thing entirely from one that
+     rolled off the line. It also means every refit is at risk: the money is
+     in the unit, not in a building. */
+  vanguard:{n:'Vanguard', hp:210, sp:104, dmg:20, rng:104, cd:.8, sight:8, m:130, g:40, sup:2, bt:30, r:13,
+            refit:{m:90, g:30, growth:1.55, hp:.34, dmg:.27, size:.05}}
 };
 const BDEF={
   keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'Q'},
   habitat:   {n:'Billet',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
-  musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker'],hk:'R'},
+  musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker','vanguard'],hk:'R'},
   siphon:    {n:'Refinery',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'F'},
   forgeworks:{n:'Workshop', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'S'},
   watchspire:{n:'Bunker', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
@@ -1966,7 +1976,7 @@ function titanTick(u,dt){
       if(!isAlly2(e.owner,u.owner)) continue;
       if(UDEF[e.type].worker) continue;              // the Sappers have jobs
       const c=e.cmd;
-      if(c&&(c.t==='move'||c.t==='gather'||c.t==='build'||c.t==='repair')) continue;
+      if(c&&(c.t==='move'||c.t==='gather'||c.t==='build'||c.t==='repair'||c.t==='refit')) continue;
       const dx=e.x-u.x, dy=e.y-u.y, d=Math.hypot(dx,dy)||.01;
       if(d<=R-14||d>grab) continue;
       const pull=Math.min(st.ward.hold, st.ward.hold*(d-(R-14))/120)*dt;
@@ -2045,7 +2055,7 @@ function retaliate(t,src){
   if(src.kind!=='unit') return;                        // not a turret
   if(t.owner===src.owner||isAlly2(t.owner,src.owner)) return;
   const c=t.cmd;
-  if(c&&(c.t==='gather'||c.t==='build'||c.t==='repair')) return;
+  if(c&&(c.t==='gather'||c.t==='build'||c.t==='repair'||c.t==='refit')) return;
   // already in a fight with something that can fight back? keep the focus
   const cur=retalTarget(t)||((t.target&&!t.target.dead)?t.target:null);
   if(cur&&cur.kind==='unit') return;
@@ -2584,7 +2594,7 @@ function updateUnit(u,dt){
     u._lastCmd=c.t;
     u.retreat=(c.t==='idle')?{x:u.x,y:u.y}:null;
   }
-  if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
+  if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'&&c.t!=='refit'){
     if(c.t==='idle'||c.t==='amove'||c.t==='hold') u.target=findTarget(u,d.sight*TILE*.8);
     else if(c.t==='move') u.target=findTarget(u,d.rng);
   }
@@ -2640,6 +2650,7 @@ function updateUnit(u,dt){
     case 'gather': gatherStep(u,dt); break;
     case 'build': buildStep(u,dt); break;
     case 'repair': repairStep(u,dt); break;
+    case 'refit': refitStep(u,dt); break;
   }
   // A unit that is shooting should look at what it is shooting. fire() aims the
   // sprite at the target, but steer() then turns it along its path, so a unit
@@ -2697,6 +2708,68 @@ function gatherStep(u,dt){
 function canRepair(t,own){
   if(facOf(own).noRepair) return false;         // kept, though no doctrine sets it now
   return t&&!t.dead&&t.owner===own&&t.hp<t.maxHp&&(t.kind==='unit'||(t.kind==='building'&&t.done));
+}
+/* ---------- field refits ---------- */
+/* A Vanguard carries its upgrades on itself rather than in a tech tree, so
+   the level lives on the unit. Nothing else in the game needs to know about
+   it: damage asks refitDmg, hit points are rewritten when it is refitted, and
+   the sprite is simply drawn bigger. */
+function refitSpec(e){
+  const d=(e&&e.kind==='unit')?UDEF[e.type]:null;
+  return (d&&d.refit)?d.refit:null;
+}
+function refitable(e,owner){
+  return !!(e&&!e.dead&&e.kind==='unit'&&e.owner===owner&&refitSpec(e));
+}
+/* Half again per step, so paying for the next one is always the question. */
+function refitCost(e){
+  const r=refitSpec(e); if(!r) return null;
+  const n=e.lvl||0, k=Math.pow(r.growth||1.5,n);
+  const scale=COST_RATE*(facOf(e.owner).cost||1);
+  return {m:Math.max(1,Math.round((r.m||0)*k*scale)),
+          g:Math.max(0,Math.round((r.g||0)*k*scale))};
+}
+function refitDmgMul(e){
+  const r=refitSpec(e); if(!r) return 1;
+  return 1+(e.lvl||0)*(r.dmg||0);
+}
+function refitScale(e){
+  const r=refitSpec(e); if(!r) return 1;
+  return Math.min(2.4,1+(e.lvl||0)*(r.size||0));
+}
+/* One step up. Charged against the owner, so a bot pays for its own. */
+function refitApply(e){
+  const r=refitSpec(e); if(!r) return false;
+  const c=refitCost(e), pool=P[e.owner];
+  if(!pool||pool.m<c.m||pool.g<c.g) return false;
+  pool.m-=c.m; pool.g-=c.g;
+  e.lvl=(e.lvl||0)+1;
+  const grown=Math.round(e.maxHp*(1+(r.hp||0)));
+  const gain=grown-e.maxHp;
+  e.maxHp=grown; e.hp=Math.min(grown,e.hp+gain);     // the new plate comes on whole
+  e.r=Math.round(UDEF[e.type].r*refitScale(e));
+  fx.push({x:e.x,y:e.y,t:0,dur:.5,r:e.r+10,k:'ping',c:'#ffc24a'});
+  if(e.owner===0){ SFX.play('complete'); say(nameOf(e.type,0)+' refitted - mark '+(e.lvl+1)); }
+  return true;
+}
+/* The worker job. Modelled on repairing: walk to it, then do the work. */
+function refitStep(u,dt){
+  const t=u.cmd.target;
+  if(!refitable(t,u.owner)){ u.cmd={t:'idle'}; return; }
+  if(edgeDist(u,t)>workReach(u,t)){ navigate(u,t.x,t.y,dt,workStop(u,t)); return; }
+  u.face=Math.atan2(t.y-u.y,t.x-u.x);
+  u.refitT=(u.refitT||0)+dt;
+  if(u.refitT<1.1) return;                  // a beat of work, so it is not instant
+  u.refitT=0;
+  if(!refitApply(t)&&u.owner===0){
+    const c=refitCost(t);
+    say('Needs '+c.m+' supply'+(c.g?' and '+c.g+' fuel':'')+' to refit');
+    SFX.play('deny');
+  }
+  /* One step per order, win or lose. Left running it would keep going while
+     the money lasted, so a single click could empty the bank into one unit
+     without being asked - each mark should be a decision. */
+  u.cmd={t:'idle'};
 }
 function repairStep(u,dt){
   const t=u.cmd.target;
@@ -3105,6 +3178,14 @@ function rightClick(wx,wy,queue){
   }
   const us=mine.filter(s=>s.kind==='unit');
   if(!us.length) return;
+  if(t&&refitable(t,0)&&us.some(u=>UDEF[u.type].worker)&&!us.includes(t)){
+    let any=false;
+    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'refit',target:t}; u.target=null; u.refitT=0; any=true; }
+    if(any){ const c=refitCost(t);
+      say('Refitting to mark '+((t.lvl||0)+2)+' - '+c.m+' supply'+(c.g?' + '+c.g+' fuel':''));
+      SFX.play('order');
+      fx.push({x:t.x,y:t.y,t:0,dur:.5,r:t.r+8,k:'ping',c:'#ffc24a'}); return; }
+  }
   if(t&&isFoe(t.owner,0)){ for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; }
     SFX.play('attackOrder');
     fx.push({x:t.x,y:t.y,t:0,dur:.5,r:hitRadius(t)+8,k:'ping',c:'#ff6b52'}); return; }
@@ -3449,7 +3530,7 @@ const NET_R=['aurite','vent'];
    They are appended AFTER the resource block rather than inserted into NET_U,
    because these indices also go into saved replays: anything already written
    keeps its meaning and old .scr files still decode. */
-const NET_U2=['breaker','titan'];
+const NET_U2=['breaker','titan','vanguard'];
 const NET_X=NET_U.length+NET_B.length+NET_R.length;
 function netTypeIdx(e){
   if(e.kind==='unit'){
@@ -3823,6 +3904,11 @@ function contextOrder(mine,wx,wy){
   }
   const us=mine.filter(e=>e.kind==='unit');
   if(!us.length) return;
+  if(t&&refitable(t,own)&&us.some(u=>UDEF[u.type].worker)&&us.indexOf(t)<0){
+    let any=false;
+    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'refit',target:t}; u.target=null; u.refitT=0; any=true; }
+    if(any) return;
+  }
   if(t&&isFoe(t.owner,own)){ for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; } return; }
   if(t&&(t.kind==='res'&&t.amount>0||t.kind==='building'&&t.type==='siphon'&&t.owner===own&&t.done)){
     let any=false;
@@ -4353,6 +4439,11 @@ function buildInfo(){
           if(_st.ward) notes.push('Shields allies within '+Math.round(_st.ward.range/TILE)+
             ' tiles for -'+Math.round(_st.ward.cut*100)+'% damage');
           if(_st.mends) notes.push('Mends nearby structures');
+          if(refitSpec(e)){
+            const _rc=refitCost(e);
+            notes.push('Mark '+((e.lvl||0)+1)+' - a worker refits it for '+
+              _rc.m+' supply'+(_rc.g?' and '+_rc.g+' fuel':''));
+          }
           if(_st.brood) notes.push('Deploys a '+nameOf(_st.brood.type,e.owner)+
             ' every '+_st.brood.every+'s, up to '+_st.brood.cap);
           if(_st.boom) notes.push('Detonates for '+_st.boom.dmg+' when destroyed');
@@ -6546,7 +6637,10 @@ function drawUnit(u){
   ctx.beginPath(); ctx.ellipse(u.x+2+(d.air?4:0),u.y+d.r*.6+(d.air?lift*.4:0),
     d.r*(d.air?.85:1.05),d.r*(d.air?.4:.52),0,0,7); ctx.fill();
   ctx.translate(u.x,u.y-lift); ctx.rotate(u.face);
-  ctx.drawImage(spr,-sw/2,-sh/2,sw,sh);
+  /* Every refit shows: the hull is drawn a little larger each time, which is
+     the only honest way to tell a mark-one from a mark-eight at a glance. */
+  const _rs=u.lvl?refitScale(u):1;
+  ctx.drawImage(spr,-sw*_rs/2,-sh*_rs/2,sw*_rs,sh*_rs);
   if(d.air&&!OPT.lowFx){
     /* Blades turning at the nose. The phase is offset by the unit id so a
        flight of them does not beat in unison, and two blurred arcs sit
@@ -7431,7 +7525,7 @@ const SCALES={
 /* Each doctrine calls the same roster by its own names. Hotkeys stay pinned to
    the underlying type so a rename can never shuffle or collide with them. */
 const HK={delver:'D',warden:'R',bulwark:'G',sunderer:'H',harrower:'T',talon:'W',
-          breaker:'F',titan:'B'};
+          breaker:'F',titan:'B',vanguard:'V'};
 const FNAMES={
   /* One roster, three armies. Only the names differ - every type keeps its
      own statline, role and hotkey, so muscle memory carries between armies.
@@ -7439,19 +7533,22 @@ const FNAMES={
      facText() rewrites them into the other two. Keep them consonant-initial
      consonant-initial so the articles read right; irregular plurals are
      fine, but list them in FPLURAL below or the rewriter will mangle them. */
-  concord:{delver:'Sapper',    warden:'Rifleman',      breaker:'Flame Squad',
+  concord:{vanguard:'Vanguard',
+           delver:'Sapper',    warden:'Rifleman',      breaker:'Flame Squad',
            bulwark:'Gunner',   sunderer:'Howitzer',    harrower:'Battle Tank',
            talon:'Warplane',   titan:'Land Battleship',
            keystone:'Headquarters', habitat:'Billet',  musterhall:'Barracks',
            siphon:'Refinery',  forgeworks:'Workshop',  watchspire:'Bunker',
            citadel:'Proving Ground'},
-  legion: {delver:'Pioneer',   warden:'Conscript',     breaker:'Breacher',
+  legion: {vanguard:'Warhulk',
+           delver:'Pioneer',   warden:'Conscript',     breaker:'Breacher',
            bulwark:'Flak',     sunderer:'Rocket Battery', harrower:'Heavy Tank',
            talon:'Strike Plane',titan:'Siege Dreadnought',
            keystone:'Command Post', habitat:'Bunkhouse', musterhall:'Drill Yard',
            siphon:'Fuel Depot',forgeworks:'Tank Works',watchspire:'Pillbox',
            citadel:'Heavy Works'},
-  pact:   {delver:'Digger',    warden:'Gun Man',       breaker:'Brawler',
+  pact:   {vanguard:'Patchwork',
+           delver:'Digger',    warden:'Gun Man',       breaker:'Brawler',
            bulwark:'Scrap Gunner', sunderer:'Mortar Truck', harrower:'Scrap Tank',
            talon:'Scrapwing',  titan:'Scrap Leviathan',
            keystone:'Depot',   habitat:'Camp',         musterhall:'Muster Yard',
@@ -7558,7 +7655,10 @@ function dmgOf(e,w){
   const st=d.style;
   const dug=(st&&st.entrench&&(e.stillT||0)>=ENTRENCH_AT)?ENTRENCH_DMG:1;
   const base=(w&&w.dmg!==undefined)?w.dmg:d.dmg;
-  return base*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage*dug;
+  /* A refitted unit carries its own upgrades, so they multiply here rather
+     than in the statline - the level is on the unit, not the type. */
+  const refit=(e.kind==='unit'&&e.lvl)?refitDmgMul(e):1;
+  return base*(isBot(e.owner)&&e.kind==='unit'?ELITE.dmg:1)*up*fac*rage*dug*refit;
 }
 
 const mcv=document.getElementById('mcv'), mg=mcv.getContext('2d');
@@ -8517,6 +8617,7 @@ const KEY_ACTS=[
   {id:'u_breaker', v:'TRAIN', t:'breaker', def:'f'},
   {id:'u_talon',   v:'TRAIN', t:'talon',   def:'w'},
   {id:'u_titan',   v:'TRAIN', t:'titan',   def:'b'},
+  {id:'u_vanguard',v:'TRAIN', t:'vanguard',def:'v'},
   {id:'b_keystone',  v:'BUILD', t:'keystone',  def:'q'},
   {id:'b_habitat',   v:'BUILD', t:'habitat',   def:'h'},
   {id:'b_musterhall',v:'BUILD', t:'musterhall',def:'r'},
