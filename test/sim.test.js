@@ -1665,6 +1665,54 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
 });
 
+console.log('\na map that starts with buildings on it');
+
+test('pre-placed buildings survive the share code', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  const code = run('(function(){' +
+    ' var m={w:112,h:112,starts:[[20,20],[90,90]],rock:cmapPackRock(new Uint8Array(112*112),112,112),' +
+    ' res:[["a",24,24],["a",86,86],["v",30,30],["v",80,80]],' +
+    ' blds:[["musterhall",26,20,0],["forgeworks",28,22,0],["watchspire",84,90,1]],' +
+    ' name:"Prebuilt",rules:{}};' +
+    ' return cmapEncode(m); })()');
+  ok(typeof code === 'string' && code.length > 0, 'it encodes');
+  const back = run('cmapDecode(' + JSON.stringify(code) + ')');
+  ok(!back.err, 'and decodes: ' + (back.err || 'clean'));
+  eq(back.map.blds.length, 3, 'all three came back');
+  eq(back.map.blds[0][0], 'musterhall', 'with their types');
+  eq(back.map.blds[2][3], 1, 'and the seat they belong to');
+});
+
+test('they are standing and finished when the match opens', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('CMAP=cmapDecode(cmapEncode({w:112,h:112,starts:[[20,20],[90,90]],' +
+      'rock:cmapPackRock(new Uint8Array(112*112),112,112),' +
+      'res:[["a",24,24],["a",86,86],["v",30,30],["v",80,80]],' +
+      'blds:[["musterhall",26,20,0],["watchspire",84,90,1]],' +
+      'name:"Prebuilt",rules:{}})).map');
+  run('cmapTouch(); modeKey="duel"; startGame("veteran"); BOTS=[false,false,false,false]');
+  const mine = run('bldOf(0).filter(function(b){return b.type==="musterhall";}).length');
+  const theirs = run('bldOf(1).filter(function(b){return b.type==="watchspire";}).length');
+  eq(mine, 1, 'seat one opened with its Barracks');
+  eq(theirs, 1, 'seat two opened with its Bunker');
+  eq(run('bldOf(0).filter(function(b){return b.type==="musterhall";})[0].done'), true,
+     'already finished, not a foundation');
+});
+
+test('a seat nobody is in does not get free buildings', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('CMAP=cmapDecode(cmapEncode({w:112,h:112,starts:[[20,20],[90,90]],' +
+      'rock:cmapPackRock(new Uint8Array(112*112),112,112),' +
+      'res:[["a",24,24],["a",86,86],["v",30,30],["v",80,80]],' +
+      'blds:[["musterhall",50,50,3]],name:"Prebuilt",rules:{}})).map');
+  run('cmapTouch(); modeKey="duel"; startGame("veteran")');
+  eq(run('ents.filter(function(e){return !e.dead&&e.kind==="building"&&e.owner===3;}).length'), 0,
+     'the empty fourth seat got nothing');
+});
+
 console.log('\nshort reach against a wall');
 
 test('a short-ranged unit can hit a building from any side', () => {
@@ -1898,6 +1946,7 @@ test('a refitted unit survives a snapshot with its mark', () => {
 
 console.log('\norders mean what they say');
 
+const TILE_5 = 32 * 5;   // IDLE_LEASH
 function ordArena() {
   run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
   run('startGame("veteran"); BOTS=[false,false,false,false]');
@@ -1930,14 +1979,29 @@ test('but it will still step out to meet something close', () => {
      'something that walks up to it gets shot');
 });
 
-test('attack-move still chases across the map', () => {
+test('attack-move still chases past the leash', () => {
+  /* The point of this one is the contrast with the idle leash: an idle unit
+     steps out five tiles and no further, attack-move keeps going.
+
+     It used to put the enemy 500px away, which is well beyond a Rifleman's
+     205px sight, so nothing was ever acquired and the amove destination was
+     the unit's own feet. What it actually measured was the unit wandering
+     towards some building that happened to be in sight - and it started
+     failing the moment range to a building was measured properly, because a
+     unit that can open fire sooner walks less far. So: a real target, inside
+     sight, further out than the leash. */
   ordArena();
-  run('var u=mkUnit("warden",0,k.x+600,k.y+600); u.cmd={t:"amove",x:k.x+600,y:k.y+600}');
-  run('mkUnit("warden",1,u.x+500,u.y)');
+  run('var u=mkUnit("warden",0,k.x+600,k.y+600)');
+  run('var foe=mkUnit("warden",1,u.x+190,u.y)');     // inside sight, outside reach
+  run('u.cmd={t:"amove",x:foe.x,y:foe.y}');
   run('var home={x:u.x,y:u.y}');
+  const gap0 = run('Math.hypot(u.x-foe.x,u.y-foe.y)');
   ordTick(160);
-  ok(run('Math.hypot(u.x-home.x,u.y-home.y)') > 60,
-     'attack-move means go and find it');
+  const moved = run('Math.hypot(u.x-home.x,u.y-home.y)');
+  ok(moved > 60, 'it went after it (moved ' + Math.round(moved) + 'px)');
+  ok(moved > TILE_5, 'and past where an idle unit would have stopped');
+  ok(run('Math.hypot(u.x-foe.x,u.y-foe.y)') < gap0,
+     'closing the distance, not drifting');
 });
 
 test('ordering an attack on a structure hits the structure', () => {

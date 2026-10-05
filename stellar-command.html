@@ -107,6 +107,12 @@ body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
    could be kept. */
 #edList{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;
   max-width:min(900px,96vw)}
+#edBldBar{display:none}
+#edBldBar.on{display:flex}
+#edBldBar select{font-family:inherit;font-size:10px;letter-spacing:1px;
+  padding:5px 7px;color:#e8e4d9;background:#16140e;
+  border:1px solid #4c4533;border-radius:5px}
+#edBldBar button.on{color:#f5f2e9;border-color:#c7b583;background:#2b2619}
 #edList .sc{display:flex;align-items:center;gap:8px;padding:4px 8px;
   border:1px solid #4c4533;border-radius:6px;background:#201d15}
 #edList .sc b{font-size:10px;letter-spacing:1px;color:#e8e4d9;font-weight:400}
@@ -669,10 +675,20 @@ body.touch .mouse-only{display:none}
     <button data-tool="supply">SUPPLY</button>
     <button data-tool="fuel">FUEL</button>
     <button data-tool="start">START</button>
+    <button data-tool="bld">BUILDING</button>
     <span>BRUSH</span>
     <button data-brush="1" class="on">1</button>
     <button data-brush="3">3</button>
     <button data-brush="6">6</button>
+  </div>
+  <div class="edBar" id="edBldBar">
+    <span>STARTS WITH</span>
+    <select id="edBldType"></select>
+    <span>FOR SEAT</span>
+    <button data-seat="0" class="on">1</button>
+    <button data-seat="1">2</button>
+    <button data-seat="2">3</button>
+    <button data-seat="3">4</button>
   </div>
   <div class="edBar">
     <button id="edClear">CLEAR</button>
@@ -1378,6 +1394,8 @@ function cmapEncode(m){
     'R:'+m.rock,
     'A:'+m.res.filter(r2=>r2[0]==='a').map(r2=>r2[1]+'.'+r2[2]).join(','),
     'V:'+m.res.filter(r2=>r2[0]==='v').map(r2=>r2[1]+'.'+r2[2]).join(','),
+    /* type.tx.ty.seat - buildings the map starts with, already finished. */
+    'B:'+(m.blds||[]).map(b=>b[0]+'.'+b[1]+'.'+b[2]+'.'+(b[3]|0)).join(','),
     'N:'+cmapCleanName(m.name),
     'P:'+CR_KEYS.map(num).join('|'),
     'T:'+statPart()];
@@ -1400,7 +1418,7 @@ function cmapDecode(code){
   if(parts[0]!=='FC1'&&parts[0]!==CMAP_VER)
     return {err:'That code is from a different version of the game.'};
   const wh=(parts[1]||'').split(',').map(n=>n|0);
-  const m={w:wh[0]|0,h:wh[1]|0,starts:[],rock:'',res:[],name:'',rules:{}};
+  const m={w:wh[0]|0,h:wh[1]|0,starts:[],rock:'',res:[],blds:[],name:'',rules:{}};
   const pairs=t=>t?t.split(',').filter(Boolean).map(p=>p.split('.').map(n=>n|0)):[];
   for(const p of parts.slice(2)){
     const k=p.slice(0,2);
@@ -1408,6 +1426,14 @@ function cmapDecode(code){
     else if(k==='R:') m.rock=p.slice(2);
     else if(k==='A:') for(const q of pairs(p.slice(2))) m.res.push(['a',q[0],q[1]]);
     else if(k==='V:') for(const q of pairs(p.slice(2))) m.res.push(['v',q[0],q[1]]);
+    else if(k==='B:'){
+      for(const grp of p.slice(2).split(',')){
+        if(!grp) continue;
+        const f=grp.split('.');
+        if(f.length<3||!BDEF[f[0]]) continue;     // ignore types we do not have
+        m.blds.push([f[0],f[1]|0,f[2]|0,Math.max(0,Math.min(3,f[3]|0))]);
+      }
+    }
     else if(k==='N:') m.name=cmapCleanName(p.slice(2));
     else if(k==='P:'){
       const vals=p.slice(2).split('|');
@@ -7666,6 +7692,17 @@ function init(){
       if(n) setGather(u,n);
     }
   }
+  /* Buildings the map ships with, standing and finished. Placed after the
+     headquarters so the seats exist, and skipped for seats nobody is in. */
+  if(CMAP&&CMAP.blds&&CMAP.blds.length){
+    for(const pb of CMAP.blds){
+      const seat=pb[3]|0;
+      if(seat>=NPLAY) continue;
+      if(!BDEF[pb[0]]) continue;
+      const b=mkBuilding(pb[0],seat,pb[1]*TILE+TILE/2,pb[2]*TILE+TILE/2,true);
+      if(b){ b.done=true; b.prog=1; }
+    }
+  }
   renderTerrain();
   rebuildNav();
   for(let i=0;i<NPLAY;i++) recalcSupply(i);
@@ -8150,12 +8187,31 @@ musicInit(); updSnd(); musicPlay();
    as a plain object; nothing touches the running game until PLAY IT. */
 const ED={on:false,tool:'rock',brush:1,painting:false,
           rock:null,res:[],starts:[],cell:0,name:'',rules:{}};
+/* The tool, the seat and the building choice live on ED and outlast a
+   reset, so the buttons have to be told what is selected when the builder
+   opens. Otherwise the highlight says one seat and a click places for
+   another, which is a nasty thing to debug from the outside. */
+function edSyncPickers(){
+  ED.tool=ED.tool||'rock';
+  ED.bldSeat=ED.bldSeat|0;
+  ED.bldType=(ED.bldType&&BDEF[ED.bldType])?ED.bldType:ED_BLD_TYPES[0];
+  document.querySelectorAll('#editor [data-tool]').forEach(o=>
+    o.classList.toggle('on',o.dataset.tool===ED.tool));
+  document.querySelectorAll('#editor [data-seat]').forEach(o=>
+    o.classList.toggle('on',(+o.dataset.seat)===ED.bldSeat));
+  document.querySelectorAll('#editor [data-brush]').forEach(o=>
+    o.classList.toggle('on',(+o.dataset.brush)===ED.brush));
+  const sel2=document.getElementById('edBldType');
+  if(sel2) sel2.value=ED.bldType;
+  const bar=document.getElementById('edBldBar');
+  if(bar) bar.classList.toggle('on',ED.tool==='bld');
+}
 function edOpen(){
   ED.on=true;
   if(!ED.rock) edReset();
   document.getElementById('editor').style.display='flex';
   document.getElementById('menu').style.display='none';
-  edRulesRender(); edUnitsRender();
+  edRulesRender(); edUnitsRender(); edListRender(); edSyncPickers();
   edFit(); edDraw(); edCheck();
 }
 function edClose(){
@@ -8170,6 +8226,7 @@ function edLoadMap(m){
   ED.rock=cmapUnpackRock(m.rock,112,112);
   ED.res=(m.res||[]).map(x=>[x[0],x[1],x[2]]);
   ED.starts=(m.starts||[]).map(p=>[p[0],p[1]]);
+  ED.blds=(m.blds||[]).map(b=>[b[0],b[1],b[2],b[3]|0]);
   ED.name=m.name||''; ED.rules=m.rules||{};
   edRulesRender(); edUnitsRender();
   return true;
@@ -8198,7 +8255,7 @@ function edListRender(){
 }
 function edReset(){
   ED.rock=new Uint8Array(112*112);
-  ED.res=[]; ED.starts=[];
+  ED.res=[]; ED.starts=[]; ED.blds=[];
   ED.name=''; ED.rules={};
   edRulesRender&&edRulesRender(); edUnitsRender&&edUnitsRender();
 }
@@ -8225,6 +8282,18 @@ function edDraw(){
     g.fillStyle=r[0]==='v'?'#d1703a':'#d8c37a';
     g.fillRect(r[1]*c-c*.6,r[2]*c-c*.6,c*2.2,c*2.2);
   }
+  for(const b of (ED.blds||[])){                           // pre-placed buildings
+    const d=BDEF[b[0]]; if(!d) continue;
+    const w=Math.max(c*2.4,(d.w/TILE)*c), h=Math.max(c*2.4,(d.h/TILE)*c);
+    g.fillStyle=(TEAM[b[3]|0]&&TEAM[b[3]|0].c)||'#c7b583';
+    g.fillRect(b[1]*c-w/2,b[2]*c-h/2,w,h);
+    g.strokeStyle='#0d0c08'; g.lineWidth=Math.max(1,c*.3);
+    g.strokeRect(b[1]*c-w/2,b[2]*c-h/2,w,h);
+    g.fillStyle='#0d0c08';
+    g.font='bold '+Math.max(8,c*3)+'px Consolas,monospace';
+    g.textAlign='center'; g.textBaseline='middle';
+    g.fillText(String((b[3]|0)+1),b[1]*c,b[2]*c);
+  }
   ED.starts.forEach((p,i)=>{                               // starts
     g.strokeStyle='#9fd98c'; g.lineWidth=Math.max(2,c*.6);
     g.strokeRect(p[0]*c-c*5,p[1]*c-c*5,c*10,c*10);
@@ -8237,6 +8306,7 @@ function edMap(){
   return {w:112,h:112,starts:ED.starts.map(p=>[p[0],p[1]]),
           rock:cmapPackRock(ED.rock,112,112),
           res:ED.res.map(r=>[r[0],r[1],r[2]]),
+          blds:(ED.blds||[]).map(b=>[b[0],b[1],b[2],b[3]|0]),
           name:ED.name,rules:JSON.parse(JSON.stringify(ED.rules))};
 }
 function edCheck(){
@@ -8262,6 +8332,7 @@ function edPaint(tx,ty){
     if(ED.tool==='erase'){            // erase lifts whatever else is on the tile
       ED.res=ED.res.filter(r=>Math.hypot(r[1]-tx,r[2]-ty)>b);
       ED.starts=ED.starts.filter(p=>Math.hypot(p[0]-tx,p[1]-ty)>b+2);
+      ED.blds=(ED.blds||[]).filter(q=>Math.hypot(q[1]-tx,q[2]-ty)>b+1);
     }
   } else if(ED.tool==='supply'||ED.tool==='fuel'){
     const k=ED.tool==='fuel'?'v':'a';
@@ -8270,6 +8341,14 @@ function edPaint(tx,ty){
     if(ED.starts.some(p=>Math.hypot(p[0]-tx,p[1]-ty)<4)) return;
     if(ED.starts.length>=CMAP_MAX_STARTS) ED.starts.shift();
     ED.starts.push([tx,ty]);
+  } else if(ED.tool==='bld'){
+    ED.blds=ED.blds||[];
+    const type=ED.bldType||'musterhall';
+    if(!BDEF[type]) return;
+    // one per spot, and clicking an occupied spot replaces what is there
+    ED.blds=ED.blds.filter(b=>Math.hypot(b[1]-tx,b[2]-ty)>=3);
+    if(ED.blds.length>=80) return;
+    ED.blds.push([type,tx,ty,ED.bldSeat|0]);
   }
 }
 /* Rotating the left half onto the right makes both sides of a map the same
@@ -8429,8 +8508,32 @@ function edInit(){
   cv.addEventListener('pointercancel',()=>{ ED.painting=false; edCheck(); });
   document.querySelectorAll('#editor [data-tool]').forEach(b=>{
     b.onclick=()=>{ ED.tool=b.dataset.tool; SFX.play('click');
-      document.querySelectorAll('#editor [data-tool]').forEach(o=>o.classList.toggle('on',o===b)); };
+      document.querySelectorAll('#editor [data-tool]').forEach(o=>o.classList.toggle('on',o===b));
+      edBldBar(); };
   });
+  /* The building bar only means anything with the BUILDING tool up. */
+  const edBldBar=()=>{
+    const bar=document.getElementById('edBldBar');
+    if(bar) bar.classList.toggle('on',ED.tool==='bld');
+  };
+  {
+    const sel2=document.getElementById('edBldType');
+    if(sel2){
+      for(const t of ED_BLD_TYPES){
+        const o=document.createElement('option');
+        o.value=t; o.textContent=nameOf(t,0).toUpperCase();
+        sel2.appendChild(o);
+      }
+      ED.bldType=ED.bldType||ED_BLD_TYPES[0];
+      sel2.value=ED.bldType;
+      sel2.onchange=()=>{ ED.bldType=sel2.value; SFX.play('click'); };
+    }
+    ED.bldSeat=ED.bldSeat|0;
+    document.querySelectorAll('#editor [data-seat]').forEach(b=>{
+      b.onclick=()=>{ ED.bldSeat=+b.dataset.seat; SFX.play('click');
+        document.querySelectorAll('#editor [data-seat]').forEach(o=>o.classList.toggle('on',o===b)); };
+    });
+  }
   document.querySelectorAll('#editor [data-brush]').forEach(b=>{
     b.onclick=()=>{ ED.brush=+b.dataset.brush; SFX.play('click');
       document.querySelectorAll('#editor [data-brush]').forEach(o=>o.classList.toggle('on',o===b)); };
@@ -8442,8 +8545,11 @@ function edInit(){
         p.classList.toggle('on',p.dataset.page===b.dataset.page));
       /* ROCK, ERASE and BRUSH do nothing to a list of prices, and leaving
          them on screen pushed the settings pages down past the bottom. */
+      const onMap=(b.dataset.page==='map');
       const bar=document.querySelector('#editor .edBar');
-      if(bar) bar.style.display=(b.dataset.page==='map')?'':'none';
+      if(bar) bar.style.display=onMap?'':'none';
+      const bb=document.getElementById('edBldBar');
+      if(bb) bb.style.display=(onMap&&ED.tool==='bld')?'':'none';
       if(b.dataset.page==='map'){ edFit(); edDraw(); } };
   });
   document.getElementById('edSave').onclick=()=>{
