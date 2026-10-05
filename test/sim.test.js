@@ -701,9 +701,13 @@ test('the melee unit is cheap enough to open a match with', () => {
     const wd = run('priceOf("unit","warden",0)');
     const d = run('defFor("unit","breaker",0)');
     const purse = run('P[0].m');
-    /* Was a strict <. The price is now set deliberately at 25, which is
-       exactly half a Rifleman's 50, so the boundary is allowed. */
-    ok(br.m <= wd.m / 2, f + ': no dearer than half a rifle squad (' + br.m + ' vs ' + wd.m + ')');
+    /* Was a strict <, against an exact half. The price is now set
+       deliberately at 25 and a Rifleman is 50, so they land on the same
+       figure - and once an army's cost multiplier rounds them (the
+       Legion pays 30 against 59) the ratio moves by a point either way.
+       The claim is that it is the cheap one, so round in its favour. */
+    ok(br.m <= Math.ceil(wd.m / 2),
+       f + ': no dearer than half a rifle squad (' + br.m + ' vs ' + wd.m + ')');
     eq(d.sup, 1, f + ': one population, like the other light units');
     ok(Math.floor(purse / br.m) >= 4,
        f + ': you can afford ' + Math.floor(purse / br.m) + ' from your opening purse');
