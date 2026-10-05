@@ -102,6 +102,19 @@ body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
 #editor h2{font-size:13px;letter-spacing:5px;color:#c7b583;font-weight:400}
 #edWrap{position:relative;border:2px solid #564e39;border-radius:6px;background:#1a1810;overflow:hidden}
 #edCv{display:block;cursor:crosshair;touch-action:none}
+/* Saving used to give you a line of text and no way to tell whether you
+   had one scenario or six, which is half of why it looked like only one
+   could be kept. */
+#edList{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;
+  max-width:min(900px,96vw)}
+#edList .sc{display:flex;align-items:center;gap:8px;padding:4px 8px;
+  border:1px solid #4c4533;border-radius:6px;background:#201d15}
+#edList .sc b{font-size:10px;letter-spacing:1px;color:#e8e4d9;font-weight:400}
+#edList .sc i{font-size:9px;color:#7d7765;font-style:normal}
+#edList .sc button{font-family:inherit;font-size:9px;letter-spacing:1px;
+  padding:3px 7px;cursor:pointer;color:#cbc4b1;background:#16140e;
+  border:1px solid #4c4533;border-radius:4px}
+#edList .sc button:hover{border-color:#c7b583}
 .edBar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;
   max-width:min(900px,96vw)}
 .edBar button{font-family:inherit;font-size:10.5px;letter-spacing:1.5px;padding:6px 11px;cursor:pointer;
@@ -662,7 +675,6 @@ body.touch .mouse-only{display:none}
     <button data-brush="6">6</button>
   </div>
   <div class="edBar">
-    <button id="edMirror">MIRROR</button>
     <button id="edClear">CLEAR</button>
     <button id="edShare">COPY SHARE CODE</button>
     <button id="edLoad">LOAD CODE</button>
@@ -671,6 +683,7 @@ body.touch .mouse-only{display:none}
     <button id="edDone">BACK</button>
   </div>
   <input id="edCode" placeholder="paste a share code here, then LOAD CODE" spellcheck="false">
+  <div id="edList"></div>
 </div>
 <div id="shop">
   <div class="shopBox">
@@ -1222,6 +1235,19 @@ function scenLoad(){
 }
 function scenSave(){
   try{ localStorage.setItem('fc_scen',JSON.stringify(CSCEN)); }catch(e){}
+}
+/* The first free 'Scenario N'. The old auto-name was length+1, which
+   collides with anything already called that - and because scenAdd treats
+   a matching name as a replace, saving a second unnamed scenario quietly
+   overwrote the first instead of adding to the list. */
+function scenAutoName(){
+  const taken={};
+  for(const x of CSCEN) taken[(x.name||'').toLowerCase()]=1;
+  for(let i=1;i<200;i++){
+    const n='Scenario '+i;
+    if(!taken[n.toLowerCase()]) return n;
+  }
+  return 'Scenario '+Date.now().toString(36);
 }
 function scenAdd(name,code,seats){
   const id='cm_'+Date.now().toString(36);
@@ -8117,6 +8143,39 @@ function edClose(){
   document.getElementById('editor').style.display='none';
   document.getElementById('menu').style.display='';
 }
+/* Pouring a decoded map into the editor. LOAD CODE had this inline; OPEN
+   needs exactly the same steps, and two copies would drift. */
+function edLoadMap(m){
+  if(!m) return false;
+  ED.rock=cmapUnpackRock(m.rock,112,112);
+  ED.res=(m.res||[]).map(x=>[x[0],x[1],x[2]]);
+  ED.starts=(m.starts||[]).map(p=>[p[0],p[1]]);
+  ED.name=m.name||''; ED.rules=m.rules||{};
+  edRulesRender(); edUnitsRender();
+  return true;
+}
+/* What is actually saved, so it is obvious that more than one can be. */
+function edListRender(){
+  const host=document.getElementById('edList');
+  if(!host) return;
+  host.textContent='';
+  if(!CSCEN.length) return;
+  for(const sc of CSCEN){
+    const row=document.createElement('div'); row.className='sc';
+    const nm=document.createElement('b'); nm.textContent=sc.name; row.appendChild(nm);
+    const st=document.createElement('i'); st.textContent=(sc.seats||2)+' starts'; row.appendChild(st);
+    const ld=document.createElement('button'); ld.textContent='OPEN';
+    ld.onclick=()=>{ SFX.play('click');
+      const r=cmapDecode(sc.code);
+      if(r&&!r.err&&r.map){ edLoadMap(r.map); edDraw(); edCheck(); edListRender(); }
+    };
+    row.appendChild(ld);
+    const del=document.createElement('button'); del.textContent='DELETE';
+    del.onclick=()=>{ SFX.play('click'); scenRemove(sc.id); refreshMenuModes(); edListRender(); };
+    row.appendChild(del);
+    host.appendChild(row);
+  }
+}
 function edReset(){
   ED.rock=new Uint8Array(112*112);
   ED.res=[]; ED.starts=[];
@@ -8370,18 +8429,19 @@ function edInit(){
   document.getElementById('edSave').onclick=()=>{
     if(!edCheck()){ SFX.play('deny'); return; }
     const m=edMap();
-    const nm=cmapCleanName(m.name)||('Scenario '+(CSCEN.length+1));
+    const nm=cmapCleanName(m.name)||scenAutoName();
     ED.name=nm; edRulesRender();
     m.name=nm;
     scenAdd(nm,cmapEncode(m),m.starts.length);
     refreshMenuModes();
     SFX.play('complete');
     const el=document.getElementById('edMsg');
-    el.textContent='Saved. \u201c'+nm+'\u201d is in the SIDES list now.';
+    el.textContent='Saved. \u201c'+nm+'\u201d is in the SIDES list now - '+
+      CSCEN.length+' saved.';
     el.className='good';
+    edListRender();
   };
   document.getElementById('edClear').onclick=()=>{ SFX.play('click'); edReset(); edDraw(); edCheck(); };
-  document.getElementById('edMirror').onclick=()=>{ SFX.play('click'); edMirror(); edDraw(); edCheck(); };
   document.getElementById('edDone').onclick=()=>{ SFX.play('click'); edClose(); };
   document.getElementById('edShare').onclick=()=>{
     if(!edCheck()){ SFX.play('deny'); return; }
@@ -8402,12 +8462,8 @@ function edInit(){
     const r=cmapDecode(document.getElementById('edCode').value);
     const el=document.getElementById('edMsg');
     if(r.err){ el.textContent=r.err; el.className='bad'; SFX.play('deny'); return; }
-    ED.rock=cmapUnpackRock(r.map.rock,112,112);
-    ED.res=r.map.res.map(x=>[x[0],x[1],x[2]]);
-    ED.starts=r.map.starts.map(p=>[p[0],p[1]]);
-    ED.name=r.map.name||''; ED.rules=r.map.rules||{};
-    edRulesRender(); edUnitsRender();
-    SFX.play('complete'); edDraw(); edCheck();
+    edLoadMap(r.map);
+    SFX.play('complete'); edDraw(); edCheck(); edListRender();
   };
   document.getElementById('edPlay').onclick=()=>{
     if(!edCheck()){ SFX.play('deny'); return; }

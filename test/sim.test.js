@@ -1665,6 +1665,80 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
 });
 
+console.log('\nattack this, not that');
+
+function atkArena() {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran"); BOTS=[false,false,false,false]');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  // the thing we want killed, and a decoy standing closer to the squad
+  run('var want=mkBuilding("musterhall",1,k.x+700,k.y); want.done=true; want.prog=1');
+  run('var decoy=mkUnit("warden",1,k.x+360,k.y)');
+  run('var a=mkUnit("warden",0,k.x+300,k.y)');
+  run('var b=mkUnit("warden",0,k.x+300,k.y+40)');
+  run('P[0].m=9999; P[0].g=9999');
+}
+
+test('pressing Attack and clicking a structure orders that structure', () => {
+  /* The bug: this path called orderAttackMove, which means "walk there and
+     engage anything on the way", so the squad stopped at the first thing it
+     met instead of going for what was clicked. */
+  atkArena();
+  run('setSel([a,b]); pending="attack"');
+  run('(function(){var h=entAt(want.x,want.y,0);' +
+      ' if(h&&h.kind!=="res"&&isFoe(h.owner,0)) orderAttackOn(h);' +
+      ' else orderAttackMove(want.x,want.y); pending=null;})()');
+  eq(run('a.cmd.t'), 'attack', 'it is a hard attack order');
+  eq(run('a.cmd.target===want'), true, 'and it is on the structure that was clicked');
+  eq(run('b.cmd.target===want'), true, 'for the whole selection');
+});
+
+test('an ordered squad walks past a closer decoy', () => {
+  /* The first version of this put an armed Rifleman in the way and ran for
+     twenty seconds: the squad killed the ordered building, died to the decoy
+     on the way, and the assertions read that as the order being lost. The
+     claim is about which thing gets shot, so the decoy is a worker and the
+     target is tough enough to still be standing at the end. */
+  atkArena();
+  run('decoy.dead=true');
+  run('var idler=mkUnit("delver",1,a.x+40,a.y)');
+  run('var tough=ents.find(function(e){return !e.dead&&e.kind==="building"&&' +
+      'e.owner===1&&e.type==="keystone";})||want');
+  run('setSel([a,b]); orderAttackOn(tough)');
+  for (let i = 0; i < 240; i++) { run('over=false'); run('simTick(0.05)'); }
+  eq(run('a.cmd.target===tough'), true, 'still on the ordered target');
+  ok(run('tough.hp') < run('tough.maxHp'), 'and it is the one taking damage');
+  eq(run('idler.hp===idler.maxHp'), true,
+     'the worker it walked straight past was never touched');
+});
+
+test('being shot does not steal a unit under orders', () => {
+  /* retaliate() set target on anything that was not mining, although its own
+     comment said an explicit attack order was exempt. */
+  atkArena();
+  run('setSel([a]); orderAttackOn(want)');
+  run('var sniper=mkUnit("warden",1,a.x-60,a.y)');
+  run('damage(a,5,1,sniper)');
+  eq(run('a.cmd.target===want'), true, 'the order stands');
+  eq(run('a.target===want'), true, 'and so does what it is shooting at');
+});
+
+test('clicking bare ground is still attack-move', () => {
+  atkArena();
+  run('setSel([a,b])');
+  run('(function(){var h=entAt(k.x+1200,k.y+1200,0);' +
+      ' if(h&&h.kind!=="res"&&isFoe(h.owner,0)) orderAttackOn(h);' +
+      ' else orderAttackMove(k.x+1200,k.y+1200);})()');
+  eq(run('a.cmd.t'), 'amove', 'empty ground means attack-move, as before');
+});
+
+test('a guest Attack order reaches the host', () => {
+  atkArena();
+  run('netHostApply({op:"atk",ids:[a.id,b.id],id:want.id},0)');
+  eq(run('a.cmd.t'), 'attack', 'the host acted on it');
+  eq(run('a.cmd.target===want'), true, 'on the right target');
+});
+
 console.log('\na unit you keep building on');
 
 function vgArena() {
