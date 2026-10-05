@@ -986,13 +986,13 @@ const UDEF={
 const BDEF={
   keystone:  {n:'Headquarters',   hp:1500,w:96,h:96,m:400,g:0, bt:48,sight:10,supply:10,dropoff:true,trains:['delver'],hk:'Q'},
   habitat:   {n:'Billet',    hp:400, w:64,h:64,m:75, g:0, bt:18,sight:5, supply:8, hk:'H'},
-  musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker','vanguard'],hk:'R'},
+  musterhall:{n:'Barracks',   hp:850, w:96,h:80,m:125,g:0, bt:32,sight:6, trains:['warden','bulwark','breaker'],hk:'R'},
   siphon:    {n:'Refinery',     hp:500, w:80,h:64,m:75, g:0, bt:20,sight:5, onGeyser:true,hk:'F'},
   forgeworks:{n:'Workshop', hp:950, w:96,h:96,m:175,g:75,bt:40,sight:6, trains:['sunderer','harrower','talon'],req:'musterhall',hk:'S'},
   watchspire:{n:'Bunker', hp:620, w:48,h:48,m:175,g:0, bt:16,sight:10,dmg:19,rng:184,cd:.55,aa:true,req:'musterhall',hk:'W'},
   // the only place a Titan can be built, and it needs a Workshop first
   citadel:   {n:'Proving Ground',    hp:1300,w:112,h:112,m:350,g:150,bt:62,sight:7,
-              trains:['titan'],req:'forgeworks',hk:'G'}
+              trains:['titan','vanguard'],req:'forgeworks',hk:'G'}
 };
 /* The three doctrines had the same roster with different numbers on it. This
    is where they stop fighting the same way.
@@ -3996,6 +3996,17 @@ function netHostApply(c,from){
       }
       break;
     }
+    /* The guest presses the same button and sends this. Without it the
+       order was simply dropped and nothing happened on their screen. */
+    case 'refit': {
+      const u=byId.get(c.id);
+      if(refitable(u,ME)){
+        const w=nearest(ents,u.x,u.y,e=>e.kind==='unit'&&e.owner===ME&&
+          UDEF[e.type].worker&&e.cmd.t!=='refit');
+        if(w){ w.cmd={t:'refit',target:u}; w.target=null; w.refitT=0; }
+      }
+      break;
+    }
   }
 }
 /* ---------- match lifecycle ---------- */
@@ -4354,6 +4365,39 @@ function buildCard(){
         for(const u of us) u.cmd={t:'hold'}; }});
       cardButtons.push({empty:true});
       cardButtons.push({empty:true});
+      /* Refitting used to be a right-click on the unit with a worker already
+         selected, which nothing told you about. It is an order like any
+         other now: the button carries the price, the mark it buys and what
+         that mark changes, and the nearest worker goes and does it. */
+      const rfU=us.filter(u=>refitable(u,0));
+      if(rfU.length){
+        const u0=rfU[0], rs=refitSpec(u0), rc=refitCost(u0);
+        const lv=u0.lvl||0;
+        const hpNow=u0.maxHp, hpNext=Math.round(hpNow*(1+(rs.hp||0)));
+        const dNow=dmgOf(u0);
+        const dNext=dNow*(1+(lv+1)*(rs.dmg||0))/(1+lv*(rs.dmg||0));
+        const poor=!canAfford(0,{m:rc.m,g:rc.g});
+        cardButtons.push({ic:'▲',name:'Refit Mk '+(lv+2),
+          cost:{m:rc.m,g:rc.g}, hk:keyLabel(keyFor('c_U')), dis:poor,
+          tip:poor
+            ? ('Mark '+(lv+2)+' needs '+rc.m+' supply'+(rc.g?' and '+rc.g+' fuel':''))
+            : (nameOf(u0.type,0)+' mark '+(lv+1)+' → mark '+(lv+2)+'\n'+
+               'HP '+hpNow+' → '+hpNext+'  (+'+(hpNext-hpNow)+')\n'+
+               'DMG '+Math.round(dNow)+' → '+Math.round(dNext)+
+               '  (+'+Math.round(dNext-dNow)+')\n'+
+               'A worker does the work. The next mark costs more again.'),
+          act:function(){
+            if(NET.role==='guest'){ netCmd('refit',{id:u0.id}); SFX.play('order'); return; }
+            if(!canAfford(0,refitCost(u0))){ say('Not enough resources'); SFX.play('deny'); return; }
+            const w=nearest(ents,u0.x,u0.y,e=>e.kind==='unit'&&e.owner===0&&
+              UDEF[e.type].worker&&e.cmd.t!=='refit');
+            if(!w){ say('No worker available'); SFX.play('deny'); return; }
+            w.cmd={t:'refit',target:u0}; w.target=null; w.refitT=0;
+            SFX.play('order');
+            fx.push({x:u0.x,y:u0.y,t:0,dur:.5,r:u0.r+14,k:'ping',c:'#ffc24a'});
+            say(nameOf(u0.type,0)+' refit ordered - mark '+(lv+2));
+          }});
+      }
       if(us.some(u=>UDEF[u.type].worker))
         cardButtons.push({ic:'⌂',name:'Build',hk:keyLabel(keyFor('c_B')),
           act:function(){ cardMode='build'; }});
@@ -4505,7 +4549,7 @@ function buildInfo(){
           if(_st.mends) notes.push('Mends nearby structures');
           if(refitSpec(e)){
             const _rc=refitCost(e);
-            notes.push('Mark '+((e.lvl||0)+1)+' - a worker refits it for '+
+            notes.push('Mark '+((e.lvl||0)+1)+' - next mark costs '+
               _rc.m+' supply'+(_rc.g?' and '+_rc.g+' fuel':''));
           }
           if(_st.brood) notes.push('Deploys a '+nameOf(_st.brood.type,e.owner)+
@@ -4662,7 +4706,12 @@ function newAI(){ return {
   known:new Map(),              // id -> last-known sighting of a Concord entity
   scout:null, scoutIdx:0, scoutT:0,
   squad:[], squadStart:0, staging:null, target:null, focus:null,
-  pulled:[], lastPush:-999, threshold:6, nextScout:0, mainVisited:false
+  pulled:[], lastPush:-999, threshold:6, nextScout:0, mainVisited:false,
+  /* How many macro actions it has banked. A person has hands: they click
+     one building, then the next. A bot had no such limit and filled every
+     queue in the frame the money landed, which is why a Recruit still
+     macroed like a professional. */
+  acts:2
 }; }
 const AIS=[null,null,null,null];
 let BOTS=[false,true,false,false];
@@ -4925,6 +4974,23 @@ function aiRun(AI,ME,dt){
        mGate - an amount of aurite, scaled with what things actually cost */
   const PACE=BLITZ?2:1;
   const tGate=v=>v/PACE;
+  /* Actions per minute, the way a player has them. The bucket refills with
+     the match clock and is capped at a small burst, so a bot that has been
+     poor for a while cannot bank a minute of attention and then spend it
+     all in one frame. It scales with pace, so Blitz still moves. */
+  const APM=DIFF.apm===undefined?34:DIFF.apm;
+  AI.acts=Math.min(DIFF.burst===undefined?3:DIFF.burst,
+                   (AI.acts||0)+dt*PACE*APM/60);
+  /* Only a decision that actually happened costs attention. Being too poor
+     to pay is not a click. */
+  const botTrain=(b,type)=>{
+    if(AI.acts<1) return false;
+    const r=tryTrain(b,type); if(r) AI.acts-=1; return r;
+  };
+  const botResearch=(b,key)=>{
+    if(AI.acts<1) return false;
+    const r=tryResearch(b,key); if(r) AI.acts-=1; return r;
+  };
   const mGate=v=>Math.max(1,Math.round(v*COST_RATE));
   /* Worked out here rather than at the point of use, because the savings plan
      below has to know whether an expansion is wanted before anything has had a
@@ -5016,8 +5082,9 @@ function aiRun(AI,ME,dt){
   const startB=(type,x,y,crew)=>{
     if(AI.t<(AI.nextBuild||0)) return false;
     if(sitesOpen()>=siteCap()) return false;
+    if(AI.acts<1) return false;
     const okS=startBuild(type,x,y,ME,crew);
-    if(okS) AI.nextBuild=AI.t+buildGap();
+    if(okS){ AI.nextBuild=AI.t+buildGap(); AI.acts-=1; }
     return !!okS;
   };
   const put=(type,anchor,bias)=>{
@@ -5091,7 +5158,7 @@ function aiRun(AI,ME,dt){
     const cores=bs.filter(b=>b.type==='keystone'&&b.done&&b.queue.length<2)
       .sort((a,b2)=>(lineLoad(a)/Math.max(1,mineCap(a)))-(lineLoad(b2)/Math.max(1,mineCap(b2))));
     const pick=cores.find(c=>!lineFull(c))||cores[0];
-    if(pick) tryTrain(pick,'delver');
+    if(pick) botTrain(pick,'delver');
   }
 
   /* ---- tech and production capacity ---- */
@@ -5178,7 +5245,7 @@ function aiRun(AI,ME,dt){
     if(b.type==='citadel'){
       const tc=priceOf('unit','titan',ME);
       if(!b.queue.length&&_ships<_shipCap&&
-         P[ME].m>=tc.m&&P[ME].g>=tc.g){ tryTrain(b,'titan'); AI.saveSince=0; }
+         P[ME].m>=tc.m&&P[ME].g>=tc.g&&botTrain(b,'titan')){ AI.saveSince=0; }
       continue;
     }
     if(b.queue.length>=(DIFF.qd||2)) continue;
@@ -5187,7 +5254,7 @@ function aiRun(AI,ME,dt){
          it happens to be sitting on a pile. */
       if(!b.res&&wantUp){
         const c=upCost(upKey,UP[ME][upKey],ME);
-        if(P[ME].m>=c.m&&P[ME].g>=c.g&&tryResearch(b,upKey)) continue;
+        if(P[ME].m>=c.m&&P[ME].g>=c.g&&botResearch(b,upKey)) continue;
       }
       // saving for the ship: stop buying ichor units until the bank is there
       if(savingUp) continue;
@@ -5197,7 +5264,7 @@ function aiRun(AI,ME,dt){
       // answer enemy air with air, otherwise keep the ground mix rolling
       const foeAir=ents.some(e=>!e.dead&&e.kind==='unit'&&isFoe(e.owner,ME)&&UDEF[e.type].air);
       const want=(foeAir&&tl<4)?'talon':(tl<2&&AI.t>tGate(240)?'talon':(hr<sn?'harrower':'sunderer'));
-      tryTrain(b,want); continue;
+      botTrain(b,want); continue;
     }
     if(savingUp) continue;                      // banking for the capital ship
     if(P[ME].m>=mGate(workers.length<8?150:55)){
@@ -5211,7 +5278,7 @@ function aiRun(AI,ME,dt){
       const wd=us.filter(u=>u.type==='warden').length;
       const want=(AI.t>tGate(35)&&br*2<wd&&P[ME].m>=brCost*2)?'breaker'
                 :((P[ME].m>=mGate(380)&&AI.t>tGate(170))?'bulwark':'warden');
-      tryTrain(b,want);
+      botTrain(b,want);
     }
   }
 
@@ -7546,15 +7613,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{buildGap:20, sites:1, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, sites:1, apm:14, burst:2, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{buildGap:12, sites:2, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, sites:2, apm:34, burst:3, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:6, sites:3, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:6, sites:3, apm:75, burst:4, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
@@ -8718,6 +8785,7 @@ const KEY_ACTS=[
   {id:'pause',  n:'PAUSE',           def:'p'},
   {id:'c_A',    n:'ATTACK-MOVE',     def:'a'},
   {id:'c_B',    n:'BUILD MENU',      def:'b'},
+  {id:'c_U',    n:'REFIT UNIT',      def:'u'},
   /* v + t instead of a fixed label: the name comes from the roster when the
      row is drawn, so this list reads in the army you are playing and can
      never fall out of step with a rename again. */
@@ -8729,7 +8797,7 @@ const KEY_ACTS=[
   {id:'u_breaker', v:'TRAIN', t:'breaker', def:'f'},
   {id:'u_talon',   v:'TRAIN', t:'talon',   def:'w'},
   {id:'u_titan',   v:'TRAIN', t:'titan',   def:'b'},
-  {id:'u_vanguard',v:'TRAIN', t:'vanguard',def:'v'},
+  {id:'u_vanguard',v:'TRAIN', t:'vanguard',def:'v'},   // Proving Ground
   {id:'b_keystone',  v:'BUILD', t:'keystone',  def:'q'},
   {id:'b_habitat',   v:'BUILD', t:'habitat',   def:'h'},
   {id:'b_musterhall',v:'BUILD', t:'musterhall',def:'r'},

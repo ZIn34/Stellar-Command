@@ -1675,10 +1675,46 @@ function vgArena() {
   run('P[0].m=200000; P[0].g=200000');
 }
 
-test('the Barracks can train it', () => {
+test('the Proving Ground trains it, not the Barracks', () => {
   vgArena();
-  eq(run('BDEF.musterhall.trains.indexOf("vanguard")>=0'), true, 'it is on the Barracks list');
+  eq(run('BDEF.citadel.trains.indexOf("vanguard")>=0'), true, 'it is on the Proving Ground list');
+  eq(run('BDEF.musterhall.trains.indexOf("vanguard")>=0'), false, 'and off the Barracks list');
   ok(run('!!UDEF.vanguard.refit'), 'and it carries a refit spec');
+});
+
+test('the card offers a refit, priced, and names the mark', () => {
+  vgArena();
+  run('setSel([v]); cardMode="main"; buildCard()');
+  const btn = run('(function(){var b=cardButtons.find(function(x){return x.name&&/Refit/.test(x.name);});' +
+                  'return b?{name:b.name,m:b.cost.m,g:b.cost.g,hk:b.hk,tip:b.tip,dis:!!b.dis}:null;})()');
+  ok(btn, 'there is a refit button on the card');
+  eq(btn.name, 'Refit Mk 2', 'a fresh one offers mark two');
+  eq(btn.m, run('refitCost(v).m'), 'and shows what it charges');
+  ok(btn.hk && btn.hk.length === 1, 'it has a hotkey (' + btn.hk + ')');
+  ok(/HP \d+ /.test(btn.tip) && /DMG \d+ /.test(btn.tip),
+     'and says what the mark changes: ' + String(btn.tip).split('\n').join(' / '));
+});
+
+test('the refit button sends the nearest worker', () => {
+  vgArena();
+  run('var far=mkUnit("delver",0,v.x+900,v.y)');
+  run('var near=mkUnit("delver",0,v.x+60,v.y)');
+  run('setSel([v]); cardMode="main"; buildCard()');
+  run('cardButtons.find(function(x){return x.name&&/Refit/.test(x.name);}).act()');
+  eq(run('near.cmd.t'), 'refit', 'the close worker took the job');
+  eq(run('far.cmd.t==="refit"'), false, 'the far one was left alone');
+  for (let i = 0; i < 200; i++) { run('over=false'); run('simTick(0.05)'); }
+  eq(run('v.lvl'), 1, 'and one mark came of it');
+});
+
+test('a broke player is told, not charged', () => {
+  vgArena();
+  run('P[0].m=0; P[0].g=0');
+  run('setSel([v]); cardMode="main"; buildCard()');
+  const b = run('(function(){var x=cardButtons.find(function(y){return y.name&&/Refit/.test(y.name);});' +
+                'return {dis:!!x.dis,tip:x.tip};})()');
+  eq(b.dis, true, 'the button is disabled');
+  ok(/needs/i.test(b.tip), 'and says what it needs: ' + b.tip);
 });
 
 test('every refit makes it tougher and the next one dearer', () => {
