@@ -62,6 +62,23 @@ body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
 #rpScrub{width:min(320px,42vw);accent-color:#c7b583}
 #rpTime{font-size:10.5px;letter-spacing:1px;color:#cbc4b1;min-width:86px;text-align:center}
 body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
+#editor{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;background:#0d0c08}
+#editor h2{font-size:13px;letter-spacing:5px;color:#c7b583;font-weight:400}
+#edWrap{position:relative;border:2px solid #564e39;border-radius:6px;background:#1a1810;overflow:hidden}
+#edCv{display:block;cursor:crosshair;touch-action:none}
+.edBar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;
+  max-width:min(900px,96vw)}
+.edBar button{font-family:inherit;font-size:10.5px;letter-spacing:1.5px;padding:6px 11px;cursor:pointer;
+  color:#cbc4b1;background:#201d15;border:1px solid #4c4533;border-radius:6px}
+.edBar button:hover{border-color:#c7b583}
+.edBar button.on{color:#f5f2e9;border-color:#c7b583;background:#2b2619}
+.edBar span{font-size:10px;letter-spacing:1.5px;color:#a49d8c}
+#edMsg{font-size:11px;letter-spacing:1px;min-height:15px;text-align:center;max-width:min(900px,94vw)}
+#edMsg.bad{color:#ff9b7f}
+#edMsg.good{color:#9fd98c}
+#edCode{font-family:inherit;font-size:10.5px;width:min(640px,92vw);padding:7px 9px;
+  color:#e8e4d9;background:#16140e;border:1px solid #4c4533;border-radius:6px}
 #shop{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(7,6,4,.78)}
 .shopBox{width:min(640px,94vw);max-height:88vh;overflow:auto;background:#14120d;border:1px solid #564e39;
   border-radius:12px;padding:16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
@@ -503,6 +520,7 @@ body.touch .mouse-only{display:none}
       <button id="btnBrowse">PUBLIC ROOMS</button>
       <button id="btnJoin">JOIN</button>
       <button id="btnSettings">SETTINGS</button>
+      <button id="btnMapBuilder">MAP BUILDER</button>
       <button id="btnTutorial">TUTORIAL</button>
       <button id="btnShop">SHOP</button>
       <button id="btnReplay">WATCH REPLAY</button>
@@ -583,6 +601,31 @@ body.touch .mouse-only{display:none}
   <span id="rpTime">0:00 / 0:00</span>
   <button id="rpSave" title="Download this replay">SAVE</button>
   <button id="rpClose">CLOSE</button>
+</div>
+<div id="editor">
+  <h2>MAP BUILDER</h2>
+  <div id="edWrap"><canvas id="edCv"></canvas></div>
+  <div id="edMsg"></div>
+  <div class="edBar">
+    <button data-tool="rock" class="on">ROCK</button>
+    <button data-tool="erase">ERASE</button>
+    <button data-tool="supply">SUPPLY</button>
+    <button data-tool="fuel">FUEL</button>
+    <button data-tool="start">START</button>
+    <span>BRUSH</span>
+    <button data-brush="1" class="on">1</button>
+    <button data-brush="3">3</button>
+    <button data-brush="6">6</button>
+  </div>
+  <div class="edBar">
+    <button id="edMirror">MIRROR</button>
+    <button id="edClear">CLEAR</button>
+    <button id="edShare">COPY SHARE CODE</button>
+    <button id="edLoad">LOAD CODE</button>
+    <button id="edPlay">PLAY IT</button>
+    <button id="edDone">BACK</button>
+  </div>
+  <input id="edCode" placeholder="paste a share code here, then LOAD CODE" spellcheck="false">
 </div>
 <div id="shop">
   <div class="shopBox">
@@ -1081,6 +1124,128 @@ function genMap(){
   for(let x=0;x<MAP_W;x++){blocked[ti(x,0)]=1;blocked[ti(x,MAP_H-1)]=1;}
   for(let y=0;y<MAP_H;y++){blocked[ti(0,y)]=1;blocked[ti(MAP_W-1,y)]=1;}
 }
+/* ===================== CUSTOM MAPS ===================== */
+/* A hand-built map is three things: where the rock is, where the starts are,
+   and where the resources are. Everything else about a match - scale, mode,
+   armies - is still chosen in the menu, so a map does not carry any of it.
+   Custom maps are always the standard 112x112 board; Grand War and Blitz
+   change the board itself, so a map built for one would not fit the others.
+   CMAP is null for a generated map, which is the normal case. */
+let CMAP=null;
+const CMAP_VER='FC1';
+const CMAP_MAX_STARTS=4;
+
+/* The rock layer is one bit a tile - 12544 of them on a standard board. Stored
+   as alternating run lengths in base 36, beginning with a run of open ground,
+   because a playable map is mostly open and that makes the code short. */
+function cmapPackRock(bits,w,h){
+  const out=[]; let run=0, on=0;
+  for(let i=0;i<w*h;i++){
+    const v=bits[i]?1:0;
+    if(v===on) run++;
+    else { out.push(run.toString(36)); on=v; run=1; }
+  }
+  out.push(run.toString(36));
+  return out.join('.');
+}
+function cmapUnpackRock(str,w,h){
+  const bits=new Uint8Array(w*h);
+  let i=0, on=0;
+  for(const part of String(str||'').split('.')){
+    const n=parseInt(part,36);
+    if(!isFinite(n)||n<0) break;
+    if(on) for(let k=0;k<n&&i+k<bits.length;k++) bits[i+k]=1;
+    i+=n; on=on?0:1;
+    if(i>=bits.length) break;
+  }
+  return bits;
+}
+
+/* The wire form. A compact field string first, so a broken code can be read
+   by eye, then base64url so the whole thing survives a paste into a chat
+   window or a URL. */
+function cmapEncode(m){
+  const parts=[CMAP_VER, m.w+','+m.h,
+    'S:'+m.starts.map(p=>p[0]+'.'+p[1]).join(','),
+    'R:'+m.rock,
+    'A:'+m.res.filter(r=>r[0]==='a').map(r=>r[1]+'.'+r[2]).join(','),
+    'V:'+m.res.filter(r=>r[0]==='v').map(r=>r[1]+'.'+r[2]).join(',')];
+  const raw=parts.join(';');
+  let b64='';
+  // the field string is pure ASCII by construction, so btoa is enough
+  try{ b64=btoa(raw); }
+  catch(e){ return null; }
+  return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function cmapDecode(code){
+  let raw='';
+  try{
+    const b=String(code||'').trim().replace(/-/g,'+').replace(/_/g,'/');
+    raw=atob(b);
+  }catch(e){ return {err:'That is not a map code.'}; }
+  const parts=raw.split(';');
+  if(parts[0]!==CMAP_VER) return {err:'That code is from a different version of the game.'};
+  const wh=(parts[1]||'').split(',').map(n=>n|0);
+  const m={w:wh[0]|0,h:wh[1]|0,starts:[],rock:'',res:[]};
+  const pairs=t=>t?t.split(',').filter(Boolean).map(p=>p.split('.').map(n=>n|0)):[];
+  for(const p of parts.slice(2)){
+    const k=p.slice(0,2);
+    if(k==='S:') m.starts=pairs(p.slice(2)).filter(q=>q.length===2);
+    else if(k==='R:') m.rock=p.slice(2);
+    else if(k==='A:') for(const q of pairs(p.slice(2))) m.res.push(['a',q[0],q[1]]);
+    else if(k==='V:') for(const q of pairs(p.slice(2))) m.res.push(['v',q[0],q[1]]);
+  }
+  const bad=cmapProblem(m);
+  return bad?{err:bad}:{map:m};
+}
+
+/* What makes a map unplayable, in the order a builder would want to hear it. */
+function cmapProblem(m){
+  if(!m||!(m.w>0)||!(m.h>0)) return 'That map has no size.';
+  if(m.w!==112||m.h!==112) return 'Custom maps are 112 x 112; that one is '+m.w+' x '+m.h+'.';
+  if(!m.starts||m.starts.length<2) return 'A map needs at least two starting positions.';
+  if(m.starts.length>CMAP_MAX_STARTS) return 'A map can have at most '+CMAP_MAX_STARTS+' starting positions.';
+  for(const p of m.starts){
+    if(!(p[0]>=6&&p[0]<m.w-6&&p[1]>=6&&p[1]<m.h-6))
+      return 'A starting position is too close to the edge.';
+  }
+  for(let i=0;i<m.starts.length;i++) for(let j=i+1;j<m.starts.length;j++){
+    const a=m.starts[i], b=m.starts[j];
+    if(Math.hypot(a[0]-b[0],a[1]-b[1])<18) return 'Two starting positions are almost on top of each other.';
+  }
+  if(!m.res||!m.res.some(r=>r[0]==='a')) return 'A map needs somewhere to get supply.';
+  /* Every start wants something to work within reach, or that seat opens with
+     nothing to do and simply loses. */
+  for(let i=0;i<m.starts.length;i++){
+    const p=m.starts[i];
+    const near=m.res.filter(r=>r[0]==='a'&&Math.hypot(r[1]-p[0],r[2]-p[1])<16).length;
+    if(near<2) return 'Start '+(i+1)+' has fewer than two supply caches within reach.';
+  }
+  return null;
+}
+
+/* Build the world from a map instead of generating one. Called from init in
+   place of genMap and the per-base resource fields. */
+function cmapApply(){
+  const m=CMAP;
+  const bits=cmapUnpackRock(m.rock,m.w,m.h);
+  for(let i=0;i<blocked.length&&i<bits.length;i++) blocked[i]=bits[i];
+  for(let i=0;i<terr.length;i++) terr[i]=srand()<.14?1:(srand()<.08?2:0);  // ground decor is still noise
+  for(let x=0;x<MAP_W;x++){ blocked[ti(x,0)]=1; blocked[ti(x,MAP_H-1)]=1; }
+  for(let y=0;y<MAP_H;y++){ blocked[ti(0,y)]=1; blocked[ti(MAP_W-1,y)]=1; }
+  BASES=m.starts.map(p=>({tx:p[0],ty:p[1]}));
+  while(BASES.length<4) BASES.push({tx:m.starts[0][0],ty:m.starts[0][1]});
+  EXPOS=[];
+  for(const r of m.res)
+    mkResource(r[0]==='v'?'vent':'aurite',r[1]*TILE+TILE/2,r[2]*TILE+TILE/2,r[0]==='v'?5000:1500);
+  // the ground a keystone lands on has to be clear, however the map was drawn
+  for(const b of BASES)
+    for(let x=b.tx-7;x<=b.tx+7;x++) for(let y=b.ty-7;y<=b.ty+7;y++)
+      if(x>0&&y>0&&x<MAP_W-1&&y<MAP_H-1) blocked[ti(x,y)]=0;
+}
+/* How many seats a map can actually seat, so the menu can refuse a 2v2 on a
+   two-start map rather than seating two commanders in the same corner. */
+function cmapSeats(){ return CMAP?CMAP.starts.length:4; }
 function tileBlocked(x,y){
   const tx=(x/TILE)|0, ty=(y/TILE)|0;
   if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) return true;
@@ -1819,7 +1984,8 @@ function fire(a,t,w){
   } else {
     damage(t,dmg,a.owner,a);
     if(d.style&&d.style.venom) venomApply(t,dmg,a.owner);
-    fx.push({x:(a.x+t.x)/2,y:(a.y+t.y)/2,t:0,dur:.18,r:10,k:'hit',c:TEAM[a.owner].c});
+    // a hit is a hit: warm, like the tracer, not the firing side's colour
+    fx.push({x:(a.x+t.x)/2,y:(a.y+t.y)/2,t:0,dur:.18,r:10,k:'hit',c:'#ffc24a'});
   }
 }
 function stepShots(dt){
@@ -5022,21 +5188,51 @@ function facMarkBld(g,hw,hh,t,fk,h){
   }
 }
 /* Muzzle flash and tracer artwork, dropped in beside the game as flash.png
-   and bolt.png. Both stay the yellow they were drawn: powder flash and tracer
-   are the same colour whoever fires them. An earlier version hue-rotated them
-   per side, which turned the yellow cyan and lost the muzzle flash, and a
-   later one nudged them toward the firing team's colour, which washed them
-   out. Ownership is carried by the shooter and the hit spark instead. */
-const FLASH=new Image(); let flashOK=false, flashAR=1.42;
+   and bolt.png. Both files are drawn blue - bolt.png averages a deep blue and
+   flash.png a pale cyan - which is left over from when this was a science
+   fiction game, and no amount of tinting was going to fix that. Rather than
+   depend on the files being redrawn, each is re-graded on load: every pixel's
+   brightness is read and looked up in a powder ramp, dark ember through
+   orange to near-white, with its alpha kept. Whatever colour the source art
+   is, what reaches the screen is a tracer.
+   One colour for everybody, deliberately: powder flash and tracer look the
+   same whoever fires them, and ownership reads from the shooter. */
+function warmArt(img){
+  const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+  if(!w||!h) return img;
+  const c=newCv(w,h), g=c.getContext('2d');
+  g.drawImage(img,0,0);
+  let d;
+  try{ d=g.getImageData(0,0,w,h); }catch(e){ return img; }   // tainted canvas
+  const px=d.data;
+  /* dark -> ember, mid -> orange, bright -> near white. Three stops is
+     enough; the art's own shading does the rest. */
+  const ramp=(l)=>{
+    if(l<.5){ const k=l*2;
+      return [74+(255-74)*k, 42+(180-42)*k, 6+(58-6)*k]; }
+    const k=(l-.5)*2;
+    return [255, 180+(251-180)*k, 58+(214-58)*k];
+  };
+  for(let i=0;i<px.length;i+=4){
+    if(px[i+3]===0) continue;
+    const l=Math.min(1,(px[i]*.299+px[i+1]*.587+px[i+2]*.114)/255);
+    const c3=ramp(l);
+    px[i]=c3[0]|0; px[i+1]=c3[1]|0; px[i+2]=c3[2]|0;
+  }
+  g.putImageData(d,0,0);
+  return c;
+}
+const FLASH=new Image(); let flashOK=false, flashAR=1.42, FLASH_W=null;
 FLASH.onload=function(){
   flashOK=true; flashAR=FLASH.naturalWidth/FLASH.naturalHeight;
+  FLASH_W=warmArt(FLASH);
 };
 FLASH.onerror=function(){ flashOK=false; };
 FLASH.src='flash.png';
 /* projectile artwork, dropped in beside the game as bolt.png. Its own heading and
    tip are measured from the pixels, so it points wherever the shot is going. */
 const BOLT=new Image();
-let boltOK=false, boltAng=0, boltTipX=0, boltTipY=0, boltLen=1;
+let boltOK=false, boltAng=0, boltTipX=0, boltTipY=0, boltLen=1, BOLT_W=null;
 BOLT.onload=function(){
   try{
     const w=BOLT.naturalWidth, h=BOLT.naturalHeight;
@@ -5055,6 +5251,7 @@ BOLT.onload=function(){
     const cx=sx/sa, cy=sy/sa;
     boltAng=Math.atan2(boltTipY-cy,boltTipX-cx);
     boltLen=Math.max(8,Math.hypot(boltTipX-cx,boltTipY-cy)*2);
+    BOLT_W=warmArt(BOLT);
     boltOK=true;
   }catch(e){ boltOK=false; }
 };
@@ -6213,7 +6410,7 @@ function render(){
     const f=s.t/s.dur;
     const x=s.x+(s.tx-s.x)*f, y=s.y+(s.ty-s.y)*f;
     if(boltOK&&!OPT.lowFx){
-      const img=BOLT;
+      const img=BOLT_W||BOLT;
       const ang=Math.atan2(s.ty-s.y,s.tx-s.x);
       const L=s.big?96:54, sc=L/boltLen;
       ctx.save();
@@ -6267,7 +6464,7 @@ function render(){
         ctx.rect(-w*.14,-h,w*(.18+.82*grow),h*2);
         ctx.clip();
         ctx.globalAlpha=p<.1?(p/.1):a2;
-        ctx.drawImage(FLASH,-w*.12,-h/2,w,h);
+        ctx.drawImage(FLASH_W||FLASH,-w*.12,-h/2,w,h);
       } else {
         /* The same burst drawn in code: orange outer petals, a yellow
            body and a cream core, so a missing flash.png looks like a gun
@@ -6886,9 +7083,12 @@ function init(){
   document.getElementById('pauseBtn').style.display='block';
   document.getElementById('pauseBtn').innerHTML='&#9612;&#9612;';
   aiReset();
-  genMap();
-  for(let i=0;i<NPLAY;i++) mkField(BASES[i].tx,BASES[i].ty,8);
-  for(const e of EXPOS) mkField(e.tx,e.ty,6);
+  if(CMAP) cmapApply();
+  else {
+    genMap();
+    for(let i=0;i<NPLAY;i++) mkField(BASES[i].tx,BASES[i].ty,8);
+    for(const e of EXPOS) mkField(e.tx,e.ty,6);
+  }
   for(let o=0;o<NPLAY;o++){
     const b=BASES[o];
     const cc=mkBuilding('keystone',o,b.tx*TILE,b.ty*TILE,true);
@@ -7222,7 +7422,12 @@ function menuInit(){
   };
   manRender();
   idleTitle();
-  document.getElementById('deploy').onclick=()=>{ SFX.unlock(); goFullscreen(); SFX.play('deploy'); startGame(diffKey); };
+  document.getElementById('deploy').onclick=()=>{
+    CMAP=null;                      // DEPLOY always means a fresh generated map
+    SFX.unlock(); goFullscreen(); SFX.play('deploy'); startGame(diffKey); };
+  const _mb=document.getElementById('btnMapBuilder');
+  if(_mb) _mb.onclick=()=>{ SFX.play('click'); edOpen(); };
+  edInit();
   lobbyInit();
   requestAnimationFrame(menuFrame);
 }
@@ -7347,6 +7552,175 @@ document.getElementById('idle').onclick=function(){ SFX.play('click'); selectIdl
 window.addEventListener('pointerdown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 window.addEventListener('keydown',()=>{ SFX.unlock(); musicSync(); },{once:true});
 musicInit(); updSnd(); musicPlay();
+/* ===================== MAP BUILDER ===================== */
+/* Paints the same three things a map is made of. The working map lives here
+   as a plain object; nothing touches the running game until PLAY IT. */
+const ED={on:false,tool:'rock',brush:1,painting:false,
+          rock:null,res:[],starts:[],cell:0};
+function edOpen(){
+  ED.on=true;
+  if(!ED.rock) edReset();
+  document.getElementById('editor').style.display='flex';
+  document.getElementById('menu').style.display='none';
+  edFit(); edDraw(); edCheck();
+}
+function edClose(){
+  ED.on=false;
+  document.getElementById('editor').style.display='none';
+  document.getElementById('menu').style.display='';
+}
+function edReset(){
+  ED.rock=new Uint8Array(112*112);
+  ED.res=[]; ED.starts=[];
+}
+function edFit(){
+  const cv=document.getElementById('edCv');
+  /* The board is square, so the cell size is whatever squares fit the smaller
+     of the space left over beside the toolbars. */
+  const room=Math.min(window.innerWidth*.92,window.innerHeight-230);
+  ED.cell=Math.max(2,Math.floor(room/112));
+  cv.width=112*ED.cell; cv.height=112*ED.cell;
+}
+function edDraw(){
+  const cv=document.getElementById('edCv'), g=cv.getContext('2d'), c=ED.cell;
+  g.fillStyle='#2f3321'; g.fillRect(0,0,cv.width,cv.height);
+  g.fillStyle='#4a4531';                                  // rock
+  for(let y=0;y<112;y++) for(let x=0;x<112;x++)
+    if(ED.rock[y*112+x]) g.fillRect(x*c,y*c,c,c);
+  g.strokeStyle='rgba(199,181,131,.09)'; g.lineWidth=1;    // survey grid
+  for(let i=0;i<=112;i+=8){
+    g.beginPath(); g.moveTo(i*c,0); g.lineTo(i*c,cv.height); g.stroke();
+    g.beginPath(); g.moveTo(0,i*c); g.lineTo(cv.width,i*c); g.stroke();
+  }
+  for(const r of ED.res){                                  // resources
+    g.fillStyle=r[0]==='v'?'#d1703a':'#d8c37a';
+    g.fillRect(r[1]*c-c*.6,r[2]*c-c*.6,c*2.2,c*2.2);
+  }
+  ED.starts.forEach((p,i)=>{                               // starts
+    g.strokeStyle='#9fd98c'; g.lineWidth=Math.max(2,c*.6);
+    g.strokeRect(p[0]*c-c*5,p[1]*c-c*5,c*10,c*10);
+    g.fillStyle='#9fd98c'; g.font='bold '+Math.max(10,c*5)+'px Consolas,monospace';
+    g.textAlign='center'; g.textBaseline='middle';
+    g.fillText(String(i+1),p[0]*c,p[1]*c);
+  });
+}
+function edMap(){
+  return {w:112,h:112,starts:ED.starts.map(p=>[p[0],p[1]]),
+          rock:cmapPackRock(ED.rock,112,112),
+          res:ED.res.map(r=>[r[0],r[1],r[2]])};
+}
+function edCheck(){
+  const el=document.getElementById('edMsg');
+  const bad=cmapProblem(edMap());
+  el.textContent=bad||('Ready - '+ED.starts.length+' starts, '+
+    ED.res.filter(r=>r[0]==='a').length+' supply, '+
+    ED.res.filter(r=>r[0]==='v').length+' fuel');
+  el.className=bad?'bad':'good';
+  return !bad;
+}
+function edPaint(tx,ty){
+  const b=ED.brush, half=(b-1)/2;
+  if(ED.tool==='rock'||ED.tool==='erase'){
+    const v=ED.tool==='rock'?1:0;
+    for(let y=Math.round(ty-half);y<=ty+half;y++)
+      for(let x=Math.round(tx-half);x<=tx+half;x++)
+        if(x>=1&&y>=1&&x<111&&y<111) ED.rock[y*112+x]=v;
+    if(ED.tool==='erase'){            // erase lifts whatever else is on the tile
+      ED.res=ED.res.filter(r=>Math.hypot(r[1]-tx,r[2]-ty)>b);
+      ED.starts=ED.starts.filter(p=>Math.hypot(p[0]-tx,p[1]-ty)>b+2);
+    }
+  } else if(ED.tool==='supply'||ED.tool==='fuel'){
+    const k=ED.tool==='fuel'?'v':'a';
+    if(!ED.res.some(r=>Math.hypot(r[1]-tx,r[2]-ty)<2)) ED.res.push([k,tx,ty]);
+  } else if(ED.tool==='start'){
+    if(ED.starts.some(p=>Math.hypot(p[0]-tx,p[1]-ty)<4)) return;
+    if(ED.starts.length>=CMAP_MAX_STARTS) ED.starts.shift();
+    ED.starts.push([tx,ty]);
+  }
+}
+/* Rotating the left half onto the right makes both sides of a map the same
+   ground - which, after watching one starting corner win 94% of mirror
+   matches, is the single most useful button in here. */
+function edMirror(){
+  for(let y=0;y<112;y++) for(let x=0;x<56;x++)
+    ED.rock[(111-y)*112+(111-x)]=ED.rock[y*112+x];
+  const half=o=>o[1]<56;
+  ED.res=ED.res.filter(half);
+  ED.res=ED.res.concat(ED.res.map(r=>[r[0],111-r[1],111-r[2]]));
+  ED.starts=ED.starts.filter(half);
+  ED.starts=ED.starts.concat(ED.starts.map(p=>[111-p[0],111-p[1]]));
+  if(ED.starts.length>CMAP_MAX_STARTS) ED.starts.length=CMAP_MAX_STARTS;
+}
+function edInit(){
+  const cv=document.getElementById('edCv');
+  const at=ev=>{
+    const r=cv.getBoundingClientRect();
+    return [clamp(Math.floor((ev.clientX-r.left)/ED.cell),0,111),
+            clamp(Math.floor((ev.clientY-r.top)/ED.cell),0,111)];
+  };
+  const stroke=ev=>{ const p=at(ev); edPaint(p[0],p[1]); edDraw(); };
+  cv.addEventListener('pointerdown',ev=>{ ED.painting=true; cv.setPointerCapture(ev.pointerId); stroke(ev); });
+  cv.addEventListener('pointermove',ev=>{ if(ED.painting) stroke(ev); });
+  cv.addEventListener('pointerup',()=>{ ED.painting=false; edCheck(); });
+  cv.addEventListener('pointercancel',()=>{ ED.painting=false; edCheck(); });
+  document.querySelectorAll('#editor [data-tool]').forEach(b=>{
+    b.onclick=()=>{ ED.tool=b.dataset.tool; SFX.play('click');
+      document.querySelectorAll('#editor [data-tool]').forEach(o=>o.classList.toggle('on',o===b)); };
+  });
+  document.querySelectorAll('#editor [data-brush]').forEach(b=>{
+    b.onclick=()=>{ ED.brush=+b.dataset.brush; SFX.play('click');
+      document.querySelectorAll('#editor [data-brush]').forEach(o=>o.classList.toggle('on',o===b)); };
+  });
+  document.getElementById('edClear').onclick=()=>{ SFX.play('click'); edReset(); edDraw(); edCheck(); };
+  document.getElementById('edMirror').onclick=()=>{ SFX.play('click'); edMirror(); edDraw(); edCheck(); };
+  document.getElementById('edDone').onclick=()=>{ SFX.play('click'); edClose(); };
+  document.getElementById('edShare').onclick=()=>{
+    if(!edCheck()){ SFX.play('deny'); return; }
+    const code=cmapEncode(edMap());
+    const box=document.getElementById('edCode');
+    box.value=code||'';
+    box.select();
+    let copied=false;
+    try{ copied=document.execCommand('copy'); }catch(e){}
+    if(navigator.clipboard&&!copied){ try{ navigator.clipboard.writeText(code); copied=true; }catch(e){} }
+    SFX.play('click');
+    const el=document.getElementById('edMsg');
+    el.textContent=copied?'Share code copied - paste it to whoever you are playing.'
+                         :'Share code is in the box below - copy it from there.';
+    el.className='good';
+  };
+  document.getElementById('edLoad').onclick=()=>{
+    const r=cmapDecode(document.getElementById('edCode').value);
+    const el=document.getElementById('edMsg');
+    if(r.err){ el.textContent=r.err; el.className='bad'; SFX.play('deny'); return; }
+    ED.rock=cmapUnpackRock(r.map.rock,112,112);
+    ED.res=r.map.res.map(x=>[x[0],x[1],x[2]]);
+    ED.starts=r.map.starts.map(p=>[p[0],p[1]]);
+    SFX.play('complete'); edDraw(); edCheck();
+  };
+  document.getElementById('edPlay').onclick=()=>{
+    if(!edCheck()){ SFX.play('deny'); return; }
+    CMAP=edMap();
+    try{ localStorage.setItem('fc_map',cmapEncode(CMAP)); }catch(e){}
+    /* A two-start map cannot seat a 2v2, so fall back rather than putting two
+       commanders in one corner. */
+    if(MODES[modeKey]&&MODES[modeKey].players>cmapSeats()) modeKey='duel';
+    edClose();
+    SFX.unlock(); goFullscreen(); SFX.play('deploy');
+    startGame(diffKey);
+  };
+  window.addEventListener('resize',()=>{ if(ED.on){ edFit(); edDraw(); } });
+  /* A map built earlier is still there next time. */
+  try{
+    const saved=localStorage.getItem('fc_map');
+    if(saved){
+      const r=cmapDecode(saved);
+      if(r.map){ ED.rock=cmapUnpackRock(r.map.rock,112,112);
+        ED.res=r.map.res.map(x=>[x[0],x[1],x[2]]);
+        ED.starts=r.map.starts.map(p=>[p[0],p[1]]); }
+    }
+  }catch(e){}
+}
 /* ---------- installable / fullscreen on mobile ---------- */
 /* The app icon is the unit patch the menu wears: a shield, a star and a
    chevron, brass on olive. It used to be the science-fiction hexagon with

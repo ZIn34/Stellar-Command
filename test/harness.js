@@ -251,6 +251,9 @@ function makeSandbox() {
     removeEventListener() {},
     dispatchEvent() { return true; },
     getComputedStyle() { return { getPropertyValue() { return ''; } }; },
+    /* The map codec base64s its share codes; a browser has these on window. */
+    btoa(str) { return Buffer.from(String(str), 'binary').toString('base64'); },
+    atob(b64) { return Buffer.from(String(b64), 'base64').toString('binary'); },
     crypto: {
       getRandomValues(a) {
         for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 256) | 0;
