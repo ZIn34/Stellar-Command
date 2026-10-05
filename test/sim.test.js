@@ -1713,6 +1713,82 @@ test('a seat nobody is in does not get free buildings', () => {
      'the empty fourth seat got nothing');
 });
 
+console.log('\none worker, and bots that use the thing');
+
+test('a bot builds a Vanguard once it has a Proving Ground', () => {
+  /* Moving the Vanguard onto the Proving Ground list meant no bot ever built
+     one: that branch trained a capital ship or nothing and moved on. */
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("warlord"); BOTS=[false,true,false,false]');
+  run('var ek=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===1&&e.type==="keystone";})');
+  run('var cit=mkBuilding("citadel",1,ek.x+200,ek.y); cit.done=true; cit.prog=1');
+  run('P[1].m=4000; P[1].g=4000; P[1].cap=200');
+  for (let i = 0; i < 600; i++) { run('over=false'); run('simTick(0.1)'); }
+  const made = run('unitsOf(1).filter(function(u){return u.type==="vanguard";}).length');
+  const queued = run('bldOf(1).reduce(function(n,b){' +
+    'return n+((b.queue||[]).filter(function(q){return q==="vanguard";}).length);},0)');
+  ok(made + queued > 0, 'it built or queued one (' + made + ' built, ' + queued + ' queued)');
+});
+
+test('a bot pours spare money into the one it has', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("warlord"); BOTS=[false,true,false,false]');
+  run('var ek=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===1&&e.type==="keystone";})');
+  run('var bv=mkUnit("vanguard",1,ek.x+120,ek.y)');
+  run('P[1].m=60000; P[1].g=60000; P[1].cap=200');
+  for (let i = 0; i < 900; i++) { run('over=false'); run('simTick(0.1)'); }
+  ok(run('bv.dead') || run('bv.lvl') > 0,
+     'it refitted it at least once (mark ' + ((run('bv.lvl') || 0) + 1) + ')');
+});
+
+test('Recruit does not refit, Veteran and Warlord do', () => {
+  const refits = {};
+  for (const d of ['recruit', 'veteran', 'warlord']) {
+    run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("' + d + '")');
+    refits[d] = run('DIFF.refits');
+  }
+  eq(!!refits.recruit, false, 'Recruit leaves it alone');
+  eq(!!refits.veteran, true, 'Veteran builds it up');
+  eq(!!refits.warlord, true, 'so does Warlord');
+});
+
+test('only one worker refits a machine at a time', () => {
+  /* Several each ran their own timer against the same target, so a group
+     order bought a mark per worker - six Sappers meant six marks off one
+     click, and the escalating price counted for nothing. */
+  vgArena();
+  run('var w1=mkUnit("delver",0,v.x+40,v.y)');
+  run('var w2=mkUnit("delver",0,v.x-40,v.y)');
+  run('var w3=mkUnit("delver",0,v.x,v.y+40)');
+  // force all three on, bypassing the order paths entirely
+  run('[w1,w2,w3].forEach(function(w){ w.cmd={t:"refit",target:v}; w.target=null; w.refitT=0; })');
+  for (let i = 0; i < 60; i++) { run('over=false'); run('simTick(0.05)'); }
+  eq(run('v.lvl'), 1, 'one mark, not three');
+  eq(run('[w1,w2,w3].filter(function(w){return w.cmd.t==="refit";}).length'), 0,
+     'and the other two were stood down rather than left standing there');
+});
+
+test('a group right-click sends the nearest worker only', () => {
+  vgArena();
+  run('var near=mkUnit("delver",0,v.x+50,v.y)');
+  run('var mid=mkUnit("delver",0,v.x+400,v.y)');
+  run('var far=mkUnit("delver",0,v.x+900,v.y)');
+  run('setSel([near,mid,far]); contextOrder(sel,v.x,v.y)');
+  eq(run('near.cmd.t'), 'refit', 'the close one took it');
+  eq(run('mid.cmd.t==="refit"'), false, 'the others were not dragged along');
+  eq(run('far.cmd.t==="refit"'), false, 'either of them');
+});
+
+test('one order is still one mark, however much is in the bank', () => {
+  vgArena();
+  run('var w=mkUnit("delver",0,v.x+40,v.y)');
+  run('P[0].m=1e9; P[0].g=1e9');
+  run('setSel([w]); contextOrder(sel,v.x,v.y)');
+  for (let i = 0; i < 400; i++) { run('over=false'); run('simTick(0.05)'); }
+  eq(run('v.lvl'), 1, 'a full bank does not buy a second mark');
+});
+
 console.log('\nshort reach against a wall');
 
 test('a short-ranged unit can hit a building from any side', () => {
