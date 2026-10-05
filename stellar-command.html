@@ -110,6 +110,7 @@ body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
   max-width:min(900px,96vw)}
 #edBldBar{display:none}
 #edBldBar.on{display:flex}
+#edSizeBar button.on{color:#f5f2e9;border-color:#c7b583;background:#2b2619}
 #edBldBar select{font-family:inherit;font-size:10px;letter-spacing:1px;
   padding:5px 7px;color:#e8e4d9;background:#16140e;
   border:1px solid #4c4533;border-radius:5px}
@@ -690,6 +691,9 @@ body.touch .mouse-only{display:none}
     <button data-brush="1" class="on">1</button>
     <button data-brush="3">3</button>
     <button data-brush="6">6</button>
+  </div>
+  <div class="edBar" id="edSizeBar">
+    <span>BOARD</span>
   </div>
   <div class="edBar" id="edBldBar">
     <span>STARTS WITH</span>
@@ -1312,7 +1316,8 @@ function scenSync(){
   for(const k in SCALES) if(k.indexOf('cm_')===0) delete SCALES[k];
   for(const sc of CSCEN)
     SCALES[sc.id]={n:sc.name.toUpperCase(),
-                   d:(sc.seats||2)+' starts - player made',
+                   d:(sc.size?sc.size+' x '+sc.size+' \u00b7 ':'')+
+                     (sc.seats||2)+' starts \u00b7 player made',
                    scen:sc.id, seats:Math.max(2,Math.min(4,sc.seats||2)),
                    base:'standard'};
 }
@@ -8373,6 +8378,8 @@ function edSyncPickers(){
   if(sel2) sel2.value=ED.bldType;
   const bar=document.getElementById('edBldBar');
   if(bar) bar.classList.toggle('on',ED.tool==='bld');
+  document.querySelectorAll('#edSizeBar button').forEach(o=>
+    o.classList.toggle('on',(+o.dataset.size)===(ED.size||112)));
 }
 function edOpen(){
   ED.on=true;
@@ -8399,6 +8406,28 @@ function edLoadMap(m){
   ED.name=m.name||''; ED.rules=m.rules||{};
   edRulesRender(); edUnitsRender();
   return true;
+}
+/* Changing the board keeps everything that still fits rather than wiping
+   the map: shrinking drops what falls outside and says how much, growing
+   keeps the lot. Clearing an hour of work because you wanted a bigger
+   board would be its own kind of bug. */
+function edResize(n){
+  n=Math.max(CMAP_MIN,Math.min(CMAP_MAX,n|0));
+  const o=ED.size||112;
+  if(n===o){ return 0; }
+  const rock=new Uint8Array(n*n), keep=Math.min(n,o);
+  for(let y=0;y<keep;y++)
+    for(let x=0;x<keep;x++) rock[y*n+x]=ED.rock[y*o+x];
+  // and nothing may sit on the new border, which is always solid in play
+  for(let i=0;i<n;i++){ rock[i]=0; rock[(n-1)*n+i]=0; rock[i*n]=0; rock[i*n+n-1]=0; }
+  ED.rock=rock; ED.size=n;
+  const inside=p=>p[0]>=1&&p[1]>=1&&p[0]<n-1&&p[1]<n-1;
+  const before=(ED.starts.length)+(ED.res.length)+((ED.blds||[]).length);
+  ED.starts=ED.starts.filter(inside);
+  ED.res=ED.res.filter(r=>inside([r[1],r[2]]));
+  ED.blds=(ED.blds||[]).filter(b=>inside([b[1],b[2]]));
+  const after=(ED.starts.length)+(ED.res.length)+((ED.blds||[]).length);
+  return before-after;
 }
 /* What is actually saved, so it is obvious that more than one can be. */
 function edListRender(){
@@ -8686,6 +8715,31 @@ function edInit(){
       document.querySelectorAll('#editor [data-tool]').forEach(o=>o.classList.toggle('on',o===b));
       edBldBar(); };
   });
+  {
+    const bar=document.getElementById('edSizeBar');
+    if(bar){
+      for(const sz of CMAP_SIZES){
+        const b=document.createElement('button');
+        b.dataset.size=String(sz.n);
+        b.textContent=sz.t+' '+sz.n;
+        b.title=sz.n+' x '+sz.n+' - '+sz.d;
+        b.onclick=()=>{
+          SFX.play('click');
+          const lost=edResize(sz.n);
+          bar.querySelectorAll('button').forEach(o=>
+            o.classList.toggle('on',o===b));
+          edFit(); edDraw(); edCheck();
+          if(lost>0){
+            const el=document.getElementById('edMsg');
+            el.textContent='Board is '+sz.n+' x '+sz.n+' now - '+lost+
+              ' thing'+(lost===1?'':'s')+' fell outside it and were dropped.';
+            el.className='bad';
+          }
+        };
+        bar.appendChild(b);
+      }
+    }
+  }
   /* The building bar only means anything with the BUILDING tool up. */
   const edBldBar=()=>{
     const bar=document.getElementById('edBldBar');
@@ -8725,6 +8779,8 @@ function edInit(){
       if(bar) bar.style.display=onMap?'':'none';
       const bb=document.getElementById('edBldBar');
       if(bb) bb.style.display=(onMap&&ED.tool==='bld')?'':'none';
+      const sb=document.getElementById('edSizeBar');
+      if(sb) sb.style.display=onMap?'':'none';
       if(b.dataset.page==='map'){ edFit(); edDraw(); } };
   });
   document.getElementById('edSave').onclick=()=>{
