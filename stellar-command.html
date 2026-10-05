@@ -162,6 +162,8 @@ body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
 #sumT td:first-child{text-align:left;letter-spacing:1px}
 #sumT td:last-child{text-align:right;color:#f5f2e9;letter-spacing:2px}
 .overRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
+.scard.dis{opacity:.42;cursor:not-allowed}
+.scard.dis b{color:#8d8675}
 #specBtn{display:none}
 #sideBtns{display:flex;flex-direction:column;justify-content:flex-end;gap:5px;flex:0 0 auto;width:42px}
 #sideBtns button{font-family:inherit;display:flex;flex-direction:column;align-items:center;
@@ -1295,22 +1297,49 @@ function scenRemove(id){
   scenSave(); scenSync();
   if(modeKey===id){ modeKey='duel'; CMAP=null; cmapTouch(); }
 }
-/* Keeps MODES in step with the saved list, so the menu needs no special case:
-   a scenario is a mode like any other, with its own seat count. */
+/* A scenario belongs in the SCALE list, beside Standard and Blitz, because
+   that is the thing it replaces: the board and the rules it is played
+   under. It used to be a MODE, which meant picking a player-made map took
+   over the player-count choice - you could not say '2v2 on my map'.
+   Seats still constrain the mode, they just no longer decide it. */
 function scenSync(){
   for(const k in MODES) if(k.indexOf('cm_')===0) delete MODES[k];
+  for(const k in SCALES) if(k.indexOf('cm_')===0) delete SCALES[k];
   for(const sc of CSCEN)
-    MODES[sc.id]={n:sc.name.toUpperCase(),d:(sc.seats||2)+' starts - custom',
-                  players:Math.max(2,Math.min(4,sc.seats||2)),scen:sc.id};
+    SCALES[sc.id]={n:sc.name.toUpperCase(),
+                   d:(sc.seats||2)+' starts - player made',
+                   scen:sc.id, seats:Math.max(2,Math.min(4,sc.seats||2)),
+                   base:'standard'};
+}
+/* How many seats the chosen board has, which caps the mode. */
+function scaleSeats(){
+  const d=SCALES[scaleKey];
+  return (d&&d.scen)?(d.seats||2):4;
+}
+/* Picking a board. A player-made one loads its rules; anything else clears
+   them. Then the mode is pulled back if it wants more seats than the board
+   has, rather than seating two commanders in the same corner. */
+function scaleChoose(k){
+  const d=SCALES[k];
+  if(!d) return false;
+  if(!d.scen){ scaleKey=k; CMAP=null; cmapTouch(); return true; }
+  const sc=CSCEN.find(x=>x.id===d.scen);
+  if(!sc){ return false; }
+  const r=cmapDecode(sc.code);
+  if(r.err){ say&&say(r.err); return false; }
+  scaleKey=k; CMAP=r.map; cmapTouch();
+  if(MODES[modeKey]&&MODES[modeKey].players>scaleSeats()) modeKey='duel';
+  return true;
 }
 /* Picking a mode is also picking whether a scenario is in play. */
 function modeChoose(k){
+  if(!MODES[k]) return false;
+  /* A board with two starts cannot seat a 2v2. */
+  if(MODES[k].players>scaleSeats()){
+    say&&say('That board only has '+scaleSeats()+' starts');
+    return false;
+  }
   modeKey=k;
-  const sc=CSCEN.find(x=>x.id===k);
-  if(!sc){ CMAP=null; cmapTouch(); return true; }
-  const r=cmapDecode(sc.code);
-  if(r.err){ say&&say(r.err); CMAP=null; cmapTouch(); return false; }
-  CMAP=r.map; cmapTouch();
   return true;
 }
 
@@ -8020,29 +8049,57 @@ function menuSize(){ mcv.width=window.innerWidth; mcv.height=window.innerHeight;
    All, each with a small X to drop it, because a mode you cannot remove is a
    mode you are stuck with. */
 function refreshMenuModes(){
+  scenSync();
+  if(!MODES[modeKey]) modeKey='duel';
+  if(!SCALES[scaleKey]){ scaleKey='standard'; CMAP=null; cmapTouch(); }
+  renderModeCards();
+  renderScaleCards();
+}
+function renderModeCards(){
   const mw=document.getElementById('modes');
   if(!mw) return;
-  scenSync();
-  if(!MODES[modeKey]){ modeKey='duel'; CMAP=null; }
   mw.innerHTML='';
+  const seats=scaleSeats();
   Object.keys(MODES).forEach(k=>{
     const d=MODES[k], el=document.createElement('div');
-    el.className='scard'+(k===modeKey?' on':'');
+    /* Shown but plainly unavailable, rather than missing - otherwise a map
+       with two starts looks like the game has forgotten 2v2 exists. */
+    const tooBig=d.players>seats;
+    el.className='scard'+(k===modeKey?' on':'')+(tooBig?' dis':'');
+    el.innerHTML='<b>'+d.n+'</b><i>'+(tooBig?'needs '+d.players+' starts':d.d)+'</i>';
+    el.onclick=()=>{ SFX.unlock();
+      if(tooBig){ SFX.play('deny'); return; }
+      SFX.play('click');
+      if(!modeChoose(k)) return;
+      mw.querySelectorAll('.scard').forEach(x2=>x2.classList.remove('on'));
+      el.classList.add('on'); };
+    mw.appendChild(el);
+  });
+}
+function renderScaleCards(){
+  const sw=document.getElementById('scales');
+  if(!sw) return;
+  sw.innerHTML='';
+  Object.keys(SCALES).forEach(k=>{
+    const d=SCALES[k], el=document.createElement('div');
+    el.className='scard'+(k===scaleKey?' on':'');
     el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
     if(d.scen){
+      el.style.position='relative';
       const x=document.createElement('button');
       x.textContent='\u00d7';
-      x.title='Remove this scenario';
+      x.title='Remove this map';
       x.style.cssText='position:absolute;top:4px;right:5px;font-family:inherit;'+
         'background:none;border:0;color:#a49d8c;font-size:13px;line-height:1;cursor:pointer';
       x.onclick=ev=>{ ev.stopPropagation(); SFX.play('click');
         scenRemove(d.scen); refreshMenuModes(); };
-      el.style.position='relative';
       el.appendChild(x);
     }
-    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); modeChoose(k);
-      mw.querySelectorAll('.scard').forEach(x2=>x2.classList.remove('on')); el.classList.add('on'); };
-    mw.appendChild(el);
+    el.onclick=()=>{ SFX.unlock(); SFX.play('click');
+      if(!scaleChoose(k)){ SFX.play('deny'); return; }
+      refreshMenuModes();
+      if(window.manRender) manRender(); };
+    sw.appendChild(el);
   });
 }
 function menuInit(){
@@ -8088,16 +8145,6 @@ function menuInit(){
     el.onclick=()=>{ SFX.unlock(); SFX.play('click'); terrainKey=k;
       tw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
     tw.appendChild(el);
-  });
-  const sw=document.getElementById('scales');
-  sw.innerHTML='';
-  Object.keys(SCALES).forEach(k=>{
-    const d=SCALES[k], el=document.createElement('div');
-    el.className='scard'+(k===scaleKey?' on':'');
-    el.innerHTML='<b>'+d.n+'</b><i>'+d.d+'</i>';
-    el.onclick=()=>{ SFX.unlock(); SFX.play('click'); scaleKey=k;
-      sw.querySelectorAll('.scard').forEach(x=>x.classList.remove('on')); el.classList.add('on'); };
-    sw.appendChild(el);
   });
   // field manual
   const man=document.getElementById('manual');
@@ -8650,7 +8697,10 @@ function edInit(){
     const nm=cmapCleanName(m.name)||scenAutoName();
     ED.name=nm; edRulesRender();
     m.name=nm;
-    scenAdd(nm,cmapEncode(m),m.starts.length);
+    const newId=scenAdd(nm,cmapEncode(m),m.starts.length);
+    refreshMenuModes();
+    // pick it, so pressing PLAY next actually plays the thing you saved
+    if(newId&&SCALES[newId]) scaleChoose(newId);
     refreshMenuModes();
     SFX.play('complete');
     const el=document.getElementById('edMsg');
@@ -8688,6 +8738,11 @@ function edInit(){
     CMAP=edMap();
     cmapTouch();                   // the rules have to be live before the match starts
     try{ localStorage.setItem('fc_map',cmapEncode(CMAP)); }catch(e){}
+    /* A hand-built board is always 112x112, so it cannot be played at a
+       scale that changes the board. Leaving Blitz or Grand War selected
+       would have handed the match a board of the wrong size. */
+    if(scaleKey!=='standard'&&!(SCALES[scaleKey]&&SCALES[scaleKey].scen))
+      scaleKey='standard';
     /* A two-start map cannot seat a 2v2, so fall back rather than putting two
        commanders in one corner. */
     if(MODES[modeKey]&&MODES[modeKey].players>cmapSeats()) modeKey='duel';
