@@ -2748,7 +2748,14 @@ const groups={};
 const keys={};
 
 function screenToWorld(sx,sy){ return {x:cam.x+sx/cam.z, y:cam.y+sy/cam.z} }
-function entAt(wx,wy){
+/* foeFor: when this is an order rather than a selection, an enemy under the
+   cursor beats anything friendly under it. Without that, telling your army
+   to kill one particular thing failed exactly when it matters - in a scrum,
+   where your own units are standing on top of the thing you are clicking,
+   so the click resolved to your own unit and the order quietly became a
+   move. Units already get a 30px bias over buildings for the same reason;
+   this is the same idea one level up. */
+function entAt(wx,wy,foeFor){
   const SLOP=IS_TOUCH?15:6;
   let best=null,bd=1e9;
   for(const e of ents){
@@ -2764,6 +2771,7 @@ function entAt(wx,wy){
     } else if(e.kind==='res'){ hit=Math.hypot(wx-e.x,wy-e.y)<e.r+SLOP; }
     else hit=Math.hypot(wx-e.x,wy-e.y)<e.r+SLOP;
     if(hit){ d=Math.hypot(wx-e.x,wy-e.y); if(e.kind==='unit') d-=30;
+      if(foeFor!==undefined&&e.kind!=='res'&&isFoe(e.owner,foeFor)) d-=1e5;
       if(d<bd){bd=d;best=e;} }
   }
   return best;
@@ -2896,7 +2904,7 @@ function rightClick(wx,wy,queue){
   }
   const mine=sel.filter(s=>s.owner===0);
   if(!mine.length) return;
-  const t=entAt(wx,wy);
+  const t=entAt(wx,wy,0);          // ordering: an enemy under the cursor wins
   const b=mine.find(s=>s.kind==='building');
   if(b&&mine.every(s=>s.kind==='building')){
     if(NET.role==='guest') netCmd('rally',{ids:selIds(),x:wx,y:wy});
@@ -3617,7 +3625,7 @@ function netBegin(){
 function contextOrder(mine,wx,wy){
   mine=mine.filter(e=>e&&!e.dead);
   if(!mine.length) return;
-  const own=mine[0].owner, t=entAt(wx,wy);
+  const own=mine[0].owner, t=entAt(wx,wy,mine[0].owner);
   if(mine.every(e=>e.kind==='building')){
     for(const b of mine) if(BDEF[b.type].trains) b.rally={x:wx,y:wy};
     return;

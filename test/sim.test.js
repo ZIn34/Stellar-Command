@@ -8,6 +8,7 @@
 const { loadGame } = require('./harness.js');
 
 let pass = 0, fail = 0;
+let TILE_FOR_TEST = 32;   // set from the game once it is loaded
 const failures = [];
 
 function test(name, fn) {
@@ -1662,6 +1663,74 @@ test('a team arrangement with everyone on one side is rejected', () => {
   eq(run('teamsValid([0,0,0,0],"ffa")'), true, 'free-for-all ignores sides');
   // a duel only seats two, so seats 3 and 4 must not rescue a one-sided pair
   eq(run('teamsValid([0,0,1,1],"duel")'), false, 'duel judged on its two seats');
+});
+
+console.log('\norders mean what they say');
+
+function ordArena() {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran"); BOTS=[false,false,false,false]');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+}
+function ordTick(n) { for (let i = 0; i < n; i++) { run('over=false'); run('simTick(0.05)'); } }
+
+test('a unit left standing holds its ground', () => {
+  /* The leash was re-anchored every time a target was acquired, so it moved
+     forward with the unit - no leash at all, just a slow crawl across the map.
+     On Blitz, where something is always in sight, they never stopped. */
+  ordArena();
+  run('var u=mkUnit("warden",0,k.x+600,k.y+600); u.cmd={t:"idle"}; u.target=null');
+  ordTick(4);
+  run('var home={x:u.x,y:u.y}');
+  run('mkUnit("warden",1,u.x+230,u.y)');      // visible, well outside the leash
+  ordTick(120);
+  const drift = run('Math.hypot(u.x-home.x,u.y-home.y)');
+  ok(drift < TILE_FOR_TEST * 2,
+     'it stayed where it was left (drifted ' + Math.round(drift) + 'px)');
+});
+
+test('but it will still step out to meet something close', () => {
+  ordArena();
+  run('var u=mkUnit("warden",0,k.x+600,k.y+600); u.cmd={t:"idle"}; u.target=null');
+  ordTick(4);
+  run('var foe=mkUnit("warden",1,u.x+120,u.y)');   // inside the leash
+  ordTick(60);
+  ok(run('!!(u.target&&!u.target.dead)') || run('foe.hp<foe.maxHp'),
+     'something that walks up to it gets shot');
+});
+
+test('attack-move still chases across the map', () => {
+  ordArena();
+  run('var u=mkUnit("warden",0,k.x+600,k.y+600); u.cmd={t:"amove",x:k.x+600,y:k.y+600}');
+  run('mkUnit("warden",1,u.x+500,u.y)');
+  run('var home={x:u.x,y:u.y}');
+  ordTick(160);
+  ok(run('Math.hypot(u.x-home.x,u.y-home.y)') > 60,
+     'attack-move means go and find it');
+});
+
+test('ordering an attack on a structure hits the structure', () => {
+  /* entAt picks the nearest thing under the cursor whatever side it is on, so
+     clicking an enemy building with one of your own units standing on it
+     resolved to your own unit and the order quietly became a move. */
+  ordArena();
+  run('var fb=mkBuilding("habitat",1,k.x+1100,k.y+300,true)');
+  run('mkUnit("warden",0,fb.x,fb.y)');                 // mine, on top of it
+  run('var army=[mkUnit("warden",0,k.x+300,k.y+300),mkUnit("warden",0,k.x+340,k.y+300)]');
+  run('setSel(army); contextOrder(sel,fb.x,fb.y)');
+  eq(run('army[0].cmd.t'), 'attack', 'it is an attack order');
+  eq(run('army[0].cmd.target===fb'), true, 'and it is aimed at the building');
+  eq(run('army.every(function(u){return u.cmd.target===fb;})'), true, 'for everyone selected');
+});
+
+test('an attack order is carried out, not just issued', () => {
+  ordArena();
+  run('var c=mkUnit("harrower",0,k.x+300,k.y+300)');
+  run('var fb=mkBuilding("habitat",1,k.x+900,k.y+300,true)');
+  run('setSel([c]); contextOrder(sel,fb.x,fb.y)');
+  ordTick(400);
+  ok(run('fb.dead') || run('fb.hp') < run('fb.maxHp'),
+     'it closed the distance and brought the building down');
 });
 
 console.log('\nthe capital ship carries two weapons');
