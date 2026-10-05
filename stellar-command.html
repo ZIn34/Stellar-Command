@@ -2226,6 +2226,10 @@ function navigate(u,tx,ty,dt,stopAt){
   return steer(u,tx,ty,dt,stopAt);      // no path yet: nudge toward the goal
 }
 
+/* How far a unit left standing will step out to meet something before it
+   decides that is somebody else's problem. Five tiles: enough to cover the
+   ground it is actually holding, not enough to walk into the next fight. */
+const IDLE_LEASH=TILE*5;
 /* ===================== MOVEMENT ===================== */
 function bldAt(u,x,y){
   for(const o of around(x,y,70)){
@@ -2379,10 +2383,19 @@ function updateUnit(u,dt){
   if(u.dead) return;
   if(u.type==='titan') titanTick(u,dt);
   // auto acquire
+  /* Where a unit was standing when it was told to stop. Taken the moment
+     the order changes, so it is the spot you picked - not wherever the
+     unit has since wandered to. The old code set this every time a target
+     was acquired, which meant the anchor moved forward with the unit: no
+     leash at all, just a slow crawl across the map. On Blitz, where there
+     is always something in sight, they never stopped. */
+  if(c.t!==u._lastCmd){
+    u._lastCmd=c.t;
+    u.retreat=(c.t==='idle')?{x:u.x,y:u.y}:null;
+  }
   if((!u.target||u.target.dead)&&c.t!=='gather'&&c.t!=='build'&&c.t!=='repair'){
     if(c.t==='idle'||c.t==='amove'||c.t==='hold') u.target=findTarget(u,d.sight*TILE*.8);
     else if(c.t==='move') u.target=findTarget(u,d.rng);
-    if(u.target&&c.t==='idle') u.retreat={x:u.x,y:u.y};
   }
   if(u.target&&u.target.dead) u.target=null;
   // standing and fighting, so a crowd should not shove it off its mark
@@ -2408,10 +2421,19 @@ function updateUnit(u,dt){
     if(inRange(u,u.target)){
       if(u.atkCd<=0) fire(u,u.target);
       if(c.t==='amove'||c.t==='idle'||c.t==='hold') return;
-    } else if(c.t==='amove'||c.t==='idle'){
+    } else if(c.t==='amove'){
+      navigate(u,u.target.x,u.target.y,dt,d.rng*.75); return;   // chasing is the point
+    } else if(c.t==='idle'){
+      /* A unit holding ground will step out to meet something, but only a
+         few tiles, and it judges that against the spot it was left on
+         rather than where it is now. Anything further away it simply
+         ignores - if you want it chased, attack-move. */
       const home=u.retreat;
-      if(c.t==='idle'&&home&&Math.hypot(u.x-home.x,u.y-home.y)>d.sight*TILE){ u.target=null; navigate(u,home.x,home.y,dt,6); return; }
-      navigate(u,u.target.x,u.target.y,dt,d.rng*.75); return;
+      if(!home){ u.target=null; }
+      else if(Math.hypot(u.target.x-home.x,u.target.y-home.y)>IDLE_LEASH){
+        u.target=null;
+        if(Math.hypot(u.x-home.x,u.y-home.y)>TILE){ navigate(u,home.x,home.y,dt,6); return; }
+      } else { navigate(u,u.target.x,u.target.y,dt,d.rng*.75); return; }
     } else if(c.t==='hold'){ u.target=null; }
   }
 
