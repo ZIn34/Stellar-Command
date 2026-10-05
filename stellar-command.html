@@ -1757,7 +1757,8 @@ function titanTick(u,dt){
         if(Math.hypot(e.x-u.x,e.y-u.y)>st.mends.range) continue;
         e.hp=Math.min(e.maxHp,e.hp+st.mends.rate*.5);
         if(u.owner===0&&Math.random()<.4)
-          fx.push({x:e.x+rnd(-10,10),y:e.y-e.h*.3,t:0,dur:.5,r:4,k:'hit',c:'#8fe4ff'});
+          // green, not pale blue: a repair should not read as a gunshot
+          fx.push({x:e.x+rnd(-10,10),y:e.y-e.h*.3,t:0,dur:.5,r:4,k:'hit',c:'#9fd98c'});
         break;                             // one structure at a time, not a blanket
       }
     }
@@ -7644,10 +7645,12 @@ function edPaint(tx,ty){
 function edMirror(){
   for(let y=0;y<112;y++) for(let x=0;x<56;x++)
     ED.rock[(111-y)*112+(111-x)]=ED.rock[y*112+x];
-  const half=o=>o[1]<56;
-  ED.res=ED.res.filter(half);
+  /* A resource is [kind,tx,ty] and a start is [tx,ty], so the x coordinate is
+     at a different index in each - one shared predicate read ty for starts and
+     silently discarded every one below the middle. */
+  ED.res=ED.res.filter(r=>r[1]<56);
   ED.res=ED.res.concat(ED.res.map(r=>[r[0],111-r[1],111-r[2]]));
-  ED.starts=ED.starts.filter(half);
+  ED.starts=ED.starts.filter(p=>p[0]<56);
   ED.starts=ED.starts.concat(ED.starts.map(p=>[111-p[0],111-p[1]]));
   if(ED.starts.length>CMAP_MAX_STARTS) ED.starts.length=CMAP_MAX_STARTS;
 }
