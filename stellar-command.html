@@ -1186,6 +1186,11 @@ function setMapScale(scale){
   BLITZ=key==='blitz';
   const grand=GRAND;
   MAP_W=MAP_H=grand?354:112;                 // grand war is ten times the area
+  /* A hand-built board brings its own size. This has to happen before the
+     arrays below are allocated, because cmapApply copies the rock field
+     into them and a mismatch would shear every row. */
+  if(!grand&&CMAP&&CMAP.w>0&&CMAP.w===CMAP.h&&
+     CMAP.w>=CMAP_MIN&&CMAP.w<=CMAP_MAX) MAP_W=MAP_H=CMAP.w;
   WW=TILE*MAP_W; WH=TILE*MAP_H;
   MAPSCALE=(MAP_W*MAP_H)/(72*72);
   TQ=Math.min(IS_TOUCH?.5:1,TERRAIN_MAX/WW);
@@ -1513,10 +1518,29 @@ function cmapDecode(code){
 /* Only what genuinely cannot be loaded. Everything else a builder might do
    - one start, no supply, starts in a corner on top of each other - is
    their business, so it is said once as a note and never blocks. */
+/* Boards a builder can choose. Square, because the camera, the minimap and
+   the start placement all assume it, and because a long thin board plays
+   like a corridor whatever else is on it. 112 is the standard board and
+   stays the default, so nothing about an existing map changes. */
+const CMAP_SIZES=[
+  {n:64,  t:'SKIRMISH', d:'tight - contact almost at once'},
+  {n:112, t:'STANDARD', d:'the usual board'},
+  {n:160, t:'BROAD',    d:'room to expand before you meet'},
+  {n:224, t:'VAST',     d:'four times the standard board'}
+];
+const CMAP_MIN=48, CMAP_MAX=288;
 function cmapProblem(m){
   if(!m||!(m.w>0)||!(m.h>0)) return 'That map has no size.';
-  if(m.w!==112||m.h!==112) return 'This board is 112 x 112; that code says '+m.w+' x '+m.h+'.';
+  if(m.w!==m.h) return 'A board has to be square; that code says '+m.w+' x '+m.h+'.';
+  if(m.w<CMAP_MIN||m.w>CMAP_MAX)
+    return 'A board has to be between '+CMAP_MIN+' and '+CMAP_MAX+' tiles; that code says '+m.w+'.';
   if(!m.starts||!m.starts.length) return 'Place at least one start, or there is nowhere to put a base.';
+  /* Anything placed outside the board would be silently dropped, or worse,
+     wrap onto the wrong row - so say so instead. */
+  const out=p=>p[0]<0||p[1]<0||p[0]>=m.w||p[1]>=m.h;
+  if(m.starts.some(out)) return 'A start sits outside the board.';
+  if((m.res||[]).some(r=>out([r[1],r[2]]))) return 'A resource sits outside the board.';
+  if((m.blds||[]).some(b=>out([b[1],b[2]]))) return 'A building sits outside the board.';
   return null;
 }
 /* Said out loud, not enforced. A map that breaks these is probably meant
@@ -1545,7 +1569,12 @@ function cmapNotes(m){
 function cmapApply(){
   const m=CMAP;
   const bits=cmapUnpackRock(m.rock,m.w,m.h);
-  for(let i=0;i<blocked.length&&i<bits.length;i++) blocked[i]=bits[i];
+  /* Row by row against the live width. A straight run was fine only while
+     every map was exactly the size of the board; one tile of difference
+     would have slid each row sideways from the one above it. */
+  const cw=Math.min(m.w,MAP_W), ch=Math.min(m.h,MAP_H);
+  for(let y=0;y<ch;y++)
+    for(let x=0;x<cw;x++) blocked[ti(x,y)]=bits[y*m.w+x];
   for(let i=0;i<terr.length;i++) terr[i]=srand()<.14?1:(srand()<.08?2:0);  // ground decor is still noise
   for(let x=0;x<MAP_W;x++){ blocked[ti(x,0)]=1; blocked[ti(x,MAP_H-1)]=1; }
   for(let y=0;y<MAP_H;y++){ blocked[ti(0,y)]=1; blocked[ti(MAP_W-1,y)]=1; }
@@ -8362,7 +8391,8 @@ function edClose(){
    needs exactly the same steps, and two copies would drift. */
 function edLoadMap(m){
   if(!m) return false;
-  ED.rock=cmapUnpackRock(m.rock,112,112);
+  ED.size=(m.w>0&&m.w===m.h&&m.w>=CMAP_MIN&&m.w<=CMAP_MAX)?m.w:112;
+  ED.rock=cmapUnpackRock(m.rock,ED.size,ED.size);
   ED.res=(m.res||[]).map(x=>[x[0],x[1],x[2]]);
   ED.starts=(m.starts||[]).map(p=>[p[0],p[1]]);
   ED.blds=(m.blds||[]).map(b=>[b[0],b[1],b[2],b[3]|0]);
@@ -8393,7 +8423,8 @@ function edListRender(){
   }
 }
 function edReset(){
-  ED.rock=new Uint8Array(112*112);
+  ED.size=ED.size||112;
+  ED.rock=new Uint8Array(ED.size*ED.size);
   ED.res=[]; ED.starts=[]; ED.blds=[];
   ED.name=''; ED.rules={};
   edRulesRender&&edRulesRender(); edUnitsRender&&edUnitsRender();
@@ -8403,17 +8434,19 @@ function edFit(){
   /* The board is square, so the cell size is whatever squares fit the smaller
      of the space left over beside the toolbars. */
   const room=Math.min(window.innerWidth*.92,window.innerHeight-230);
-  ED.cell=Math.max(2,Math.floor(room/112));
-  cv.width=112*ED.cell; cv.height=112*ED.cell;
+  const N=ED.size||112;
+  ED.cell=Math.max(2,Math.floor(room/N));
+  cv.width=N*ED.cell; cv.height=N*ED.cell;
 }
 function edDraw(){
   const cv=document.getElementById('edCv'), g=cv.getContext('2d'), c=ED.cell;
   g.fillStyle='#2f3321'; g.fillRect(0,0,cv.width,cv.height);
   g.fillStyle='#4a4531';                                  // rock
-  for(let y=0;y<112;y++) for(let x=0;x<112;x++)
-    if(ED.rock[y*112+x]) g.fillRect(x*c,y*c,c,c);
+  const N=ED.size||112;
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
+    if(ED.rock[y*N+x]) g.fillRect(x*c,y*c,c,c);
   g.strokeStyle='rgba(199,181,131,.09)'; g.lineWidth=1;    // survey grid
-  for(let i=0;i<=112;i+=8){
+  for(let i=0;i<=N;i+=8){
     g.beginPath(); g.moveTo(i*c,0); g.lineTo(i*c,cv.height); g.stroke();
     g.beginPath(); g.moveTo(0,i*c); g.lineTo(cv.width,i*c); g.stroke();
   }
@@ -8442,8 +8475,9 @@ function edDraw(){
   });
 }
 function edMap(){
-  return {w:112,h:112,starts:ED.starts.map(p=>[p[0],p[1]]),
-          rock:cmapPackRock(ED.rock,112,112),
+  const N=ED.size||112;
+  return {w:N,h:N,starts:ED.starts.map(p=>[p[0],p[1]]),
+          rock:cmapPackRock(ED.rock,N,N),
           res:ED.res.map(r=>[r[0],r[1],r[2]]),
           blds:(ED.blds||[]).map(b=>[b[0],b[1],b[2],b[3]|0]),
           name:ED.name,rules:JSON.parse(JSON.stringify(ED.rules))};
@@ -8467,7 +8501,7 @@ function edPaint(tx,ty){
     const v=ED.tool==='rock'?1:0;
     for(let y=Math.round(ty-half);y<=ty+half;y++)
       for(let x=Math.round(tx-half);x<=tx+half;x++)
-        if(x>=1&&y>=1&&x<111&&y<111) ED.rock[y*112+x]=v;
+        if(x>=1&&y>=1&&x<ED.size-1&&y<ED.size-1) ED.rock[y*ED.size+x]=v;
     if(ED.tool==='erase'){            // erase lifts whatever else is on the tile
       ED.res=ED.res.filter(r=>Math.hypot(r[1]-tx,r[2]-ty)>b);
       ED.starts=ED.starts.filter(p=>Math.hypot(p[0]-tx,p[1]-ty)>b+2);
@@ -8491,11 +8525,13 @@ function edPaint(tx,ty){
   }
 }
 /* Rotating the left half onto the right makes both sides of a map the same
-   ground - which, after watching one starting corner win 94% of mirror
-   matches, is the single most useful button in here. */
+   ground. The button for it was removed, but the helper is kept because it
+   is the fix for a lopsided board; it now works at whatever size the board
+   is rather than one fixed one. */
 function edMirror(){
-  for(let y=0;y<112;y++) for(let x=0;x<56;x++)
-    ED.rock[(111-y)*112+(111-x)]=ED.rock[y*112+x];
+  const N=ED.size||112, H=N>>1;
+  for(let y=0;y<N;y++) for(let x=0;x<H;x++)
+    ED.rock[(N-1-y)*N+(N-1-x)]=ED.rock[y*N+x];
   /* A resource is [kind,tx,ty] and a start is [tx,ty], so the x coordinate is
      at a different index in each - one shared predicate read ty for starts and
      silently discarded every one below the middle. */
@@ -8756,7 +8792,7 @@ function edInit(){
     const saved=localStorage.getItem('fc_map');
     if(saved){
       const r=cmapDecode(saved);
-      if(r.map){ ED.rock=cmapUnpackRock(r.map.rock,112,112);
+      if(r.map){ edLoadMap(r.map); ED.rock=cmapUnpackRock(r.map.rock,ED.size,ED.size);
         ED.res=r.map.res.map(x=>[x[0],x[1],x[2]]);
         ED.starts=r.map.starts.map(p=>[p[0],p[1]]);
         ED.name=r.map.name||''; ED.rules=r.map.rules||{}; }
