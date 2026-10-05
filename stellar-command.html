@@ -4214,13 +4214,23 @@ function updMMBtn(){
   if(b) b.classList.toggle('on',mmOrderMode);
 }
 /* ---------- theme music (sits alongside the game as theme.mp4) ---------- */
-const MUSIC={el:null,ok:false,want:false};
+const MUSIC={el:null,ok:false,want:false,last:-1,stuck:0,fix:0};
 function musicInit(){
   MUSIC.el=document.getElementById('bgm');
   if(!MUSIC.el) return;
   MUSIC.el.volume=.7;
   MUSIC.el.addEventListener('canplay',()=>{ MUSIC.ok=true; if(MUSIC.want) musicPlay(); });
   MUSIC.el.addEventListener('error',()=>{ MUSIC.ok=false; });
+  /* loop should cover this, but if the track ends without looping - which a
+     recording with an odd tail can do - start it again by hand. */
+  MUSIC.el.addEventListener('ended',()=>{
+    if(!MUSIC.want||SFX.isMuted()) return;
+    try{ MUSIC.el.currentTime=0; }catch(e){}
+    musicPlay();
+  });
+  MUSIC.el.addEventListener('stalled',()=>{ MUSIC.stuck=2; });
+  MUSIC.el.addEventListener('waiting',()=>{ MUSIC.stuck=2; });
+  setInterval(musicTick,2000);
 }
 function musicPlay(){
   MUSIC.want=true;
@@ -4228,8 +4238,43 @@ function musicPlay(){
   const p=MUSIC.el.play();
   if(p&&p.catch) p.catch(()=>{});      // blocked until the first gesture; retried on unlock
 }
-function musicStop(){ if(MUSIC.el){ try{ MUSIC.el.pause(); }catch(e){} } }
+function musicStop(){ if(MUSIC.el){ MUSIC.stuck=0; try{ MUSIC.el.pause(); }catch(e){} } }
 function musicSync(){ if(SFX.isMuted()||document.hidden) musicStop(); else musicPlay(); }
+/* Music that stops and never comes back is worse than no music. The element
+   pauses itself when playback reaches a stretch it has not buffered, and
+   nothing here used to start it again - on the three minute theme it
+   buffered 0-123s, ran into the gap, and sat paused for the rest of the
+   match. Which is exactly 'it stops midway'.
+   So: check every couple of seconds that the clock is still moving, and if
+   it is not, escalate. Resume first, because that is enough for an ordinary
+   stall. Failing that, go back to the beginning, which always works because
+   the opening is the part that is always buffered. */
+function musicNudge(){
+  const el=MUSIC.el;
+  if(!el) return;
+  MUSIC.fix=(MUSIC.fix||0)+1;
+  try{
+    /* Two steps, not three. Resuming is enough for an ordinary stall; if it is
+       not, the cause is a stretch of the file that never buffered, and no
+       amount of nudging forward gets past that - the opening is the part that
+       is always there. Measured, the three-step version left six seconds of
+       silence before it recovered, which you would notice. */
+    if(MUSIC.fix>=2){ MUSIC.fix=0; el.currentTime=0; }
+    const p=el.play();
+    if(p&&p.catch) p.catch(()=>{});
+  }catch(e){}
+}
+function musicTick(){
+  const el=MUSIC.el;
+  if(!el||!MUSIC.want||SFX.isMuted()||document.hidden){ MUSIC.last=-1; return; }
+  if(el.paused){ musicNudge(); return; }
+  const t=el.currentTime;
+  if(MUSIC.last>=0&&Math.abs(t-MUSIC.last)<0.05){
+    MUSIC.stuck=(MUSIC.stuck||0)+1;
+    if(MUSIC.stuck>=2){ MUSIC.stuck=0; musicNudge(); }
+  } else { MUSIC.stuck=0; MUSIC.fix=0; }
+  MUSIC.last=t;
+}
 /* a hidden tab keeps playing audio even though the game is frozen - don't */
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden) musicStop();
