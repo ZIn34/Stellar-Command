@@ -45,7 +45,8 @@ html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#0a090
 #alertTxt{font-size:12px;letter-spacing:3px;color:#ff9b7f}
 @keyframes alertPulse{0%,100%{border-color:#7d2b1c}50%{border-color:#ff6b52}}
 body.touch #alert{top:auto;bottom:calc(var(--panel) + 10px)}
-#overSub{font-size:11.5px;letter-spacing:1px;color:#cbc4b1;margin:-4px 0 4px;line-height:1.5}
+#overSub{font-size:clamp(9.5px,1.6vh,11.5px);letter-spacing:1px;color:#cbc4b1;
+  margin:-4px 0 4px;line-height:1.45;text-align:center;max-width:min(680px,94vw)}
 .unlock{color:#ffcf5a;letter-spacing:2px;margin:0 0 6px}
 .ban-gilded{background:linear-gradient(180deg,#fff3c4,#ffcf5a 45%,#a8741a);-webkit-background-clip:text;
   background-clip:text;color:transparent!important;text-shadow:none}
@@ -160,7 +161,7 @@ body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
 #sumT td{padding:3px 12px;border-bottom:1px solid rgba(104,95,69,.35)}
 #sumT td:first-child{text-align:left;letter-spacing:1px}
 #sumT td:last-child{text-align:right;color:#f5f2e9;letter-spacing:2px}
-.overRow{display:flex;gap:10px;align-items:center}
+.overRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
 #specBtn{display:none}
 #sideBtns{display:flex;flex-direction:column;justify-content:flex-end;gap:5px;flex:0 0 auto;width:42px}
 #sideBtns button{font-family:inherit;display:flex;flex-direction:column;align-items:center;
@@ -270,10 +271,17 @@ body.touch #pauseBtn{top:max(8px,env(safe-area-inset-top));left:max(10px,env(saf
 .phint{margin-top:12px;font-size:10px;color:#86806f;letter-spacing:.5px}
 #hint{position:absolute;top:8px;left:54px;max-width:62%;font-size:11px;transition:opacity 1.2s;color:#948c75;line-height:1.6;z-index:5;
   background:rgba(16,14,10,.6);padding:6px 10px;border-radius:6px;border:1px solid #312d21;pointer-events:none}
-#over{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
-  gap:16px;background:rgba(9,8,5,.86);z-index:20}
-#over h1{font-size:44px;letter-spacing:6px}
-#over button{padding:10px 26px;font-size:15px;font-family:inherit;background:#302c20;color:#e8e4d9;
+/* Measured on a landscape phone (812x375): the title sat at -13px and the
+   buttons ended 13px below the fold, with overflow visible, so both ends
+   were simply cut off and neither could be scrolled to. Centring a column
+   taller than its box clips it at both ends - same trap as the builder. */
+#over{position:absolute;inset:0;display:none;align-items:center;justify-content:safe center;
+  flex-direction:column;gap:clamp(7px,2vh,16px);background:rgba(9,8,5,.86);z-index:20;
+  overflow-y:auto;overflow-x:hidden;padding:clamp(8px,2vh,18px) 12px}
+#over h1{font-size:clamp(22px,min(8vh,6vw),44px);letter-spacing:clamp(2px,1vw,6px);
+  margin:0;text-align:center}
+#over button{padding:clamp(6px,1.4vh,10px) clamp(13px,3vw,26px);
+  font-size:clamp(11px,1.9vh,15px);font-family:inherit;background:#302c20;color:#e8e4d9;
   border:1px solid #c7b583;border-radius:5px;cursor:pointer}
 #menu{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
   background:#0a0907;overflow:hidden}
@@ -2857,9 +2865,27 @@ function refitApply(e){
   return true;
 }
 /* The worker job. Modelled on repairing: walk to it, then do the work. */
+/* One worker per machine.
+   Several of them each ran their own timer against the same target, so a
+   group order bought a mark per worker - six Sappers meant six marks and
+   an empty bank off one click, and the escalating price (which is the
+   whole point) counted for nothing.
+   The claim is kept on the target rather than decided by the order paths,
+   because there are several of those - right-click, the card button, the
+   host acting for a guest, and a bot - and any of them could be the one
+   that forgot. It is refreshed every tick and expires on its own, so a
+   worker that dies or is sent elsewhere frees the machine immediately. */
+const REFIT_CLAIM=.4;
 function refitStep(u,dt){
   const t=u.cmd.target;
   if(!refitable(t,u.owner)){ u.cmd={t:'idle'}; return; }
+  if(t._refitBy!==undefined&&t._refitBy!==u.id&&
+     (gameTime-(t._refitAt||0))<REFIT_CLAIM){
+    u.cmd={t:'idle'}; u.refitT=0;
+    if(u.owner===0) say('Already being refitted');
+    return;
+  }
+  t._refitBy=u.id; t._refitAt=gameTime;
   if(edgeDist(u,t)>workReach(u,t)){ navigate(u,t.x,t.y,dt,workStop(u,t)); return; }
   u.face=Math.atan2(t.y-u.y,t.x-u.x);
   u.refitT=(u.refitT||0)+dt;
@@ -3294,7 +3320,13 @@ function rightClick(wx,wy,queue){
   if(!us.length) return;
   if(t&&refitable(t,0)&&us.some(u=>UDEF[u.type].worker)&&!us.includes(t)){
     let any=false;
-    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'refit',target:t}; u.target=null; u.refitT=0; any=true; }
+    /* The nearest one, not all of them. Sending the whole selection looked
+       willing but only one can work on it, so the rest walked over and
+       stood there having abandoned whatever they were mining. */
+    const ws=us.filter(u=>UDEF[u.type].worker);
+    const pick=ws.length?ws.reduce((best,u)=>
+      (Math.hypot(u.x-t.x,u.y-t.y)<Math.hypot(best.x-t.x,best.y-t.y))?u:best):null;
+    if(pick){ pick.cmd={t:'refit',target:t}; pick.target=null; pick.refitT=0; any=true; }
     if(any){ const c=refitCost(t);
       say('Refitting to mark '+((t.lvl||0)+2)+' - '+c.m+' supply'+(c.g?' + '+c.g+' fuel':''));
       SFX.play('order');
@@ -4031,7 +4063,10 @@ function contextOrder(mine,wx,wy){
   if(!us.length) return;
   if(t&&refitable(t,own)&&us.some(u=>UDEF[u.type].worker)&&us.indexOf(t)<0){
     let any=false;
-    for(const u of us) if(UDEF[u.type].worker){ u.cmd={t:'refit',target:t}; u.target=null; u.refitT=0; any=true; }
+    const ws=us.filter(u=>UDEF[u.type].worker);
+    const pick=ws.length?ws.reduce((best,u)=>
+      (Math.hypot(u.x-t.x,u.y-t.y)<Math.hypot(best.x-t.x,best.y-t.y))?u:best):null;
+    if(pick){ pick.cmd={t:'refit',target:t}; pick.target=null; pick.refitT=0; any=true; }
     if(any) return;
   }
   if(t&&isFoe(t.owner,own)){ for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; } return; }
@@ -5227,6 +5262,21 @@ function aiRun(AI,ME,dt){
       if(w){ w.cmd={t:'build',site:orphans[0]}; w.target=null; }
     }
   }
+  /* Building one machine up over a whole match is the point of a Vanguard,
+     so a bot does it too - with money it is not already saving for
+     something, and one worker at a time like anybody else. */
+  if(DIFF.refits){
+    const vg=us.filter(u=>u.type==='vanguard')
+               .sort((a,b2)=>(b2.lvl||0)-(a.lvl||0))[0];
+    if(vg&&!us.some(u=>u.cmd.t==='refit'&&u.cmd.target===vg)){
+      const rc=refitCost(vg);
+      // twice the price, so refitting never starves its production
+      if(P[ME].m>=rc.m*2&&P[ME].g>=rc.g*2){
+        const w=freeWorker();
+        if(w){ w.cmd={t:'refit',target:vg}; w.target=null; w.refitT=0; }
+      }
+    }
+  }
 
   /* ---- keep the siphons manned (miners never go idle on their own) ---- */
   for(const sp of bs.filter(b=>b.type==='siphon'&&b.done)){
@@ -5359,7 +5409,17 @@ function aiRun(AI,ME,dt){
     if(b.type==='citadel'){
       const tc=priceOf('unit','titan',ME);
       if(!b.queue.length&&_ships<_shipCap&&
-         P[ME].m>=tc.m&&P[ME].g>=tc.g&&botTrain(b,'titan')){ AI.saveSince=0; }
+         P[ME].m>=tc.m&&P[ME].g>=tc.g&&botTrain(b,'titan')){ AI.saveSince=0; continue; }
+      /* Moving the Vanguard onto this list meant no bot ever built one:
+         this branch trained a capital ship or nothing. It is the cheaper
+         thing to do with a Proving Ground that is standing idle, so it
+         gets built when a ship is out of reach or already on the field. */
+      if(!b.queue.length&&!savingUp){
+        const cap=(DIFF.vans===undefined?2:DIFF.vans);
+        const have=us.filter(u=>u.type==='vanguard').length;
+        const vc=priceOf('unit','vanguard',ME);
+        if(have<cap&&P[ME].m>=vc.m&&P[ME].g>=vc.g) botTrain(b,'vanguard');
+      }
       continue;
     }
     if(b.queue.length>=(DIFF.qd||2)) continue;
@@ -7742,15 +7802,15 @@ function init(){
    gets a modest edge on top of its macro, which the info panel shows you when
    you select one of its units. */
 const DIFFS={
-  recruit:{buildGap:20, sites:1, apm:50, burst:1, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
+  recruit:{buildGap:20, sites:1, apm:50, burst:1, vans:1, refits:0, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
            dec:2.0, grace:300, thr:9, step:4, eco:1, hp:1, dmg:1,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
-  veteran:{buildGap:12, sites:2, apm:115, burst:3, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
+  veteran:{buildGap:12, sites:2, apm:115, burst:3, vans:2, refits:1, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
            dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:6, sites:3, apm:220, burst:5, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+  warlord:{buildGap:6, sites:3, apm:220, burst:5, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
            dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
