@@ -1382,29 +1382,34 @@ function cmapDecode(code){
   return bad?{err:bad}:{map:m};
 }
 
-/* What makes a map unplayable, in the order a builder would want to hear it. */
+/* Only what genuinely cannot be loaded. Everything else a builder might do
+   - one start, no supply, starts in a corner on top of each other - is
+   their business, so it is said once as a note and never blocks. */
 function cmapProblem(m){
   if(!m||!(m.w>0)||!(m.h>0)) return 'That map has no size.';
-  if(m.w!==112||m.h!==112) return 'Custom maps are 112 x 112; that one is '+m.w+' x '+m.h+'.';
-  if(!m.starts||m.starts.length<2) return 'A map needs at least two starting positions.';
-  if(m.starts.length>CMAP_MAX_STARTS) return 'A map can have at most '+CMAP_MAX_STARTS+' starting positions.';
-  for(const p of m.starts){
-    if(!(p[0]>=6&&p[0]<m.w-6&&p[1]>=6&&p[1]<m.h-6))
-      return 'A starting position is too close to the edge.';
-  }
-  for(let i=0;i<m.starts.length;i++) for(let j=i+1;j<m.starts.length;j++){
-    const a=m.starts[i], b=m.starts[j];
-    if(Math.hypot(a[0]-b[0],a[1]-b[1])<18) return 'Two starting positions are almost on top of each other.';
-  }
-  if(!m.res||!m.res.some(r=>r[0]==='a')) return 'A map needs somewhere to get supply.';
-  /* Every start wants something to work within reach, or that seat opens with
-     nothing to do and simply loses. */
-  for(let i=0;i<m.starts.length;i++){
+  if(m.w!==112||m.h!==112) return 'This board is 112 x 112; that code says '+m.w+' x '+m.h+'.';
+  if(!m.starts||!m.starts.length) return 'Place at least one start, or there is nowhere to put a base.';
+  return null;
+}
+/* Said out loud, not enforced. A map that breaks these is probably meant
+   to - a one-start sandbox, or a siege where one side opens with nothing. */
+function cmapNotes(m){
+  const out=[];
+  if(!m||!m.starts) return out;
+  if(m.starts.length===1) out.push('one start: every commander opens in the same place');
+  if(!m.res||!m.res.some(r=>r[0]==='a')) out.push('no supply anywhere');
+  else for(let i=0;i<m.starts.length;i++){
     const p=m.starts[i];
     const near=m.res.filter(r=>r[0]==='a'&&Math.hypot(r[1]-p[0],r[2]-p[1])<16).length;
-    if(near<2) return 'Start '+(i+1)+' has fewer than two supply caches within reach.';
+    if(near<2){ out.push('start '+(i+1)+' has little supply in reach'); break; }
   }
-  return null;
+  for(let i=0;i<m.starts.length;i++) for(let j=i+1;j<m.starts.length;j++)
+    if(Math.hypot(m.starts[i][0]-m.starts[j][0],m.starts[i][1]-m.starts[j][1])<18){
+      out.push('two starts are almost on top of each other'); i=j=99; break;
+    }
+  for(const p of m.starts)
+    if(!(p[0]>=6&&p[0]<106&&p[1]>=6&&p[1]<106)){ out.push('a start is hard against the edge'); break; }
+  return out;
 }
 
 /* Build the world from a map instead of generating one. Called from init in
@@ -1416,8 +1421,9 @@ function cmapApply(){
   for(let i=0;i<terr.length;i++) terr[i]=srand()<.14?1:(srand()<.08?2:0);  // ground decor is still noise
   for(let x=0;x<MAP_W;x++){ blocked[ti(x,0)]=1; blocked[ti(x,MAP_H-1)]=1; }
   for(let y=0;y<MAP_H;y++){ blocked[ti(0,y)]=1; blocked[ti(MAP_W-1,y)]=1; }
-  BASES=m.starts.map(p=>({tx:p[0],ty:p[1]}));
-  while(BASES.length<4) BASES.push({tx:m.starts[0][0],ty:m.starts[0][1]});
+  BASES=m.starts.map(p=>({tx:clamp(p[0],2,MAP_W-3),ty:clamp(p[1],2,MAP_H-3)}));
+  if(!BASES.length) BASES=[{tx:(MAP_W>>1),ty:(MAP_H>>1)}];
+  while(BASES.length<4) BASES.push({tx:BASES[0].tx,ty:BASES[0].ty});
   EXPOS=[];
   for(const r of m.res)
     mkResource(r[0]==='v'?'vent':'aurite',r[1]*TILE+TILE/2,r[2]*TILE+TILE/2,r[0]==='v'?5000:1500);
@@ -5670,6 +5676,30 @@ function makeUnitSpr(type,owner){
     turret(R*.62,1.0,false);
     turret(R*.1, 1.15,false);
     turret(-R*.78,.9,true);
+    /* The miniguns. They were two dark bars on the hull and you could not
+       tell the thing had a second weapon at all. Each is a sponson turret
+       with a four-barrel cluster, light against the hull, sitting exactly
+       where its muzzle flash comes from - 0.62R off the centreline, a
+       little over 1R forward - so the gun and the flash are the same gun. */
+    for(const sy of [-1,1]){
+      const my=sy*R*.62;
+      g.fillStyle=DARK;                                  // the mount it swings on
+      g.beginPath(); g.arc(R*.34,my,R*.2,0,7); g.fill();
+      const mg=g.createRadialGradient(R*.3,my-R*.05,1,R*.34,my,R*.17);
+      mg.addColorStop(0,HULL_HI); mg.addColorStop(1,HULL);
+      g.fillStyle=mg; g.beginPath(); g.arc(R*.34,my,R*.16,0,7); g.fill();
+      g.strokeStyle=DARK; g.lineWidth=1.3; g.stroke();
+      g.fillStyle=HULL_HI;                               // barrel shroud
+      rr(g,R*.44,my-R*.12,R*.34,R*.24,R*.05); g.fill();
+      g.strokeStyle=DARK; g.lineWidth=1.1; g.stroke();
+      g.fillStyle=DARK;                                  // four barrels
+      for(let b=-1.5;b<=1.5;b++){ rr(g,R*.72,my+b*R*.062-R*.02,R*.4,R*.045,1); g.fill(); }
+      g.fillStyle=_sh('#5a6e86');                        // muzzle block
+      rr(g,R*1.08,my-R*.1,R*.1,R*.2,R*.03); g.fill();
+      g.strokeStyle=DARK; g.lineWidth=1; g.stroke();
+      g.fillStyle=t.c;                                   // ammo feed
+      rr(g,R*.2,my-R*.05,R*.16,R*.1,R*.03); g.fill();
+    }
     g.fillStyle=_sh('#3b4d63');                            // conning tower
     rr(g,-R*.46,-R*.26,R*.4,R*.52,R*.1); g.fill();
     g.strokeStyle=DARK; g.lineWidth=1.5; g.stroke();
@@ -7855,12 +7885,16 @@ function edMap(){
 }
 function edCheck(){
   const el=document.getElementById('edMsg');
-  const bad=cmapProblem(edMap());
-  el.textContent=bad||('Ready - '+ED.starts.length+' starts, '+
+  const m=edMap();
+  const bad=cmapProblem(m);
+  if(bad){ el.textContent=bad; el.className='bad'; return false; }
+  const notes=cmapNotes(m);
+  el.textContent=ED.starts.length+' starts, '+
     ED.res.filter(r=>r[0]==='a').length+' supply, '+
-    ED.res.filter(r=>r[0]==='v').length+' fuel');
-  el.className=bad?'bad':'good';
-  return !bad;
+    ED.res.filter(r=>r[0]==='v').length+' fuel'+
+    (notes.length?'  -  '+notes.join('; '):'  -  ready');
+  el.className=notes.length?'':'good';      // a note is not a refusal
+  return true;
 }
 function edPaint(tx,ty){
   const b=ED.brush, half=(b-1)/2;
