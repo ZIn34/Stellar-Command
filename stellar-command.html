@@ -2076,6 +2076,11 @@ function retaliate(t,src){
   if(t.owner===src.owner||isAlly2(t.owner,src.owner)) return;
   const c=t.cmd;
   if(c&&(c.t==='gather'||c.t==='build'||c.t==='repair'||c.t==='refit')) return;
+  /* The comment above has always said an explicit attack order is exempt,
+     but nothing here checked for one: it set t.target on anything, and
+     whatever read t.target before the order was re-asserted - a Titan's
+     miniguns, for one - shot the wrong thing. */
+  if(c&&c.t==='attack'&&c.target&&!c.target.dead) return;
   // already in a fight with something that can fight back? keep the focus
   const cur=retalTarget(t)||((t.target&&!t.target.dead)?t.target:null);
   if(cur&&cur.kind==='unit') return;
@@ -3114,7 +3119,17 @@ cv.addEventListener('mousedown',e=>{
   }
   if(pending==='attack'||pending==='move'){
     const t=pending; pending=null;
-    if(t==='attack') orderAttackMove(w.x,w.y); else orderMove(w.x,w.y);
+    /* This went straight to attack-move, which means 'walk there and
+       engage whatever you meet' - so pressing Attack and clicking a
+       particular tank or a particular Barracks did not order that target
+       at all, and the squad shot whatever it bumped into on the way. If
+       the click landed on an enemy, that enemy is the order. Clicking bare
+       ground still means attack-move. */
+    if(t==='attack'){
+      const hit=entAt(w.x,w.y,0);
+      if(hit&&hit.kind!=='res'&&isFoe(hit.owner,0)&&seen(hit)) orderAttackOn(hit);
+      else orderAttackMove(w.x,w.y);
+    } else orderMove(w.x,w.y);
     refreshUI(); return;
   }
   drag={x0:mx,y0:my,x1:mx,y1:my,shift:e.shiftKey};
@@ -3318,6 +3333,17 @@ function queueMove(us,wx,wy){
     if(u.cmd.t!=='move'&&u.cmd.t!=='amove'){ u.cmd={t:'move',x:wx,y:wy}; u.wp=[]; clearNav(u); continue; }
     (u.wp=u.wp||[]).push({x:wx,y:wy});
   }
+}
+/* A specific thing, told to a selection. The right-click path, the Attack
+   button and the minimap all come through here so they cannot drift apart. */
+function orderAttackOn(t){
+  const us=sel.filter(s=>s.kind==='unit'&&s.owner===0);
+  if(!us.length||!t||t.dead) return false;
+  if(NET.role==='guest'){ netCmd('atk',{ids:selIds(),id:t.id}); }
+  else for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; u.retal=null; }
+  SFX.play('attackOrder');
+  fx.push({x:t.x,y:t.y,t:0,dur:.5,r:hitRadius(t)+8,k:'ping',c:'#ff6b52'});
+  return true;
 }
 function orderAttackMove(wx,wy){
   const us=sel.filter(s=>s.kind==='unit'&&s.owner===0);
@@ -3976,6 +4002,14 @@ function netHostApply(c,from){
     case 'amove': formation(us,c.x,c.y,(x,y)=>({t:'amove',x,y})); break;
     case 'stop': for(const u of us){ u.cmd={t:'idle'}; u.target=null; } break;
     case 'hold': for(const u of us) u.cmd={t:'hold'}; break;
+    /* Was missing, so a guest pressing Attack on a specific target had the
+       order quietly dropped. */
+    case 'atk': {
+      const t=byId.get(c.id);
+      if(t&&!t.dead&&isFoe(t.owner,ME))
+        for(const u of us){ u.cmd={t:'attack',target:t}; u.target=t; u.retal=null; }
+      break;
+    }
     case 'rally': for(const b of mine) if(b.kind==='building'&&BDEF[b.type].trains) b.rally={x:c.x,y:c.y}; break;
     case 'train': { const b=bld(c.id); if(b&&b.done&&UDEF[c.type]) tryTrain(b,c.type); break; }
     case 'build': {
