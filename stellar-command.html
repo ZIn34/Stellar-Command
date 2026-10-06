@@ -1357,7 +1357,7 @@ function scenSync(){
     SCALES[sc.id]={n:sc.name.toUpperCase(),
                    d:(sc.size?sc.size+' x '+sc.size+' \u00b7 ':'')+
                      (sc.seats||2)+' starts \u00b7 player made',
-                   scen:sc.id, seats:Math.max(2,Math.min(4,sc.seats||2)),
+                   scen:sc.id, seats:Math.max(2,Math.min(MATCH_SEATS,sc.seats||2)),
                    base:'standard'};
 }
 /* How many seats the chosen board has, which caps the mode. */
@@ -1432,7 +1432,12 @@ function CRstat(type,field){
 let CMAP_STAMP=0;
 function cmapTouch(){ CMAP_STAMP++; clearDefs(); applyScale(); }
 
-const CMAP_MAX_STARTS=4;
+/* A match seats four, but a map may carry more: eight starts means the four
+   commanders can open in different corners from one game to the next, and a
+   builder can lay out a board that is not simply two or four fixed camps.
+   Which of them get used is decided when the match starts. */
+const CMAP_MAX_STARTS=8;
+const MATCH_SEATS=4;
 
 /* The rock layer is one bit a tile - 12544 of them on a standard board. Stored
    as alternating run lengths in base 36, beginning with a run of open ground,
@@ -1579,6 +1584,8 @@ function cmapProblem(m){
   if(m.w<CMAP_MIN||m.w>CMAP_MAX)
     return 'A board has to be between '+CMAP_MIN+' and '+CMAP_MAX+' tiles; that code says '+m.w+'.';
   if(!m.starts||!m.starts.length) return 'Place at least one start, or there is nowhere to put a base.';
+  if(m.starts.length>CMAP_MAX_STARTS)
+    return 'That code has '+m.starts.length+' starts; the most a board can carry is '+CMAP_MAX_STARTS+'.';
   /* Anything placed outside the board would be silently dropped, or worse,
      wrap onto the wrong row - so say so instead. */
   const out=p=>p[0]<0||p[1]<0||p[0]>=m.w||p[1]>=m.h;
@@ -1622,9 +1629,28 @@ function cmapApply(){
   for(let i=0;i<terr.length;i++) terr[i]=srand()<.14?1:(srand()<.08?2:0);  // ground decor is still noise
   for(let x=0;x<MAP_W;x++){ blocked[ti(x,0)]=1; blocked[ti(x,MAP_H-1)]=1; }
   for(let y=0;y<MAP_H;y++){ blocked[ti(0,y)]=1; blocked[ti(MAP_W-1,y)]=1; }
-  BASES=m.starts.map(p=>({tx:clamp(p[0],2,MAP_W-3),ty:clamp(p[1],2,MAP_H-3)}));
-  if(!BASES.length) BASES=[{tx:(MAP_W>>1),ty:(MAP_H>>1)}];
-  while(BASES.length<4) BASES.push({tx:BASES[0].tx,ty:BASES[0].ty});
+  let st=m.starts.map(p=>({tx:clamp(p[0],2,MAP_W-3),ty:clamp(p[1],2,MAP_H-3)}));
+  if(!st.length) st=[{tx:(MAP_W>>1),ty:(MAP_H>>1)}];
+  /* A board may carry up to eight starts and a match seats four, so when
+     there are spare ones take the set that is spread widest: pick a random
+     first, then repeatedly the start furthest from everything chosen so
+     far. That way a map with eight camps plays differently each time
+     without ever opening two commanders on top of each other. */
+  if(st.length>MATCH_SEATS){
+    const pool=st.slice(), out=[pool.splice((srand()*pool.length)|0,1)[0]];
+    while(out.length<MATCH_SEATS&&pool.length){
+      let best=0, bd=-1;
+      for(let i=0;i<pool.length;i++){
+        let near=1e9;
+        for(const o of out) near=Math.min(near,Math.hypot(pool[i].tx-o.tx,pool[i].ty-o.ty));
+        if(near>bd){ bd=near; best=i; }
+      }
+      out.push(pool.splice(best,1)[0]);
+    }
+    st=out;
+  }
+  BASES=st;
+  while(BASES.length<MATCH_SEATS) BASES.push({tx:BASES[0].tx,ty:BASES[0].ty});
   EXPOS=[];
   for(const r of m.res)
     mkResource(r[0]==='v'?'vent':'aurite',r[1]*TILE+TILE/2,r[2]*TILE+TILE/2,r[0]==='v'?5000:1500);
@@ -1635,7 +1661,13 @@ function cmapApply(){
 }
 /* How many seats a map can actually seat, so the menu can refuse a 2v2 on a
    two-start map rather than seating two commanders in the same corner. */
-function cmapSeats(){ return CMAP?CMAP.starts.length:4; }
+/* How many commanders this board can seat, which is not the same as how
+   many starts it has: a match seats four however many are drawn. */
+function cmapSeats(){
+  return CMAP?Math.min(MATCH_SEATS,CMAP.starts.length):MATCH_SEATS;
+}
+/* How many are drawn on it, for the builder and the menu card. */
+function cmapStartCount(){ return CMAP?CMAP.starts.length:MATCH_SEATS; }
 function tileBlocked(x,y){
   const tx=(x/TILE)|0, ty=(y/TILE)|0;
   if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H) return true;
@@ -8599,7 +8631,7 @@ async function libPublish(sc){
   const name=cmapCleanName(sc.name)||'Untitled';
   await libRace(F.setDoc(ref,{
     owner:LIB.uid, name:name, nameLower:name.toLowerCase(),
-    code:sc.code, seats:Math.max(2,Math.min(4,sc.seats|0||2)),
+    code:sc.code, seats:Math.max(2,Math.min(CMAP_MAX_STARTS,sc.seats|0||2)),
     public:true, rnd:Math.random(), createdAt:F.serverTimestamp()
   }));
   return ref.id;
