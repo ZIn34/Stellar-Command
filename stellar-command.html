@@ -8654,6 +8654,13 @@ const FB_CFG = {
   appId: '1:55577617627:web:d51fa9503e2d20405b18fe'
 };
 const FB_VER = '11.1.0';
+/* Which Firestore database to use. A project's default database is called
+   '(default)' and the console shows it as 'default', but you can also
+   create one with a name of its own - and the SDK talks to '(default)'
+   unless told otherwise, so a project whose only database is named
+   something else answers 404 to everything while looking perfectly set up
+   in the console. Leave this empty for the default one. */
+const FB_DB = '';
 
 const LIB = {db:null, uid:null, fs:null, ready:false, tab:'browse', rows:[],
              err:null, code:''};
@@ -8692,8 +8699,10 @@ async function libConnect(){
        long polling costs a little latency on the first call and nothing
        after, which is the right trade for not hanging. */
     LIB.fs=fs;
-    LIB.db=app.getApps().length>1||LIB._db?fs.getFirestore(a)
-      :fs.initializeFirestore(a,{experimentalAutoDetectLongPolling:true});
+    LIB.db=app.getApps().length>1||LIB._db
+      ?(FB_DB?fs.getFirestore(a,FB_DB):fs.getFirestore(a))
+      :fs.initializeFirestore(a,{experimentalAutoDetectLongPolling:true},
+                              FB_DB||undefined);
     LIB._db=true;
     LIB.uid=cred.uid;
     LIB.user=cred;
@@ -9032,27 +9041,45 @@ function libRenderLocal(){
    REST endpoint the same question directly, which returns an HTTP status
    and Google's own words - 404 when the database was never created, 403
    when the rules refuse, 200 when it is fine. One click, one answer. */
+/* 404 on the default database does not tell you whether there is no
+   database at all or one under a different name, and those need opposite
+   fixes. So ask about each likely name and report what came back. */
 async function libRestProbe(){
   if(!libConfigured()) return 'no project configured';
   let tok='';
   try{ tok=LIB.user?await LIB.user.getIdToken():''; }catch(e){}
-  const url='https://firestore.googleapis.com/v1/projects/'+FB_CFG.projectId+
-            '/databases/(default)/documents/maps?pageSize=1';
-  try{
-    const r=await fetch(url,{headers:tok?{Authorization:'Bearer '+tok}:{}});
-    const body=await r.text();
-    let msg='';
-    try{ const j=JSON.parse(body); msg=(j.error&&(j.error.status||j.error.message))||''; }
-    catch(e){ msg=body.slice(0,90); }
-    if(r.status===200) return 'HTTP 200 - the database is reachable and allows this read';
-    if(r.status===404) return 'HTTP 404 - there is no Firestore database on this project yet '+
-      '(create one in the console, in Native mode)';
-    if(r.status===403) return 'HTTP 403 - reached it, and the rules refused: '+msg;
-    return 'HTTP '+r.status+' - '+msg;
-  }catch(e){
-    return 'could not reach firestore.googleapis.com at all ('+(e&&e.message||e)+
-           ') - something on this network or browser is blocking it';
+  const names=[FB_DB||'(default)'];
+  for(const n of ['default','field-craft','fieldcraft'])
+    if(names.indexOf(n)<0) names.push(n);
+  const found=[];
+  let blocked=null;
+  for(const n of names){
+    const url='https://firestore.googleapis.com/v1/projects/'+FB_CFG.projectId+
+              '/databases/'+encodeURIComponent(n)+'/documents/maps?pageSize=1';
+    try{
+      const r=await fetch(url,{headers:tok?{Authorization:'Bearer '+tok}:{}});
+      const body=await r.text();
+      let msg='';
+      try{ const j=JSON.parse(body); msg=(j.error&&(j.error.status||j.error.message))||''; }
+      catch(e){ msg=body.slice(0,80); }
+      /* 200 means it is there and readable; 403 means it is there and the
+         rules said no, which still proves it exists. */
+      if(r.status===200) found.push(n+': HTTP 200, reachable and readable');
+      else if(r.status===403) found.push(n+': HTTP 403, exists but the rules refused ('+msg+')');
+      else if(r.status!==404) found.push(n+': HTTP '+r.status+' '+msg);
+    }catch(e){ blocked=(e&&e.message)||String(e); break; }
   }
+  if(blocked) return 'could not reach firestore.googleapis.com at all ('+blocked+
+    ') - something on this network or browser is blocking it';
+  if(!found.length) return 'HTTP 404 for every name tried ('+names.join(', ')+
+    ') - this project has no Firestore database. In the console, Firestore '+
+    'Database, Create database, Native mode.';
+  const first=found[0];
+  const which=first.split(':')[0];
+  if(which===(FB_DB||'(default)')) return first;
+  return 'the database on this project is named \u201c'+which+'\u201d, not '+
+    '\u201c'+(FB_DB||'(default)')+'\u201d, which is the one the game asks for '+
+    '- so everything answers 404. ['+found.join('; ')+']';
 }
 /* Three questions, answered one at a time with the raw Firestore code for
    each: is anybody signed in, can this account read a published map, can
