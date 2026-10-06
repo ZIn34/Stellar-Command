@@ -1262,20 +1262,47 @@ test('the difficulty ladder is ordered on every knob', () => {
   ok(k.warlord.qd >= k.veteran.qd, 'queues deeper');
 });
 
-test('only the hardest setting gets a stat edge, and it is modest', () => {
+test('the stat edge rises with the setting, and only Warlord has one', () => {
+  /* This used to assert that Recruit and Veteran were stock. They are not any
+     more: with identical armies and no multiplier a bot's twelve beat a
+     player's twelve outright, because it concentrates fire and nothing in the
+     table was offsetting that. So the easier settings take a handicap. What
+     has to hold is the ordering and that the numbers are applied. */
   const s = {};
   for (const d of ['recruit', 'veteran', 'warlord']) {
     run('startGame("' + d + '")');
     s[d] = { hp: run('DIFF.hp'), dmg: run('DIFF.dmg'), elite: run('({hp:ELITE.hp,dmg:ELITE.dmg})') };
   }
-  eq(s.recruit.hp, 1, 'Recruit units are stock');
-  eq(s.recruit.dmg, 1, 'in damage too');
-  eq(s.veteran.hp, 1, 'Veteran is a fair fight on stats');
-  eq(s.veteran.dmg, 1, 'in damage too');
+  ok(s.recruit.hp < 1 && s.recruit.dmg < 1,
+     'Recruit units are weaker than yours (' + s.recruit.hp + ' hull, ' + s.recruit.dmg + ' damage)');
+  ok(s.veteran.hp < 1 && s.veteran.dmg < 1,
+     'Veteran too, by less (' + s.veteran.hp + ' hull, ' + s.veteran.dmg + ' damage)');
+  ok(s.veteran.hp > s.recruit.hp && s.veteran.dmg > s.recruit.dmg,
+     'and Veteran is the tougher of the two');
   ok(s.warlord.hp > 1 && s.warlord.hp <= 1.25, 'Warlord gets a modest hull edge (' + s.warlord.hp + ')');
   ok(s.warlord.dmg > 1 && s.warlord.dmg <= 1.25, 'and a modest damage edge (' + s.warlord.dmg + ')');
-  eq(s.warlord.elite.hp, s.warlord.hp, 'and it is actually applied');
-  eq(s.warlord.elite.dmg, s.warlord.dmg, 'both ways');
+  for (const d of ['recruit', 'veteran', 'warlord']) {
+    eq(s[d].elite.hp, s[d].hp, d + ': the hull figure is actually applied');
+    eq(s[d].elite.dmg, s[d].dmg, d + ': and the damage one');
+  }
+});
+
+test('the handicap reaches the units themselves', () => {
+  // the table is one thing; what a unit is built with is the claim
+  for (const d of ['recruit', 'veteran', 'warlord']) {
+    run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+    run('startGame("' + d + '")');
+    run('FACOF=["concord","concord","concord","concord"]');   // same army both sides
+    run('typeof clearDefs==="function"&&clearDefs()');
+    run('var mine=mkUnit("warden",0,600,600), bot=mkUnit("warden",1,700,600)');
+    const hull = run('bot.maxHp/mine.maxHp');
+    const dmg = run('dmgOf(bot)/dmgOf(mine)');
+    const want = run('DIFF.hp');
+    ok(Math.abs(hull - want) < .03,
+       d + ': a bot hull is ' + hull.toFixed(3) + ' of yours, wanted ' + want);
+    ok(Math.abs(dmg - run('DIFF.dmg')) < .03,
+       d + ': and its damage ' + dmg.toFixed(3));
+  }
 });
 
 test('a bot actually researches its upgrades now', () => {
