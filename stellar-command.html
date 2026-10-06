@@ -3901,7 +3901,8 @@ const NET={
   ws:null, role:null, code:null, state:'off',
   prevT:0, nextT:0, byId:new Map(), evOut:[], seed:1, ended:false, tok:null, pub:false,
   teams:null, seatFacs:null,
-  slot:0, humans:1, roomN:1, isHost:true
+  slot:0, humans:1, roomN:1, isHost:true,
+  sendCmap:null, gotCmap:null
 };
 /* With more than one guest the old owner^1 flip no longer works, so each client
    swaps its own slot with 0 instead: everyone still sees themselves as player 0
@@ -4077,8 +4078,9 @@ function netRecv(m){
 }
 function netData(d){
   if(!d) return;
-  if(d.k==='init'&&NET.role==='guest'){ NET.seed=d.seed; lobbyClose();
-    startOnline(d.seed,!!d.grand,d.mode||'duel',d.scale); return; }
+  /* There was an 'init' message handled here that nothing ever sent - the
+     relay's own start message is what begins a match. Left in, it was a
+     second way to start one, without the board. */
   if(d.k==='out'&&NET.role==='guest'){
     endGame('ELIMINATED','#ff6b52',
       {keepRunning:true, spectate:true, sub:'Your forces are gone. The battle continues.'});
@@ -4179,7 +4181,13 @@ function netSnapshot(){
      understands an old host's four, and an old client reading a new host
      takes the first four and warns on the version. */
   const r=ALLSLOTS.map(i=>[Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap]);
-  netRelay({k:'S',v:NET_PROTO,e,r,ev:NET.evOut.splice(0,80)});
+  /* The relay strips fields it does not recognise from its own start
+     message, but it forwards these payloads untouched - which is how the
+     board reaches a guest at all. Sent with every snapshot for the first
+     few seconds, and again for anyone who rejoins, because there is no
+     ordering guarantee against the relay's own start. */
+  const cm=(NET.sendCmap&&gameTime<8)?NET.sendCmap:undefined;
+  netRelay({k:'S',v:NET_PROTO,e,r,cm,ev:NET.evOut.splice(0,80)});
 }
 /* A version mismatch is silent otherwise: rows get dropped and the world
    is simply wrong. Say it once, plainly, because the fix is a reload. */
@@ -4193,6 +4201,21 @@ function netProtoWarn(){
 /* ---------- guest consumes it ---------- */
 function netApplySnapshot(d){
   if(d.v!==undefined&&d.v!==NET_PROTO) netProtoWarn();
+  /* A hand-built board arrives with the first snapshots rather than with
+     the start message, so the ground is rebuilt here when it turns up. The
+     entities do not need saving: they belong to the host and the very next
+     snapshot puts them back. */
+  if(d.cm&&d.cm!==NET.gotCmap){
+    NET.gotCmap=d.cm;
+    const r2=cmapDecode(d.cm);
+    if(r2&&!r2.err&&r2.map){
+      CMAP=r2.map; cmapTouch();
+      setMapScale('standard');
+      init();
+      ents=[]; NET.byId=new Map(); NET.centered=false;
+      say('Playing the host\u2019s board: '+(CMAP.name||'custom'));
+    }
+  }
   const seen=new Set();
   for(const a of d.e){
     const id=a[0], info=netTypeOf(a[1]);
@@ -4285,8 +4308,15 @@ function teamsValid(arr,mode){
 }
 function netBegin(){
   if(!NET.isHost) return;
-  const sc=(typeof scaleKey!=='undefined')?scaleKey:'standard';
+  let sc=(typeof scaleKey!=='undefined')?scaleKey:'standard';
   const md=(typeof modeKey!=='undefined')?modeKey:'duel';
+  /* A player-made board is not a scale the other side has heard of - its key
+     only exists in whoever saved it. Sent as-is, the host resolved it and
+     the guest fell back to standard, so the two played different worlds
+     against one snapshot stream. The scale sent is the one a hand-built
+     board is played under, and the board itself follows over the relay. */
+  if(SCALES[sc]&&SCALES[sc].scen){ NET.sendCmap=CMAP?cmapEncode(CMAP):null; sc='standard'; }
+  else NET.sendCmap=null;
   /* `grand` goes along for older clients; `scale` is what actually decides it
      now that there are three of them. */
   netSend({t:'begin',mode:md,grand:sc==='grand',scale:sc,
@@ -4428,7 +4458,7 @@ function startOnline(seed,grand,mode,scale){
   }
   // Only the host simulates, so a guest runs no commanders of its own;
   // it sees the bots through snapshots like everything else.
-  if(NET.role==='guest') BOTS=[false,false,false,false];
+  if(NET.role==='guest') BOTS=new Array(SLOTS).fill(false);
   menuOn=false;
   document.getElementById('menu').style.display='none';
   init();
@@ -9801,7 +9831,7 @@ function lobbyPollStart(){
 function lobbyFresh(){
   lobbyPollStop();
   NET.lostAt=null; NET.ended=false; NET.pub=false; NET.mode=null; NET.roomN=0;
-  NET._downgraded=false;
+  NET._downgraded=false; NET.sendCmap=null; NET.gotCmap=null;
   NET.teams=null; NET.seatFacs=null;
 }
 /* Who is in the room so far, and - for the host - the choice between waiting
