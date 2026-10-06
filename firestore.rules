@@ -34,7 +34,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.owner == request.auth.uid
         && request.resource.data.keys().hasOnly(
-             ['owner','name','nameLower','code','seats','public','rnd','createdAt'])
+             ['owner','name','nameLower','code','seats','public','rnd','plays','createdAt'])
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1
         && request.resource.data.name.size() <= 40
@@ -51,6 +51,7 @@ service cloud.firestore {
         && request.resource.data.rnd is number
         && request.resource.data.rnd >= 0
         && request.resource.data.rnd <= 1
+        && request.resource.data.plays == 0
         && request.resource.data.createdAt == request.time;
 
       /* Editing your own: the owner and the creation time cannot be rewritten,
@@ -58,7 +59,20 @@ service cloud.firestore {
       allow update: if owns(resource.data)
         && request.resource.data.owner == resource.data.owner
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.rnd == resource.data.rnd;
+        && request.resource.data.rnd == resource.data.rnd
+        && request.resource.data.plays == resource.data.plays;
+
+      /* Anybody who plays a board may add one to its count, and that is the
+         only thing this permits: exactly the plays field, exactly one more
+         than it was. Nobody can set it to a number of their choosing, and
+         no other field can ride along with the change. Unlike likes this is
+         a plain integer rather than a document each, because it is a tally
+         of plays and not of people - counting people would mean a read per
+         card on every listing. */
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plays'])
+        && request.resource.data.plays is int
+        && request.resource.data.plays == resource.data.plays + 1;
 
       allow delete: if owns(resource.data);
 
@@ -72,18 +86,6 @@ service cloud.firestore {
         allow create, delete: if signedIn() && request.auth.uid == uid;
         allow update:        if false;
       }
-    }
-
-    /* Anyone can report a map; nobody can read or clear the reports from the
-       game. They are for looking at in the console. Public submissions carry
-       names and content somebody else wrote, so there has to be a way to find
-       the bad ones. */
-    match /reports/{reportId} {
-      allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['mapId','uid','at'])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.at == request.time;
-      allow read, update, delete: if false;
     }
 
     // nothing else is reachable

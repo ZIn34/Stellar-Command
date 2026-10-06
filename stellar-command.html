@@ -598,7 +598,6 @@ button,.scard,.dcard,.btn,.grp,.room,.seat,.lc,.sc,.qi,.port,#deploy{
       <path d="M19 46 L32 37.5 L45 46 L45 51.5 L32 43 L19 51.5 Z" fill="#c7b583"/>
     </svg>
     <h1>FIELD <b>CRAFT</b></h1>
-    <p class="tag">Combined arms for the supply roads of the eastern corridor</p>
     <div class="rows">
       <div class="col"><h2>SIDES</h2><div id="modes"></div>
         <h2 style="margin-top:9px">THEATRE</h2><div id="diffs"></div></div>
@@ -1666,7 +1665,10 @@ function cmapNotes(m){
       out.push('two starts are almost on top of each other'); i=j=99; break;
     }
   for(const p of m.starts)
-    if(!(p[0]>=6&&p[0]<106&&p[1]>=6&&p[1]<106)){ out.push('a start is hard against the edge'); break; }
+    /* Was 6..106, written when every board was 112 wide - so a start at 120
+       on a 144 board was reported as hard against an edge thirty tiles
+       away. Measure against the board that was actually given. */
+    if(!(p[0]>=6&&p[0]<m.w-6&&p[1]>=6&&p[1]<m.h-6)){ out.push('a start is hard against the edge'); break; }
   return out;
 }
 
@@ -4435,6 +4437,12 @@ function startOnline(seed,grand,mode,scale){
   setSeed(seed);
   const sc=(typeof scale==='string'&&SCALES[scale])?scale:(grand?'grand':'standard');
   scaleKey=sc;                              // so the HUD and the manual agree
+  /* Both sides resolve the room's terrain key to the same built-in board,
+     so this needs nothing on the wire. The host's own player-made board,
+     if it has one, is already loaded and travels separately - which is
+     what `keep` protects. */
+  if(NET.terrain&&TERRAINS[NET.terrain]) terrainKey=NET.terrain;
+  boardApply(terrainKey,!!NET.sendCmap);
   setMapScale(sc);
   DIFF=DIFFS.veteran; ELITE={hp:1,dmg:1};        // even footing in PvP
   ROCK_CLUSTERS=(TERRAINS[NET.terrain]||TERRAINS.open).rocks;
@@ -8198,12 +8206,66 @@ const DIFFS={
            hallCost:250, expoCost:380}
 };
 let DIFF=DIFFS.veteran, ELITE={hp:1.35,dmg:1.30}, diffKey='veteran', scaleKey='standard';
+/* Boards rather than a rock count.
+   This used to be a number fed to the random generator, so CHOKEPOINTS
+   meant ninety-five blobs dropped wherever they landed and no two matches
+   on it had anything in common. These are laid out: a shape each, eight
+   starts evenly spaced on a circle so every mode from a duel to an
+   eight-way has somewhere to put everyone, and the supply around each
+   start mirrored so no seat opens richer than another.
+   They are share codes, which means they travel: both sides of an online
+   match resolve the same terrain key to the same board without anything
+   being sent. OPEN FIELD is still the empty board, for anyone who wants
+   nothing in the way.
+   Built by test/makemaps.js, which validates each one through cmapProblem
+   and a round trip before printing it. */
 const TERRAINS={
-  open:    {n:'OPEN FIELD', d:'nothing in the way',           rocks:0},
-  standard:{n:'BROKEN',     d:'scattered rock, some cover',   rocks:46},
-  choke:   {n:'CHOKEPOINTS',d:'dense rock, defensible lanes', rocks:95}
+  open:    {n:'OPEN FIELD', d:'bare ground, nothing in the way', rocks:0},
+  bowl:{n:'OPEN BOWL', d:'room to manoeuvre, rock only at the rim',
+    code:'RkMyOzEyOCwxMjg7Uzo2NC4yMCw5NS4zMiwxMDguNjQsOTUuOTUsNjQuMTA4LDMyLjk1LDIwLjY0LDMyLjMyO1I6ZnAubS4ydS51LjJwLncuMm8udy4ycC5lLjIuZS4ycS40Lm0uNC41di4xLjFtLjEuMXUuMy4xbS4zLjFyLjUuMWsuNS4xby43LjFrLjcuMWwuOS4xaS45LjFqLjguMW0uOC4xZy45LjFvLjkuMWQuOC4xcy44LjFiLjguMXUuOC4xOS44LjF3LjguMTcuNy4yMC43LjE1LjcuMjIuNy4xMy43LjI0LjcuMTEuNy4yNi43LnouNy4yOC43LnkuNi4yYS42LnguNi4yYy42LnYuNi4yZS42LnQuNy4yZS43LnMuNi4yZy42LnIuNi4yaS42LnAuNi4yay42Lm8uNi4yay42Lm4uNi4ybS42Lm8uMy4yby4zLnMuMS4yby4xLjEzcC4yLjM0LjIuYi41LjMwLjUuYS41LjMwLjUuYS41LjMwLjUuYS41LjMwLjUuOS42LjMwLjYuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC41LjMyLjUuOC42LjMwLjYuOS41LjMwLjUuYS41LjMwLjUuYS41LjMwLjUuYS41LjMwLjUuYi4yLjM0LjIuMTNwLjEuMm8uMS5zLjMuMm8uMy5vLjYuMm0uNi5uLjYuMmsuNi5vLjYuMmsuNi5wLjYuMmkuNi5yLjYuMmcuNi5zLjcuMmUuNy50LjYuMmUuNi52LjYuMmMuNi54LjYuMmEuNi55LjcuMjguNy56LjcuMjYuNy4xMS43LjI0LjcuMTMuNy4yMi43LjE1LjcuMjAuNy4xNy44LjF3LjguMTkuOC4xdS44LjFiLjguMXMuOC4xZC45LjFvLjkuMWcuOC4xbS44LjFqLjkuMWkuOS4xbC43LjFrLjcuMW8uNS4xay41LjFyLjMuMW0uMy4xdS4xLjFtLjEuNXYuNC5tLjQuMnEuZS4yLmUuMnAudy4yby53LjJwLnUuMnUubS5mcDtBOjY4LjMwLDYwLjMwLDkxLjQyLDg1LjM2LDk4LjY4LDk4LjYwLDg1LjkxLDkxLjg1LDYwLjk4LDY4Ljk4LDM2Ljg1LDQyLjkxLDMwLjYwLDMwLjY4LDQyLjM2LDM2LjQyLDgxLjY0LDcyLjc4LDU1Ljc4LDQ3LjY0LDU1LjQ5LDcyLjQ5O1Y6NjQuMzUsODQuNDMsOTMuNjQsODQuODQsNjQuOTMsNDMuODQsMzUuNjQsNDMuNDMsNjQuNzMsNjQuNTQ7Qjo7TjpPUEVOIEJPV0w7UDp8fHx8fHx8O1Q6'},
+  ridge:{n:'RIDGELINE', d:'one spine across the middle, two ways through',
+    code:'RkMyOzE0NCwxNDQ7Uzo3Mi4yMCwxMDguMzUsMTI0LjcyLDEwOC4xMDgsNzIuMTI0LDM1LjEwOCwyMC43MiwzNS4zNTtSOjJ3Yy41LjN1LjcuM3MuOS4zci5iLjNwLmMuM28uZS4zbS5mLjNtLmYuM20uZi4zbi5jLjNwLmMuM3EuYS4zci45LjNzLjguM3UuNy4zdS43LjN1LjcuM3YuNi4zdi45LjEuMS4zci44LjN0LjguM3QuNi4zdy40LjN4LjMuM3kuMS5vbC4yLjN5LjMuM3guNS4zdS43LjNzLmEuM3AuYy4zbi5lLjNtLmcuM20uZi4zbS5mLjNuLmYuM20uZi4zbS5nLjNtLmYuM20uZi4zbS5nLjNtLmYuM20uZy4zbS5mLjNtLmYuM20uZy4zbS5mLjNtLmYuM24uZi4zbS5mLjNtLmYuM24uYy4zcC5hLjNyLjguM3UuNS4zdy40LjN5LjIuc2suMy4zeC40LjN3LjUuM3UuOC4zdC44LjNyLjEuMS44LjN3LjYuM3YuNi4zdi43LjN1LjcuM3UuNy4zdC45LjNyLmEuM3EuYi4zcS5jLjNuLmUuM20uZy4zbS5mLjNtLmYuM20uZS4zby5jLjNwLmIuM3IuOS4zcy43LjN1LjUuMnNiO0E6NzYuMzAsNjguMzAsMTA0LjQ1LDk4LjM5LDExNC43NiwxMTQuNjgsOTguMTA0LDEwNC45OCw2OC4xMTQsNzYuMTE0LDM5Ljk4LDQ1LjEwNCwzMC42OCwzMC43Niw0NS4zOSwzOS40NSw5MS43Miw4MS44OCw2Mi44OCw1My43Miw2Mi41NSw4MS41NTtWOjcyLjM1LDk3LjQ2LDEwOS43Miw5Ny45Nyw3Mi4xMDksNDYuOTcsMzUuNzIsNDYuNDYsNzIuODIsNzIuNjE7Qjo7TjpSSURHRUxJTkU7UDp8fHx8fHx8O1Q6'},
+  cross:{n:'FOUR BASINS', d:'quartered by rock, open in the centre',
+    code:'RkMyOzE0NCwxNDQ7Uzo3Mi4yMCwxMDguMzUsMTI0LjcyLDEwOC4xMDgsNzIuMTI0LDM1LjEwOCwyMC43MiwzNS4zNTtSOnR4LjYuM3UuNi4zdC44LjNzLjguM3MuNC4xLjMuMXp2LjEuMS4xLjN5LjEuM3kuMy4zeC4xLjEuMS4zdi4xLjUuMS4zcy4yLjUuMS4zcy4xLjN6LjIuNS4xLjNzLjIuNS4xLjNzLjQuMS4zLjNzLjguM3MuOC4zcy44LjNzLjguM3MuOC4zcy44LjNzLjguM3MuOC4zcy44LjNzLjguM3MuOC4zcy44LjNzLjguMXU1LjMubS5pLjE0LmoubS4zLmYuNS5sLjIuMS5nLjE0LmguMS4yLmwuNS5kLjUucS5lLjE0LmYucS41LmQuNS5oLjEuMS4yLjUuZS4xNC5mLjUuMi4xLjEuaC41LmQuNC5qLjIuNy5kLjE0LmUuNy4yLmouNC5kLjUuaC4xLjEuMi41LmUuMTQuZi41LjIuMS4xLmguNS5kLjUucS5lLjE0LmYucS41LmYuMy5sLjIuMS5nLjE0LmguMS4yLmwuMy4xdTQuOC4zcy44LjNzLjguM3MuOC4zcy44LjNzLjguM3MuOC4zcy44LjNzLjguM3MuOC4zcy44LjNzLjguM3MuOC4zcy44LjNzLjQuMS4zLjNzLjIuNS4xLjNzLjIuNS4xLjNzLjEuM3ouMi41LjEuM3QuMS41LjEuM3YuMS4xLjEuM3guMy4zeS4xLjN5LjEuMS4xLjF6dS40LjEuMy4zcy44LjNzLjguM3QuNi4zdS42LnB4O0E6NzYuMzAsNjguMzAsMTA0LjQ1LDk4LjM5LDExNC43NiwxMTQuNjgsOTguMTA0LDEwNC45OCw2OC4xMTQsNzYuMTE0LDM5Ljk4LDQ1LjEwNCwzMC42OCwzMC43Niw0NS4zOSwzOS40NSw4NS43Miw3Mi44NSw1OS43Miw3Mi41OTtWOjcyLjM1LDk3LjQ2LDEwOS43Miw5Ny45Nyw3Mi4xMDksNDYuOTcsMzUuNzIsNDYuNDYsNzIuNzksNzIuNjQ7Qjo7TjpGT1VSIEJBU0lOUztQOnx8fHx8fHw7VDo'},
+  ring:{n:'THE REDOUBT', d:'a walled plateau in the middle, four ways in',
+    code:'RkMyOzE0NCwxNDQ7Uzo3Mi4xOCwxMTAuMzMsMTI2LjcyLDExMC4xMTAsNzIuMTI2LDMzLjExMCwxOC43MiwzMy4zMztSOjR0cy5nLjNoLm0uM2MucS4zOC51LjM4LnEuM2Iuby4zYy5vLjNkLjQuZS40LjNlLjIuaS4yLm16LjEuMWUuMS4yay4xLjFlLjEuMmouMy4xYy4zLjJpLjUuMTguNS4yaC44LjE0LjguMmcuOC4xNC44LjJnLjcuMTYuNy4yZi44LjE2LjguMmUuNy4xOC43LjJlLjcuMTguNy4yZS43LjE4LjcuMmUuNy4xOC43LjJlLjcuMTguNy4yZS43LjE4LjcuMmUuNy4xOC43LjJlLjcuMTguNy4yZS43LjE4LjcuMmUuNy4xOC43LjJlLjcuMTguNy4yZS43LjE4LjcuMmUuNy4xOC43LjJlLjcuMTguNy4yZS44LjE2LjguMmYuNy4xNi43LjJnLjguMTQuOC4yZy44LjE0LjguMmguNS4xOC41LjJpLjMuMWMuMy4yai4xLjFlLjEuMmsuMS4xZS4xLm16LjIuaS4yLjNlLjQuZS40LjNkLm8uM2Muby4zYi5xLjM4LnUuMzgucS4zYy5tLjNoLmcuNHRzO0E6NzYuMjgsNjguMjgsMTA2LjQzLDEwMC4zNywxMTYuNzYsMTE2LjY4LDEwMC4xMDYsMTA2LjEwMCw2OC4xMTYsNzYuMTE2LDM3LjEwMCw0My4xMDYsMjguNjgsMjguNzYsNDMuMzcsMzcuNDMsODcuNzIsNzIuODcsNTcuNzIsNzIuNTc7Vjo3Mi4zMyw5OS40NCwxMTEuNzIsOTkuOTksNzIuMTExLDQ0Ljk5LDMzLjcyLDQ0LjQ0LDcyLjgwLDcyLjYzO0I6O046VEhFIFJFRE9VQlQ7UDp8fHx8fHx8O1Q6'},
+  lanes:{n:'CORRIDORS', d:'rock bands and lanes, flanks cost time',
+    code:'RkMyOzE0NCwxNDQ7Uzo3Mi4xOCwxMTAuMzMsMTI2LjcyLDExMC4xMTAsNzIuMTI2LDMzLjExMCwxOC43MiwzMy4zMztSOjF3eC4zLjIwLjMuMXQuNS4xeS41LjFyLjcuMXcuNy4xcS43LjF3LjcuMXEuNy4xdy43LjFxLjcuMXcuNy4xcS43LjF3LjcuMXEuMi4xLjQuMXcuNC4xLjIuYXUuMS4xLjEuM3kuMS4xeXUuMS4xMC4xLjYuMS4xMC4xLjFxLjcudS44LnUuNy4xcS43LnUuOC51LjcuMXEuNy51LjgudS43LjFxLjcudS44LnUuNy4xcS43LnUuOC51LjcuMXEuNy51LjgudS43LjFxLjcudS40LjEuMy51LjcuMXEuNy51LjIuNS4xLnUuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS4xLjExLjcuMXEuNy51LjIuNS4xLnUuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS40LjEuMy51LjcuMXEuNy51LjQuMS4zLnUuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS4yLjUuMS51LjcuMXEuNy51LjEuMTEuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS4yLjUuMS51LjcuMXEuNy51LjQuMS4zLnUuNy4xcS43LnUuOC51LjcuMXIuNi51LjgudS43LjFxLjIuMS40LnUuOC51LjUuMS4xLjF2LjIudS44LnUuMy4xei4yLnUuOC51LjMuMjAuMS51LjgudS4yLjIwLjIudS44LnUuMy4xei4yLnUuOC51LjMuMXUuMi4xLjQudS44LnUuNS4xLjEuMXIuNi51LjgudS43LjFxLjcudS40LjEuMy51LjcuMXEuNy51LjIuNS4xLnUuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS4xLjExLjcuMXEuNy51LjIuNS4xLnUuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS40LjEuMy51LjcuMXEuNy51LjgudS43LjFxLjcudS40LjEuMy51LjcuMXEuNy51LjIuNS4xLnUuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS4xLjExLjcuMXEuNy51LjIuNS4xLnUuNy4xcS43LnUuMi41LjEudS43LjFxLjcudS40LjEuMy51LjcuMXEuNy51LjgudS43LjFxLjcudS44LnUuNy4xcS43LnUuOC51LjcuMXEuNy51LjgudS43LjFxLjcudS44LnUuNy4xcS4xLjEwLjEuNi4xLjEwLjEuMXl1LjMuM3kuMS4zeS4xLjEuMS42dC4yLjEuNC4xdy40LjEuMi4xcS43LjF3LjcuMXEuNy4xdy43LjFxLjcuMXcuNy4xcS43LjF3LjcuMXEuNy4xdy43LjFxLjcuMXcuNy4xci41LjF5LjUuMXQuMy4yMC4zLjFzeDtBOjc2LjI4LDY4LjI4LDEwNi40MywxMDAuMzcsMTE2Ljc2LDExNi42OCwxMDAuMTA2LDEwNi4xMDAsNjguMTE2LDc2LjExNiwzNy4xMDAsNDMuMTA2LDI4LjY4LDI4Ljc2LDQzLjM3LDM3LjQzLDg4LjcyLDcyLjg4LDU2LjcyLDcyLjU2O1Y6NzIuMzMsOTkuNDQsMTExLjcyLDk5Ljk5LDcyLjExMSw0NC45OSwzMy43Miw0NC40NCw3Mi44MCw3Mi42MztCOjtOOkNPUlJJRE9SUztQOnx8fHx8fHw7VDo'},
+  river:{n:'THE CROSSINGS', d:'a broad divide with three bridges',
+    code:'RkMyOzE2MCwxNjA7Uzo4MC4yMiwxMjEuMzgsMTM4LjgwLDEyMS4xMjEsODAuMTM4LDM4LjEyMSwyMi44MCwzOC4zODtSOjgxYS43LjQ3LmguM3kucS4zcC56LjNoLnouNy4xLjM5LnguYi43LjMxLmMuMS5qLmQuZS4ydC44LjkuZC5oLmYuMnEuNy5iLjQuMS43LmguZi4ycS42LmQuMS41LjQuai5kLmouMy4yNS41LmsuMy5sLmIubC5hLjF5LjMubS4yLmwuYi5sLmIuMXkuMi5sLjIubS5iLmwuYi4zYi45LmwuOS4yai4xLjEuMi5xLjkubC45LnEuMi4xLjEuMXEuMi5zLjgubC44LnMuMi4yay45LmwuOS5xLjIuMS4xLjJqLjkubC45LjFiLjIuMXkuYi5sLmIubS4yLmwuMy4xeS5hLmwuYi5sLjIubS40LjI1LjMuai5kLmouNC5rLjUuMnEuZi5oLjUuNS4xLmQuNi4ycS5mLmguNy4xLjQuYi43LjJ0LmUuZC5mLjkuOC4zMS43LmIuay4xLmMuMzkuMS43LnouM2guei4zcC5xLjN5LmguNDcuNy44MTk7QTo4NC4zMiw3Ni4zMiwxMTcuNDgsMTExLjQyLDEyOC44NCwxMjguNzYsMTExLjExNywxMTcuMTExLDc2LjEyOCw4NC4xMjgsNDIuMTExLDQ4LjExNywzMi43NiwzMi44NCw0OC40Miw0Mi40OCwxMDIuODAsOTEuOTksNjkuOTksNTguODAsNjguNjAsOTEuNjA7Vjo4MC4zNywxMTAuNDksMTIzLjgwLDExMC4xMTAsODAuMTIzLDQ5LjExMCwzNy44MCw0OS40OSw4MC45Miw4MC42NztCOjtOOlRIRSBDUk9TU0lOR1M7UDp8fHx8fHx8O1Q6'}
 };
 let terrainKey='open';
+/* Decoded once each, because a board is a kilobyte of run-length codes and
+   a match should not pay for that twice. */
+const BOARD_CACHE={};
+function boardOf(key){
+  const t=TERRAINS[key];
+  if(!t||!t.code) return null;
+  if(BOARD_CACHE[key]===undefined){
+    const r=cmapDecode(t.code);
+    BOARD_CACHE[key]=(r&&!r.err&&r.map)?r.map:null;
+  }
+  return BOARD_CACHE[key];
+}
+/* A board handed to the next match and nothing after it: PLAY IT from the
+   builder, or PLAY from the library. Without this, a terrain choice would
+   overwrite the very board you just asked to play - which it did, and which
+   is what the three tests that caught it were for. */
+let CMAP_ONCE=null;
+/* Which board a match is played on, in order of how deliberate the choice
+   was: one handed straight to this match, then a player-made board picked
+   in SCALE, then the terrain. Runs before the world is sized, because a
+   board carries its own dimensions.
+   `keep` is for the host of an online match, whose scenario is loaded
+   already and travels to the guest separately. */
+function boardApply(key,keep){
+  if(keep){ CMAP_ONCE=null; return; }
+  if(CMAP_ONCE){ CMAP=CMAP_ONCE; CMAP_ONCE=null; cmapTouch(); return; }
+  const sc=SCALES[scaleKey];
+  if(sc&&sc.scen) return;
+  CMAP=boardOf(key)||null;
+  cmapTouch();
+}
 const MODES={
   duel:{n:'1 v 1', d:'you vs one commander', players:2},
   team:{n:'2 v 2', d:'you + an ally vs two', players:4},
@@ -8781,7 +8843,7 @@ function libRowOf(d){
   const t=v.createdAt&&v.createdAt.toMillis?v.createdAt.toMillis():0;
   return {id:d.id, name:String(v.name||'Untitled'), code:String(v.code||''),
           seats:v.seats|0||2, size:v.size|0||112, owner:v.owner||'',
-          pub:v.public===true, at:t, likes:null, liked:false};
+          pub:v.public===true, at:t, plays:v.plays|0, likes:null, liked:false};
 }
 
 /* Public maps, a handful at random.
@@ -8868,7 +8930,7 @@ async function libPublish(sc){
   await libRace(F.setDoc(ref,{
     owner:LIB.uid, name:name, nameLower:name.toLowerCase(),
     code:sc.code, seats:Math.max(2,Math.min(CMAP_MAX_STARTS,sc.seats|0||2)),
-    public:true, rnd:Math.random(), createdAt:F.serverTimestamp()
+    public:true, rnd:Math.random(), plays:0, createdAt:F.serverTimestamp()
   }));
   return ref.id;
 }
@@ -8879,14 +8941,18 @@ async function libUnpublish(row){
   return true;
 }
 
-async function libReport(row){
-  if(!await libConnect()) return false;
-  const F=LIB.fs;
-  await F.addDoc(F.collection(LIB.db,'reports'),
-    {mapId:row.id, uid:LIB.uid, at:F.serverTimestamp()});
-  return true;
-}
 
+/* One more play. Deliberately not awaited by the caller and never allowed
+   to interrupt anything: a match is starting, and a tally is not worth
+   delaying it or failing it for. */
+function libCountPlay(id){
+  if(!id||!libConfigured()) return;
+  libConnect().then(okc=>{
+    if(!okc) return;
+    const F=LIB.fs;
+    return F.updateDoc(F.doc(LIB.db,'maps',id),{plays:F.increment(1)});
+  }).catch(()=>{});
+}
 /* Saving somebody else's map onto this device, which is the same list the
    SCALE section reads - so a saved map is picked for a match like any board. */
 function libSaveLocal(row){
@@ -8992,10 +9058,11 @@ function libBtn(row,label,fn,cls){
 }
 
 /* Play a map straight out of the library without saving it first. */
-function libPlay(code){
+function libPlay(code,id){
   const r=cmapDecode(code);
   if(r.err){ libSay(r.err,'bad'); SFX.play('deny'); return; }
-  CMAP=r.map; cmapTouch();
+  if(id) libCountPlay(id);
+  CMAP=r.map; CMAP_ONCE=r.map; cmapTouch();
   if(scaleKey!=='standard'&&!(SCALES[scaleKey]&&SCALES[scaleKey].scen)) scaleKey='standard';
   if(MODES[modeKey]&&MODES[modeKey].players>cmapSeats()) modeKey='duel';
   libClose();
@@ -9012,9 +9079,12 @@ function libRenderRows(rows){
        is indistinguishable from a count that failed to load. */
     const likeText=row.likes===null?'likes unknown'
       :(row.likes===0?'no likes yet':row.likes+' like'+(row.likes===1?'':'s'));
+    const playText=(row.plays|0)===0?'never played'
+      :(row.plays|0)+' play'+((row.plays|0)===1?'':'s');
     const el=libCard(row.name,
-      row.size+' x '+row.size+' \u00b7 '+row.seats+' starts \u00b7 '+likeText);
-    libBtn(el.btns,'PLAY',()=>{ SFX.play('click'); libPlay(row.code); });
+      row.size+' x '+row.size+' \u00b7 '+row.seats+' starts \u00b7 '+
+      playText+' \u00b7 '+likeText);
+    libBtn(el.btns,'PLAY',()=>{ SFX.play('click'); libPlay(row.code,row.id); });
     libBtn(el.btns,'SAVE',()=>{ SFX.play('click');
       const err=libSaveLocal(row);
       libSay(err||('Saved \u201c'+row.name+'\u201d - it is in the SCALE list now.'),
@@ -9033,15 +9103,11 @@ function libRenderRows(rows){
             // the count moved, so the card's own line has to agree
             const sub=el.querySelector('i');
             if(sub) sub.textContent=row.size+' x '+row.size+' \u00b7 '+row.seats+
-              ' starts \u00b7 '+(row.likes===0?'no likes yet'
+              ' starts \u00b7 '+playText+' \u00b7 '+(row.likes===0?'no likes yet'
                 :row.likes+' like'+(row.likes===1?'':'s'));
             SFX.play('click');
           }catch(e){ libSay('Could not record that: '+(e&&e.message||e),'bad'); }
         }, row.liked?'liked':'');
-      libBtn(el.btns,'REPORT',async()=>{
-        if(!confirm('Report this map for review?')) return;
-        try{ await libReport(row); libSay('Reported. Thank you.','good'); }
-        catch(e){ libSay('Could not report that: '+(e&&e.message||e),'bad'); } });
     }
     host.appendChild(el);
   }
@@ -9700,7 +9766,7 @@ function edInit(){
   };
   document.getElementById('edPlay').onclick=()=>{
     if(!edCheck()){ SFX.play('deny'); return; }
-    CMAP=edMap();
+    CMAP=edMap(); CMAP_ONCE=CMAP;  // this match, whatever the terrain says
     cmapTouch();                   // the rules have to be live before the match starts
     try{ localStorage.setItem('fc_map',cmapEncode(CMAP)); }catch(e){}
     /* A hand-built board is always 112x112, so it cannot be played at a
@@ -10797,13 +10863,14 @@ function startGame(key){
   tutEnd();
   NET.role=null;
   setSeed((Math.random()*4294967295)>>>0);
+  boardApply(terrainKey);          // before sizing: a board brings its own
   setMapScale(scaleKey);
   diffKey=key; DIFF=DIFFS[key]||DIFFS.veteran;
   ELITE={hp:DIFF.hp,dmg:DIFF.dmg};
   ROCK_CLUSTERS=(TERRAINS[terrainKey]||TERRAINS.open).rocks;
   setupSides(modeKey,1);
   const keys=Object.keys(FACTIONS);
-  FACOF=[facKey,'concord','concord','concord'];
+  FACOF=Array.from({length:SLOTS},()=>'concord'); FACOF[0]=facKey;
   for(let o=1;o<SLOTS;o++) FACOF[o]=keys[Math.floor(Math.random()*keys.length)];
   menuOn=false;
   document.getElementById('menu').style.display='none';

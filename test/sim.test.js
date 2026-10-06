@@ -1725,7 +1725,7 @@ test('they are standing and finished when the match opens', () => {
       'res:[["a",24,24],["a",86,86],["v",30,30],["v",80,80]],' +
       'blds:[["musterhall",26,20,0],["watchspire",84,90,1]],' +
       'name:"Prebuilt",rules:{}})).map');
-  run('cmapTouch(); modeKey="duel"; startGame("veteran"); BOTS=[false,false,false,false]');
+  run('CMAP_ONCE=CMAP; cmapTouch(); modeKey="duel"; startGame("veteran"); BOTS=[false,false,false,false]');
   const mine = run('bldOf(0).filter(function(b){return b.type==="musterhall";}).length');
   const theirs = run('bldOf(1).filter(function(b){return b.type==="watchspire";}).length');
   eq(mine, 1, 'seat one opened with its Barracks');
@@ -1741,7 +1741,7 @@ test('a seat nobody is in does not get free buildings', () => {
       'rock:cmapPackRock(new Uint8Array(112*112),112,112),' +
       'res:[["a",24,24],["a",86,86],["v",30,30],["v",80,80]],' +
       'blds:[["musterhall",50,50,3]],name:"Prebuilt",rules:{}})).map');
-  run('cmapTouch(); modeKey="duel"; startGame("veteran")');
+  run('CMAP_ONCE=CMAP; cmapTouch(); modeKey="duel"; startGame("veteran")');
   eq(run('ents.filter(function(e){return !e.dead&&e.kind==="building"&&e.owner===3;}).length'), 0,
      'the empty fourth seat got nothing');
 });
@@ -1826,7 +1826,7 @@ console.log('\neight seats on the wire');
 
 test('a snapshot carries a purse for every slot', () => {
   run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
-  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  run('CMAP=null; CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
   for (let i = 0; i < 8; i++) run('P[' + i + '].m=' + (100 + i * 11) + '; P[' + i + '].g=' + (5 + i));
   // the same expression netSnapshot builds
   const r = run('ALLSLOTS.map(function(i){return [Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap];})');
@@ -1836,7 +1836,7 @@ test('a snapshot carries a purse for every slot', () => {
 
 test('a guest reads as many purses as arrived, old or new', () => {
   run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
-  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  run('CMAP=null; CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
   run('NET.slot=0');
   // eight, from a current host
   run('for(var i=0;i<8;i++){ P[i].m=0; P[i].g=0; }');
@@ -1853,7 +1853,7 @@ test('a guest reads as many purses as arrived, old or new', () => {
 
 test('a mismatched protocol is called out rather than silently wrong', () => {
   run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
-  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  run('CMAP=null; CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
   run('protoWarned=false; var warned=false; var _s=say; say=function(t){ warned=/different version/.test(t)||warned; return _s(t); }');
   run('netApplySnapshot({v:NET_PROTO-1,e:[],r:[]})');
   eq(run('warned'), true, 'an older peer is reported');
@@ -1880,7 +1880,7 @@ test('the bigger fields seat and spread their commanders', () => {
                                  ['ffa5', 5], ['ffa6', 6], ['ffa7', 7],
                                  ['ffa8', 8], ['team4', 8]]) {
     run('scaleKey="standard"; modeKey="' + mode + '"; terrainKey="open"; facKey="concord"');
-    run('CMAP=null; cmapTouch(); startGame("veteran")');
+    run('CMAP=null; CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
     eq(run('NPLAY'), players, mode + ' seats ' + players);
     const cores = run('ents.filter(function(e){return !e.dead&&e.kind==="building"&&e.type==="keystone";}).length');
     eq(cores, players, mode + ': one headquarters each');
@@ -1897,7 +1897,7 @@ test('the bigger fields seat and spread their commanders', () => {
 
 test('a free-for-all gives everyone their own side, a team game pairs them', () => {
   run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
-  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  run('CMAP=null; CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
   eq(run('new Set(TEAMOF.slice(0,NPLAY)).size'), 8, 'eight sides in an eight-way');
   run('modeKey="team4"; startGame("veteran")');
   eq(run('new Set(TEAMOF.slice(0,NPLAY)).size'), 2, 'two sides in a 4v4');
@@ -1908,7 +1908,7 @@ test('a free-for-all gives everyone their own side, a team game pairs them', () 
 
 test('an eight-way match runs without falling over', () => {
   run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
-  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  run('CMAP=null; CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
   for (let i = 0; i < 900; i++) { run('over=false'); run('simTick(0.1)'); }
   const armies = run('ALLSLOTS.slice(0,NPLAY).map(function(o){return unitsOf(o).length;})');
   ok(armies.every(n => n > 0), 'every commander still has units: ' + armies.join(', '));
@@ -1936,7 +1936,7 @@ test('being broke does not read as bad ground', () => {
   /* startBuild said "Not enough supply" and returned false, and the caller
      said "Cannot build there" over the top of it. */
   run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
-  run('CMAP=null; cmapTouch(); startGame("veteran"); BOTS=[false,false,false,false]');
+  run('CMAP=null; CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran"); BOTS=[false,false,false,false]');
   run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
   run('P[0].m=0; P[0].g=0');
   eq(run('!!startBuild("musterhall",k.x+300,k.y+300,0,[])'), false, 'it refuses');
@@ -1973,7 +1973,7 @@ test('the match allocates the board the map asks for', () => {
     run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
     run('startGame("veteran")');
     run('CMAP=cmapDecode(cmapEncode(' + sizedMap(n, [[12, 12], [n - 14, n - 14]]) + ')).map');
-    run('cmapTouch(); startGame("veteran")');
+    run('CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
     eq(run('MAP_W'), n, n + ': the world is ' + n + ' tiles wide');
     eq(run('MAP_H'), n, 'and ' + n + ' tall');
     eq(run('WW'), n * 32, 'with world pixels to match');
@@ -1994,7 +1994,7 @@ test('rock lands on the right rows, whatever the size', () => {
   run('CMAP=cmapDecode(cmapEncode({w:N,h:N,starts:[[12,12],[140,140]],' +
       'rock:cmapPackRock(bits,N,N),res:[["a",10,10],["a",148,148]],blds:[],' +
       'name:"Sized",rules:{}})).map');
-  run('cmapTouch(); startGame("veteran")');
+  run('CMAP_ONCE=CMAP; cmapTouch(); startGame("veteran")');
   eq(run('blocked[ti(70,40)]'), 1, 'the marked tile is solid');
   eq(run('blocked[ti(70,41)]'), 1, 'and the one below it');
   eq(run('blocked[ti(71,40)]'), 0, 'its neighbour is not, so no row has slid');
