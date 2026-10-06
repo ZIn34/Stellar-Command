@@ -43,8 +43,9 @@ service cloud.firestore {
         && request.resource.data.code is string
         && request.resource.data.code.size() <= 4000
         && request.resource.data.seats is int
-        && request.resource.data.seats >= 2
-        && request.resource.data.seats <= 4
+        && request.resource.data.seats >= 1
+        // a board may carry up to eight starts, not the four a match seats
+        && request.resource.data.seats <= 8
         && request.resource.data.public is bool
         // a fixed random key, so "show me a random one" is a cheap range query
         && request.resource.data.rnd is number

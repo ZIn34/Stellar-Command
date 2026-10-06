@@ -1822,6 +1822,93 @@ test('one order is still one mark, however much is in the bank', () => {
   eq(run('v.lvl'), 1, 'a full bank does not buy a second mark');
 });
 
+console.log('\nup to eight commanders');
+
+test('every per-player table is sized from one number', () => {
+  run('startGame("veteran")');
+  const n = run('SLOTS');
+  eq(n, 8, 'eight slots');
+  for (const t of ['TEAM', 'P', 'UP', 'AIS', 'FACOF', 'BOTS', 'TEAMOF']) {
+    eq(run(t + '.length'), n, t + ' has one entry per slot');
+  }
+  // and the colours are distinct, or you cannot tell the sides apart
+  const cols = run('TEAM.map(function(t){return t.c;})');
+  eq(new Set(cols).size, n, 'every slot has its own colour');
+});
+
+test('the bigger fields seat and spread their commanders', () => {
+  for (const [mode, players] of [['duel', 2], ['team', 4], ['ffa', 4],
+                                 ['ffa5', 5], ['ffa6', 6], ['ffa7', 7],
+                                 ['ffa8', 8], ['team4', 8]]) {
+    run('scaleKey="standard"; modeKey="' + mode + '"; terrainKey="open"; facKey="concord"');
+    run('CMAP=null; cmapTouch(); startGame("veteran")');
+    eq(run('NPLAY'), players, mode + ' seats ' + players);
+    const cores = run('ents.filter(function(e){return !e.dead&&e.kind==="building"&&e.type==="keystone";}).length');
+    eq(cores, players, mode + ': one headquarters each');
+    const owners = run('[...new Set(ents.filter(function(e){return !e.dead&&e.kind==="building"&&e.type==="keystone";})' +
+                       '.map(function(c){return c.owner;}))].length');
+    eq(owners, players, mode + ': and they belong to different commanders');
+    // nobody opens on top of anybody
+    const closest = run('(function(){var c=ents.filter(function(e){return !e.dead&&e.kind==="building"&&e.type==="keystone";});' +
+      'var m=1e9; for(var i=0;i<c.length;i++) for(var j=i+1;j<c.length;j++)' +
+      'm=Math.min(m,Math.hypot(c[i].x-c[j].x,c[i].y-c[j].y)); return c.length<2?1e9:m;})()');
+    ok(closest > 32 * 12, mode + ': camps are ' + Math.round(closest / 32) + ' tiles apart');
+  }
+});
+
+test('a free-for-all gives everyone their own side, a team game pairs them', () => {
+  run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
+  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  eq(run('new Set(TEAMOF.slice(0,NPLAY)).size'), 8, 'eight sides in an eight-way');
+  run('modeKey="team4"; startGame("veteran")');
+  eq(run('new Set(TEAMOF.slice(0,NPLAY)).size'), 2, 'two sides in a 4v4');
+  eq(run('ALLSLOTS.slice(0,NPLAY).filter(function(o){return isAlly(o);}).join(",")'),
+     '0,2,4,6', 'you and the even seats');
+  eq(run('myFoes().join(",")'), '1,3,5,7', 'against the odd ones');
+});
+
+test('an eight-way match runs without falling over', () => {
+  run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
+  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  for (let i = 0; i < 900; i++) { run('over=false'); run('simTick(0.1)'); }
+  const armies = run('ALLSLOTS.slice(0,NPLAY).map(function(o){return unitsOf(o).length;})');
+  ok(armies.every(n => n > 0), 'every commander still has units: ' + armies.join(', '));
+  ok(run('aliveTeams().length') >= 2, 'and more than one side is still in it');
+});
+
+test('a board that cannot seat a mode says so', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('startGame("veteran")');
+  run('CSCEN=[]');
+  run('var two=scenAdd("Two Camps",cmapEncode({w:112,h:112,starts:[[20,20],[90,90]],' +
+      'rock:cmapPackRock(new Uint8Array(112*112),112,112),' +
+      'res:[["a",24,24],["a",86,86],["v",30,30],["v",80,80]],blds:[],name:"Two Camps",rules:{}}),2,112)');
+  run('scenSync(); scaleChoose(two)');
+  eq(run('scaleSeats()'), 2, 'the board seats two');
+  eq(run('modeChoose("ffa8")'), false, 'so an eight-way is refused');
+  eq(run('modeKey'), 'duel', 'and the choice is left alone');
+  run('CSCEN=[]; scaleChoose("standard"); scenSync()');
+  eq(run('scaleSeats()'), 8, 'a built-in board seats a full match');
+});
+
+console.log('\nsaying why a building was refused');
+
+test('being broke does not read as bad ground', () => {
+  /* startBuild said "Not enough supply" and returned false, and the caller
+     said "Cannot build there" over the top of it. */
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('CMAP=null; cmapTouch(); startGame("veteran"); BOTS=[false,false,false,false]');
+  run('var k=ents.find(function(e){return !e.dead&&e.kind==="building"&&e.owner===0&&e.type==="keystone";})');
+  run('P[0].m=0; P[0].g=0');
+  eq(run('!!startBuild("musterhall",k.x+300,k.y+300,0,[])'), false, 'it refuses');
+  eq(run('BUILD_FAIL'), 'cost', 'and says the reason was the price, not the spot');
+  run('P[0].m=9999; P[0].g=9999');
+  eq(run('!!startBuild("musterhall",k.x,k.y,0,[])'), false, 'on top of the HQ it refuses too');
+  eq(run('BUILD_FAIL'), 'place', 'and that one really is the spot');
+  eq(run('!!startBuild("musterhall",k.x+300,k.y+300,0,[])'), true, 'with money and room it builds');
+  eq(run('BUILD_FAIL'), '', 'and nothing is left over to report');
+});
+
 console.log('\nboards that are not 112 wide');
 
 function sizedMap(n, starts) {

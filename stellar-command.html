@@ -825,8 +825,17 @@ function setZoom(z,ax,ay){                 // zoom around a screen point
 window.addEventListener('resize',resize);
 
 const PC='#4bd6ff', EC='#ff6b52';              // player / enemy colour
+/* How many commanders a match can hold. Everything per-player is sized
+   from this rather than from a literal 4, which is what it used to be in
+   a dozen places. */
+const SLOTS=8;
+/* A colour per slot, and they have to stay apart at a glance on a dark
+   field - the first four are the originals so nothing people know changes.
+   The last four avoid the hues the cosmetic palettes use. */
 const TEAM=[{c:PC,dk:'#12617f'},{c:EC,dk:'#7d2b1c'},
-            {c:'#57e3a8',dk:'#127f55'},{c:'#ffab3d',dk:'#8a5210'}];
+            {c:'#57e3a8',dk:'#127f55'},{c:'#ffab3d',dk:'#8a5210'},
+            {c:'#c77dff',dk:'#5c2a85'},{c:'#ffe066',dk:'#8a7420'},
+            {c:'#ff85b8',dk:'#8a2d52'},{c:'#7ad7ff',dk:'#1c5e7d'}];
 /* ===================== COSMETICS =====================
    Looks only - nothing here touches stats, so buying never buys an edge.
    A palette recolours YOUR forces on YOUR screen; opponents keep the colours
@@ -874,7 +883,7 @@ const FACTIONS={
                'builds 40% faster','brittle away from home']}
 };
 let facKey='concord';
-let FACOF=['concord','concord','concord','concord'];
+let FACOF=Array.from({length:SLOTS},()=>'concord');
 function facOf(o){ return FACTIONS[FACOF[o]]||FACTIONS.concord; }
 /* There is no fixed population ceiling any more - what you can field is
    whatever your housing supports, and nothing caps it on top of that. The
@@ -1022,12 +1031,15 @@ function recordWin(){
   const fresh=COSMETICS.filter(x=>x.earn&&owns(x.id)&&before.indexOf(x.id)<0);
   return fresh;
 }
-let TEAMOF=[0,1,0,1];        // slot -> team. Paired for a duel or 2v2, all
+let TEAMOF=[0,1,0,1,0,1,0,1];  // slot -> team. Paired for a duel or 2v2, all
 let NPLAY=2;                 // distinct for a free-for-all. 2 or 4 slots.
 const sameTeam=(a,b)=>a>=0&&b>=0&&TEAMOF[a]===TEAMOF[b];
 const isFoe=(a,b)=>a>=0&&b>=0&&TEAMOF[a]!==TEAMOF[b];
 const isAlly=o=>o>=0&&o<NPLAY&&TEAMOF[o]===TEAMOF[0];   // shares vision with me
-const myFoes=()=>[0,1,2,3].filter(o=>o<NPLAY&&TEAMOF[o]!==TEAMOF[0]);
+/* Every slot a match could hold, so these stop at NPLAY rather than at a
+   hardcoded four - which silently ignored slots five to eight. */
+const ALLSLOTS=Array.from({length:SLOTS},(_,i)=>i);
+const myFoes=()=>ALLSLOTS.filter(o=>o<NPLAY&&TEAMOF[o]!==TEAMOF[0]);
 
 /* ===================== DEFINITIONS ===================== */
 const UDEF={
@@ -1216,14 +1228,14 @@ const UPG={
   wep:{n:'Weapons', ic:'⚔', hk:'A', step:.24, max:3, m:150, g:50, bt:38},
   arm:{n:'Plating', ic:'⛨', hk:'D', step:.18, max:3, m:150, g:50, bt:38}
 };
-let UP=[{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0},{wep:0,arm:0}];
+let UP=Array.from({length:SLOTS},()=>({wep:0,arm:0}));
 /* Research is a price like any other, so it follows the doctrine's discount
    and the scale's - Blitz halves it with everything else. */
 function upCost(key,lvl,owner){ const u=UPG[key], k=facOf(owner||0).upgCost||1;
   return {m:Math.max(1,Math.round(u.m*(1+lvl*.8)*k*COST_RATE)),
           g:Math.max(1,Math.round(u.g*(1+lvl*.8)*k*COST_RATE))}; }
-const P=[{m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0},
-         {m:150,g:0,sup:0,cap:0},{m:150,g:0,sup:0,cap:0}];   // slot 0 is always the local player
+// slot 0 is always the local player
+const P=Array.from({length:SLOTS},()=>({m:150,g:0,sup:0,cap:0}));
 let blocked, terr, explored, visible;
 const START_Z=1.5;                 // closer default framing
 const cam={x:0,y:0,z:START_Z};
@@ -1257,11 +1269,22 @@ function setMapScale(scale){
      the usual distance apart, close enough to see each other almost at once,
      far enough for each to have its own aurite. The pairing stays even: every
      start is exactly one other player's nearest neighbour. */
+  /* Eight camps, ordered so that the first two are opposite corners, the
+     first four are the original duel and 2v2 layout, and the rest fill in
+     around the rim. A match takes as many as it seats, from the front, so
+     a 1v1 on a built-in board is exactly where it always was and the
+     bigger fields spread out from there.
+     Blitz keeps its huddle in the middle and widens it, because starts
+     that close are the whole point of the scale. */
   BASES=BLITZ
     ? [{tx:f(.38),ty:f(.44)},{tx:f(.62),ty:f(.44)},
-       {tx:f(.38),ty:f(.62)},{tx:f(.62),ty:f(.62)}]
+       {tx:f(.38),ty:f(.62)},{tx:f(.62),ty:f(.62)},
+       {tx:f(.50),ty:f(.36)},{tx:f(.50),ty:f(.70)},
+       {tx:f(.30),ty:f(.53)},{tx:f(.70),ty:f(.53)}]
     : [{tx:f(.14),ty:f(.86)},{tx:f(.86),ty:f(.14)},
-       {tx:f(.14),ty:f(.50)},{tx:f(.86),ty:f(.50)}];
+       {tx:f(.14),ty:f(.50)},{tx:f(.86),ty:f(.50)},
+       {tx:f(.50),ty:f(.12)},{tx:f(.50),ty:f(.88)},
+       {tx:f(.14),ty:f(.14)},{tx:f(.86),ty:f(.86)}];
   EXPOS=[];
   if(BLITZ){
     // a handful of patches out on the rim, worth the walk once home runs dry
@@ -1368,10 +1391,13 @@ function scenSync(){
                    scen:sc.id, seats:Math.max(2,Math.min(MATCH_SEATS,sc.seats||2)),
                    base:'standard'};
 }
-/* How many seats the chosen board has, which caps the mode. */
+/* How many seats the chosen board has, which caps the mode. A built-in
+   board lays out a full set of camps, so it seats as many as a match
+   holds; this used to say 4 and so disabled every mode above four
+   commanders on every standard map. */
 function scaleSeats(){
   const d=SCALES[scaleKey];
-  return (d&&d.scen)?(d.seats||2):4;
+  return (d&&d.scen)?Math.max(1,Math.min(MATCH_SEATS,d.seats||2)):MATCH_SEATS;
 }
 /* Picking a board. A player-made one loads its rules; anything else clears
    them. Then the mode is pulled back if it wants more seats than the board
@@ -1445,7 +1471,9 @@ function cmapTouch(){ CMAP_STAMP++; clearDefs(); applyScale(); }
    builder can lay out a board that is not simply two or four fixed camps.
    Which of them get used is decided when the match starts. */
 const CMAP_MAX_STARTS=8;
-const MATCH_SEATS=4;
+/* A match holds as many commanders as there are slots, so a board with
+   eight starts can be filled rather than having four of them ignored. */
+const MATCH_SEATS=SLOTS;
 
 /* The rock layer is one bit a tile - 12544 of them on a standard board. Stored
    as alternating run lengths in base 36, beginning with a run of open ground,
@@ -1644,9 +1672,13 @@ function cmapApply(){
      first, then repeatedly the start furthest from everything chosen so
      far. That way a map with eight camps plays differently each time
      without ever opening two commanders on top of each other. */
-  if(st.length>MATCH_SEATS){
+  /* Against how many are actually playing, not the ceiling: a 1v1 on an
+     eight-start board should use two camps at opposite ends, not the first
+     two in the list. */
+  const _need=Math.max(1,Math.min(NPLAY||2,MATCH_SEATS));
+  if(st.length>_need){
     const pool=st.slice(), out=[pool.splice((srand()*pool.length)|0,1)[0]];
-    while(out.length<MATCH_SEATS&&pool.length){
+    while(out.length<_need&&pool.length){
       let best=0, bd=-1;
       for(let i=0;i<pool.length;i++){
         let near=1e9;
@@ -1659,6 +1691,7 @@ function cmapApply(){
   }
   BASES=st;
   while(BASES.length<MATCH_SEATS) BASES.push({tx:BASES[0].tx,ty:BASES[0].ty});
+  // only as many as are playing get a base, so the padding is harmless
   EXPOS=[];
   for(const r of m.res)
     mkResource(r[0]==='v'?'vent':'aurite',r[1]*TILE+TILE/2,r[2]*TILE+TILE/2,r[0]==='v'?5000:1500);
@@ -1669,8 +1702,8 @@ function cmapApply(){
 }
 /* How many seats a map can actually seat, so the menu can refuse a 2v2 on a
    two-start map rather than seating two commanders in the same corner. */
-/* How many commanders this board can seat, which is not the same as how
-   many starts it has: a match seats four however many are drawn. */
+/* How many commanders this board can seat: as many starts as are drawn on
+   it, up to what a match holds. A built-in board has its full set. */
 function cmapSeats(){
   return CMAP?Math.min(MATCH_SEATS,CMAP.starts.length):MATCH_SEATS;
 }
@@ -3279,18 +3312,31 @@ function pickBuilder(list,x,y){        // nearest free hand, so repeat placement
   const use=free.length?free:pool;
   return use.reduce((a2,b2)=>Math.hypot(a2.x-x,a2.y-y)<=Math.hypot(b2.x-x,b2.y-y)?a2:b2);
 }
+/* Why the last startBuild refused: 'place', 'cost' or ''. startBuild
+   already said 'Not enough supply' for the local player and then returned
+   false, at which point the caller said 'Cannot build there' over the top
+   of it - so running out of money read as a bad spot. Callers check this
+   before adding a message of their own. */
+let BUILD_FAIL='';
 function startBuild(type,x,y,owner,workers){
+  BUILD_FAIL='';
   if(NET.role==='guest'&&owner===0){
     const d=bldCost(type,0);
-    if(!canAfford(0,d)){ say(P[0].m<d.m?'Not enough supply':'Not enough fuel'); SFX.play('deny'); return false; }
-    if(!canPlace(type,x,y,0)){ say('Cannot build there'); SFX.play('deny'); return false; }
+    if(!canAfford(0,d)){ BUILD_FAIL='cost';
+      say(P[0].m<d.m?'Not enough supply':'Not enough fuel'); SFX.play('deny'); return false; }
+    if(!canPlace(type,x,y,0)){ BUILD_FAIL='place';
+      say('Cannot build there'); SFX.play('deny'); return false; }
     netCmd('build',{type,x,y,ids:(workers||[]).filter(Boolean).map(w=>w.id)});
     return true;
   }
   const d=BDEF[type], ok=canPlace(type,x,y,owner);
-  if(!ok) return false;
+  if(!ok){ BUILD_FAIL='place'; return false; }
   const bill=bldCost(type,owner);
-  if(!canAfford(owner,bill)){ if(!owner){ say(P[owner].m<bill.m?'Not enough supply':'Not enough fuel'); SFX.play('deny'); } return false; }
+  if(!canAfford(owner,bill)){
+    BUILD_FAIL='cost';
+    if(!owner){ say(P[owner].m<bill.m?'Not enough supply':'Not enough fuel'); SFX.play('deny'); }
+    return false;
+  }
   let px=x,py=y,gey=null;
   if(d.onGeyser){ gey=ok; px=gey.x; py=gey.y; gey.taken=true; }
   pay(owner,bill);
@@ -3380,7 +3426,8 @@ cv.addEventListener('mousedown',e=>{
     const b=startBuild(placing,snap(w.x),snap(w.y),0,one?[one]:[]);
     if(b){ SFX.play('build',b.x||w.x,b.y||w.y);
       if(!e.shiftKey) placing=null; }
-    else { say('Cannot build there'); SFX.play('deny'); }
+    // startBuild has already said its piece when the problem was the price
+    else if(BUILD_FAIL!=='cost'){ say('Cannot build there'); SFX.play('deny'); }
     refreshUI(); return;
   }
   if(pending==='attack'||pending==='move'){
@@ -3760,7 +3807,8 @@ function tapWorld(wx,wy){
     const one=pickBuilder(ws,snap(w.x),snap(w.y));
     const b=startBuild(placing,snap(w.x),snap(w.y),0,one?[one]:[]);
     if(b){ SFX.play('build',b.x||w.x,b.y||w.y); placing=null; }
-    else { say('Cannot build there'); SFX.play('deny'); }
+    // startBuild has already said its piece when the problem was the price
+    else if(BUILD_FAIL!=='cost'){ say('Cannot build there'); SFX.play('deny'); }
     refreshUI(); return;
   }
   if(pending){ const t=pending; pending=null;
@@ -4105,6 +4153,10 @@ function netSnapshot(){
     }
   }
   // every slot's bank travels; each client reads its own out of the list
+  /* Four, deliberately: this is the snapshot format, shared with saved
+     replays, and widening it would break every .scr file and any client on
+     the old protocol. Online lobbies seat four, so there is never a fifth
+     purse to send - the bigger fields are a skirmish feature. */
   const r=[0,1,2,3].map(i=>[Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap]);
   netRelay({k:'S',v:NET_PROTO,e,r,ev:NET.evOut.splice(0,80)});
 }
@@ -4340,7 +4392,7 @@ function startOnline(seed,grand,mode,scale){
      the host and every guest render the same three armies rather than each
      rolling its own and disagreeing about what is on the field. */
   const _fkeys=Object.keys(FACTIONS), _humans=NET.humans||2;
-  for(let o=_humans;o<4;o++) FACOF[o]=_fkeys[((seed>>>0)+o*7919)%_fkeys.length];
+  for(let o=_humans;o<SLOTS;o++) FACOF[o]=_fkeys[((seed>>>0)+o*7919)%_fkeys.length];
   if(NET.slot){                                      // a guest sees itself as slot 0
     const t=FACOF.slice(), g=NET.slot, tmp=t[0]; t[0]=t[g]; t[g]=tmp; FACOF=t;
   }
@@ -5049,14 +5101,14 @@ function newAI(){ return {
      macroed like a professional. */
   thrT:0
 }; }
-const AIS=[null,null,null,null];
-let BOTS=[false,true,false,false];
+const AIS=new Array(SLOTS).fill(null);
+let BOTS=Array.from({length:SLOTS},(_,i)=>i===1);
 const isBot=o=>!!BOTS[o];
-function aiOwners(){ return [0,1,2,3].filter(o=>o<NPLAY&&BOTS[o]); }
+function aiOwners(){ return ALLSLOTS.filter(o=>o<NPLAY&&BOTS[o]); }
 function myFoeStarts(ME){ return BASES.filter((b,i)=>i<NPLAY&&TEAMOF[i]!==TEAMOF[ME]); }
 let AI=newAI();
 function aiReset(){
-  for(let o=0;o<4;o++){ AIS[o]=newAI(); AIS[o].threshold=DIFF.thr; }
+  for(let o=0;o<SLOTS;o++){ AIS[o]=newAI(); AIS[o].threshold=DIFF.thr; }
   AI=AIS[1];
 }
 function aiHome(ME){
@@ -5904,7 +5956,7 @@ function facShade(hx,fk){
   const ramp=k<.5?mixHex(f.lo,f.mid,k*2):mixHex(f.mid,f.hi,(k-.5)*2);
   return mixHex(hx,ramp,.88);
 }
-function facKeyOf(o){ return (o>=0&&o<4&&FBUILD[FACOF[o]])?FACOF[o]:'concord'; }
+function facKeyOf(o){ return (o>=0&&o<SLOTS&&FBUILD[FACOF[o]])?FACOF[o]:'concord'; }
 function hullSet(owner){
   const c=(TEAM[owner]||TEAM[0]).c, f=FBUILD[facKeyOf(owner)]||FBUILD.concord;
   return {hi:mixHex(f.hi,c,f.mix), mid:mixHex(f.mid,c,f.mix-.04),
@@ -7958,7 +8010,7 @@ function init(){
   for(const k in groups) delete groups[k];
   const startM=(CMAP&&CMAP.rules)?CR('startM'):(GRAND?600:150);
   const startG=(CMAP&&CMAP.rules)?CR('startG'):0;
-  for(let i=0;i<4;i++){ P[i].m=startM; P[i].g=startG; P[i].sup=0; P[i].cap=0; UP[i]={wep:0,arm:0}; }
+  for(let i=0;i<SLOTS;i++){ P[i].m=startM; P[i].g=startG; P[i].sup=0; P[i].cap=0; UP[i]={wep:0,arm:0}; }
   explored.fill(0); visible.fill(0); blocked.fill(0); nav.fill(0);
   document.getElementById('pause').style.display='none';
   document.getElementById('over').style.display='none';
@@ -8104,15 +8156,28 @@ let terrainKey='open';
 const MODES={
   duel:{n:'1 v 1', d:'you vs one commander', players:2},
   team:{n:'2 v 2', d:'you + an ally vs two', players:4},
-  ffa: {n:'FREE FOR ALL', d:'four commanders, no allies', players:4}
+  ffa: {n:'FREE FOR ALL', d:'four commanders, no allies', players:4},
+  /* Bigger fields. Everything per-player is sized from SLOTS, so these
+     cost nothing but the start positions to put them on - and a board
+     that cannot seat them says so in the picker rather than crowding two
+     commanders into one corner. */
+  ffa5:{n:'5 COMMANDERS', d:'free for all', players:5},
+  ffa6:{n:'6 COMMANDERS', d:'free for all', players:6},
+  ffa7:{n:'7 COMMANDERS', d:'free for all', players:7},
+  ffa8:{n:'8 COMMANDERS', d:'free for all', players:8},
+  team4:{n:'4 v 4', d:'you + three allies vs four', players:8}
 };
 let modeKey='duel';
 /* Lays out the slot table for a match. In a skirmish every slot but yours is a
    bot; online, slot 1 is the other human and the allies (2 and 3) are bots. */
 function setupSides(mode,humans){
   NPLAY=MODES[mode]?MODES[mode].players:2;
-  TEAMOF=(mode==='ffa')?[0,1,2,3]:[0,1,0,1];
-  BOTS=[false,false,false,false];
+  /* A free-for-all gives every slot its own team; anything else pairs the
+     slots alternately, which splits 2v2 and 4v4 evenly and puts you and
+     your allies on the even seats. */
+  const everyoneAlone=/^ffa/.test(mode);
+  TEAMOF=Array.from({length:SLOTS},(_,i)=>everyoneAlone?i:(i%2));
+  BOTS=new Array(SLOTS).fill(false);
   const h=Math.max(1,Math.min(humans||1,NPLAY));
   for(let o=h;o<NPLAY;o++) BOTS[o]=true;
 }
@@ -10532,7 +10597,7 @@ function startGame(key){
   setupSides(modeKey,1);
   const keys=Object.keys(FACTIONS);
   FACOF=[facKey,'concord','concord','concord'];
-  for(let o=1;o<4;o++) FACOF[o]=keys[Math.floor(Math.random()*keys.length)];
+  for(let o=1;o<SLOTS;o++) FACOF[o]=keys[Math.floor(Math.random()*keys.length)];
   menuOn=false;
   document.getElementById('menu').style.display='none';
   init();
