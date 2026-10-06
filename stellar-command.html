@@ -312,7 +312,10 @@ body.touch #pauseBtn{top:max(8px,env(safe-area-inset-top));left:max(10px,env(saf
 #menu{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
   background:#0a0907;overflow:hidden}
 #mcv{position:absolute;inset:0;width:100%;height:100%}
-.mui{position:relative;z-index:2;width:min(1020px,95vw);max-height:97vh;overflow:auto;
+/* Measured: five sections stacked in one column came to 1330px, which no
+   screen shows at once - so the box is wider and the sections are spread
+   across it rather than piled up. */
+.mui{position:relative;z-index:2;width:min(1480px,96vw);max-height:97vh;overflow:auto;
   padding:clamp(11px,2.4vh,26px) clamp(14px,3vw,30px) clamp(11px,2.2vh,22px);text-align:center;
   background:linear-gradient(180deg,rgba(19,17,12,.82),rgba(14,12,8,.9));
   border:1px solid #453e2d;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.65)}
@@ -322,8 +325,15 @@ body.touch #pauseBtn{top:max(8px,env(safe-area-inset-top));left:max(10px,env(saf
   text-shadow:0 0 26px rgba(199,181,131,.45)}
 .mui h1 b{font-weight:700;color:#c7b583}
 .tag{font-size:clamp(9.5px,1.5vh,12.5px);color:#9a9381;letter-spacing:2.2px;margin:6px 0 clamp(8px,2vh,20px);text-transform:uppercase}
-.rows{display:flex;gap:clamp(10px,2vw,20px);text-align:left;flex-wrap:wrap}
-.col{flex:1 1 200px;min-width:188px}
+.rows{display:flex;gap:clamp(10px,1.6vw,20px);text-align:left;flex-wrap:wrap;
+  align-items:flex-start}
+.col{flex:1 1 210px;min-width:196px}
+/* The saved-map list is the one section that grows without limit, so it
+   gets its own scroll rather than pushing the page past the screen once
+   somebody has a dozen boards. */
+#scales{max-height:46vh;overflow-y:auto}
+#scales::-webkit-scrollbar{width:7px}
+#scales::-webkit-scrollbar-thumb{background:#453e2d;border-radius:4px}
 .col h2{font-size:10.5px;letter-spacing:3px;color:#c7b583;margin-bottom:6px;font-weight:400}
 #diffs{display:flex;flex-direction:column;gap:clamp(5px,1vh,8px)}
 .dcard{border:1px solid #4c4533;border-radius:8px;padding:clamp(5px,1.1vh,9px) 11px;cursor:pointer;
@@ -583,10 +593,10 @@ body.touch .mouse-only{display:none}
     <p class="tag">Combined arms for the supply roads of the eastern corridor</p>
     <div class="rows">
       <div class="col"><h2>SIDES</h2><div id="modes"></div>
-        <h2 style="margin-top:9px">DOCTRINE</h2><div id="factions"></div>
-        <h2 style="margin-top:9px">TERRAIN</h2><div id="terrains"></div>
-        <h2 style="margin-top:9px">THEATRE</h2><div id="diffs"></div>
-        <h2 style="margin-top:9px">SCALE</h2><div id="scales"></div></div>
+        <h2 style="margin-top:9px">THEATRE</h2><div id="diffs"></div></div>
+      <div class="col"><h2>DOCTRINE</h2><div id="factions"></div></div>
+      <div class="col"><h2>SCALE</h2><div id="scales"></div>
+        <h2 style="margin-top:9px">TERRAIN</h2><div id="terrains"></div></div>
       <div class="col"><h2>FIELD MANUAL</h2><div id="manual"></div>
         <div class="keys touch-only">
           <b>Drag</b> pan &nbsp;·&nbsp; <b>Pinch</b> zoom &nbsp;·&nbsp; <b>Tap</b> a unit to select, tap the ground to order<br>
