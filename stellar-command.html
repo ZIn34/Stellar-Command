@@ -7955,10 +7955,19 @@ function init(){
    build times, not by how often the bot thinks.
 
    What does work, measured, is buildGap: the minimum seconds between
-   starting one structure and the next. Foundations land exactly that far
-   apart - 22s, 12s and 6s against rules of 20, 12 and 6 - so it is the
-   lever for the higher settings, with grace, which is how long before the
-   first attack comes.
+   starting one structure and the next. Taking Veteran from 12 to 20 is 14%
+   slower to a fourth structure, 30% slower to a sixth, and a quarter less
+   of everything at three and a half minutes.
+
+   Warlord resisted all three. Spacing its foundations out made it 60%
+   stronger, because at three concurrent sites and that income the money
+   simply goes into units instead. It keeps the numbers it had - it is the
+   brutal setting, and every lever tried on it made it worse to play
+   against rather than better. Something that actually slows it would have
+   to cap what it can spend on at once, not how often it spends.
+
+   grace, the delay before the first attack, is not a slowdown either: the
+   army keeps growing while it waits, so a later attack is a bigger one.
 
    An action budget was tried here and removed: every action came from one
    pool, the worker block runs first and always wants something, so bots
@@ -7969,11 +7978,11 @@ const DIFFS={
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
   veteran:{buildGap:20, sites:2, vans:2, refits:1, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
-           dec:1.1, grace:210, thr:8, step:3, eco:1.12, hp:1, dmg:1,
+           dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
-  warlord:{buildGap:9, sites:3, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
-           dec:.6, grace:155, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
+  warlord:{buildGap:6, sites:3, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
+           dec:.6, grace:130, thr:6, step:2, eco:1.4, hp:1.15, dmg:1.12,
            wk:1,   halls:6, qd:3, expoAt:150, expo:3, techAt:110, spires:4, up:6,
            hallCost:250, expoCost:380}
 };
