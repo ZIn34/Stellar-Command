@@ -8660,7 +8660,11 @@ const FB_VER = '11.1.0';
    unless told otherwise, so a project whose only database is named
    something else answers 404 to everything while looking perfectly set up
    in the console. Leave this empty for the default one. */
-const FB_DB = '';
+/* Measured, not assumed: asked over plain REST, (default) answers 404
+   NOT_FOUND while 'default' answers 403 PERMISSION_DENIED - which proves
+   the database exists under that name and that the rules are live and
+   refusing an unauthenticated read, exactly as they should. */
+const FB_DB = 'default';
 
 const LIB = {db:null, uid:null, fs:null, ready:false, tab:'browse', rows:[],
              err:null, code:''};
@@ -9053,18 +9057,35 @@ async function libRestProbe(){
     if(names.indexOf(n)<0) names.push(n);
   const found=[];
   let blocked=null;
+  /* The query the game itself runs. A first version listed the collection
+     unfiltered, which these rules refuse by design - the rule reads each
+     document's public field, so a query that does not filter on it is not
+     provably safe - and the probe therefore reported a rules fault on a
+     correctly configured project. */
+  const q=JSON.stringify({structuredQuery:{
+    from:[{collectionId:'maps'}],
+    where:{fieldFilter:{field:{fieldPath:'public'},op:'EQUAL',
+                        value:{booleanValue:true}}},
+    limit:1}});
   for(const n of names){
     const url='https://firestore.googleapis.com/v1/projects/'+FB_CFG.projectId+
-              '/databases/'+encodeURIComponent(n)+'/documents/maps?pageSize=1';
+              '/databases/'+encodeURIComponent(n)+'/documents:runQuery';
     try{
-      const r=await fetch(url,{headers:tok?{Authorization:'Bearer '+tok}:{}});
+      const r=await fetch(url,{method:'POST',
+        headers:Object.assign({'Content-Type':'application/json'},
+                              tok?{Authorization:'Bearer '+tok}:{}),
+        body:q});
       const body=await r.text();
-      let msg='';
-      try{ const j=JSON.parse(body); msg=(j.error&&(j.error.status||j.error.message))||''; }
-      catch(e){ msg=body.slice(0,80); }
-      /* 200 means it is there and readable; 403 means it is there and the
-         rules said no, which still proves it exists. */
-      if(r.status===200) found.push(n+': HTTP 200, reachable and readable');
+      let msg='', rows=null;
+      try{
+        const j=JSON.parse(body);
+        if(Array.isArray(j)){
+          rows=j.filter(x=>x&&x.document).length;
+          const e0=j[0]&&j[0].error;
+          if(e0) msg=e0.status||e0.message||'';
+        } else msg=(j.error&&(j.error.status||j.error.message))||'';
+      }catch(e){ msg=body.slice(0,80); }
+      if(r.status===200&&!msg) found.push(n+': HTTP 200, '+(rows||0)+' published map(s)');
       else if(r.status===403) found.push(n+': HTTP 403, exists but the rules refused ('+msg+')');
       else if(r.status!==404) found.push(n+': HTTP '+r.status+' '+msg);
     }catch(e){ blocked=(e&&e.message)||String(e); break; }
