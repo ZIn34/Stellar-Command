@@ -748,6 +748,7 @@ body.touch .mouse-only{display:none}
     <input id="libQ" placeholder="search by name" spellcheck="false">
     <button id="libGo">SEARCH</button>
     <button id="libRandom">SHOW ME SOMETHING</button>
+    <button id="libCheck">CHECK CONNECTION</button>
   </div>
   <div id="libMsg"></div>
   <div id="libList"></div>
@@ -3934,7 +3935,10 @@ function netTypeOf(i){
 }
 /* Bumped whenever the wire format changes meaning. Both sides compare it
    and say so, rather than quietly building a broken world. */
-const NET_PROTO=2;
+/* 3: the snapshot carries a purse per slot rather than four, so a room can
+   seat more than four commanders. A guest on 2 would read the first four
+   and quietly miss the rest, which is what the version warning is for. */
+const NET_PROTO=3;
 function netOnline(){ return NET.role==='host'||NET.role==='guest'; }
 let SEED=1, SEED0=1;
 /* SEED is the live generator state and every srand() call moves it on, so by
@@ -4027,8 +4031,8 @@ function netRecv(m){
        knows, so take it from there. */
     if(m.pub!==undefined) NET.pub=!!m.pub;
     if(m.tok) NET.tok=m.tok;
-    if(Array.isArray(m.teams)) NET.teams=m.teams.slice(0,4).map(v=>(v|0)?1:0);
-    if(Array.isArray(m.facs)) NET.seatFacs=m.facs.slice(0,4);
+    if(Array.isArray(m.teams)) NET.teams=m.teams.slice(0,SLOTS).map(v=>(v|0)?1:0);
+    if(Array.isArray(m.facs)) NET.seatFacs=m.facs.slice(0,SLOTS);
     lobbyRoster(m);
     return;
   }
@@ -4038,14 +4042,14 @@ function netRecv(m){
     /* The relay hands these out; keep only doctrines we actually have, so a
        bad name can never reach a lookup table as a key. */
     NET.facs=Array.isArray(m.facs)
-      ?m.facs.slice(0,4).map(f=>(typeof f==='string'&&
+      ?m.facs.slice(0,SLOTS).map(f=>(typeof f==='string'&&
         Object.prototype.hasOwnProperty.call(FACTIONS,f))?f:'concord')
       :null;
     NET.lostAt=null;
     if(m.tok) NET.tok=m.tok;
     /* The host arranged the sides in the room, so take them from the wire
        rather than falling back to the fixed 0/1/0/1 pairing. */
-    NET.teams=Array.isArray(m.teams)?m.teams.slice(0,4).map(v=>v|0):null;
+    NET.teams=Array.isArray(m.teams)?m.teams.slice(0,SLOTS).map(v=>v|0):null;
     if(m.rejoin) say('Reconnected as Commander '+(NET.slot+1)+'.');
     lobbyClose();
     startOnline(m.seed>>>0,!!m.grand,m.mode||'duel',m.scale);
@@ -4153,11 +4157,10 @@ function netSnapshot(){
     }
   }
   // every slot's bank travels; each client reads its own out of the list
-  /* Four, deliberately: this is the snapshot format, shared with saved
-     replays, and widening it would break every .scr file and any client on
-     the old protocol. Online lobbies seat four, so there is never a fifth
-     purse to send - the bigger fields are a skirmish feature. */
-  const r=[0,1,2,3].map(i=>[Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap]);
+  /* One per slot. Reading is bounded by what arrived, so a new client
+     understands an old host's four, and an old client reading a new host
+     takes the first four and warns on the version. */
+  const r=ALLSLOTS.map(i=>[Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap]);
   netRelay({k:'S',v:NET_PROTO,e,r,ev:NET.evOut.splice(0,80)});
 }
 /* A version mismatch is silent otherwise: rows get dropped and the world
@@ -4208,7 +4211,7 @@ function netApplySnapshot(d){
   ents=ents.filter(o=>!o.dead);
   sel=sel.filter(o=>!o.dead);
   if(d.r&&d.r.length&&Array.isArray(d.r[0])){
-    for(let i=0;i<4&&i<d.r.length;i++){
+    for(let i=0;i<SLOTS&&i<d.r.length;i++){
       const v=d.r[i], w=netView(i);
       P[w].m=v[0]; P[w].g=v[1]; P[w].sup=v[2]; P[w].cap=v[3];
     }
@@ -7730,7 +7733,7 @@ function replaySave(){
   const head={
     v:REPLAY_FMT, seed:SEED0>>>0, scale:(GRAND?'grand':(BLITZ?'blitz':'standard')), mode:modeKey,
     terrain:terrainKey, facof:FACOF.slice(0,4),
-    rocks:ROCK_CLUSTERS, nplay:NPLAY, teamof:TEAMOF.slice(0,4), step:REC.step,
+    rocks:ROCK_CLUSTERS, nplay:NPLAY, teamof:TEAMOF.slice(0,SLOTS), step:REC.step,
     frames:REC.frames.length, when:new Date().toISOString()};
   const hb=new TextEncoder().encode(JSON.stringify(head));
   let bytes=8+hb.length;
@@ -8673,7 +8676,16 @@ async function libConnect(){
     const a=app.getApps().length?app.getApps()[0]:app.initializeApp(FB_CFG);
     const au=auth.getAuth(a);
     const cred=au.currentUser||(await auth.signInAnonymously(au)).user;
-    LIB.fs=fs; LIB.db=fs.getFirestore(a); LIB.uid=cred.uid;
+    /* Firestore streams over a long-lived channel that some networks and
+       proxies break, and when it is broken every call simply never
+       answers rather than failing. Letting it detect that and fall back to
+       long polling costs a little latency on the first call and nothing
+       after, which is the right trade for not hanging. */
+    LIB.fs=fs;
+    LIB.db=app.getApps().length>1||LIB._db?fs.getFirestore(a)
+      :fs.initializeFirestore(a,{experimentalAutoDetectLongPolling:true});
+    LIB._db=true;
+    LIB.uid=cred.uid;
     LIB.ready=true; LIB.err=null;
     return true;
   }catch(e){
@@ -8994,6 +9006,52 @@ function libRenderLocal(){
   }
 }
 
+/* Three questions, answered one at a time with the raw Firestore code for
+   each: is anybody signed in, can this account read a published map, can
+   it write one. Between a missing rule, a missing index, an unreachable
+   endpoint and a provider that was never switched on, the symptom in the
+   panel is identical - a call that never answers - and guessing between
+   them from the outside takes rounds. This says which. */
+async function libCheck(){
+  const lines=[];
+  const F=()=>LIB.fs;
+  const race=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>{
+    const e=new Error('no answer'); e.code='timeout'; rej(e);},ms))]);
+  lines.push('project '+(FB_CFG.projectId||'(none)'));
+  const conn=await libConnect();
+  lines.push('sign-in: '+(conn?('ok, you are '+String(LIB.uid).slice(0,8)+'\u2026')
+                              :('FAILED '+(LIB.code||LIB.err||'?'))));
+  if(conn){
+    try{
+      const q=F().query(F().collection(LIB.db,'maps'),
+        F().where('public','==',true),F().limit(1));
+      const r=await race(F().getDocs(q),12000);
+      lines.push('read published maps: ok ('+r.size+' found)');
+    }catch(e){ lines.push('read published maps: FAILED '+(e.code||e.message)); }
+    try{
+      const ref=F().doc(F().collection(LIB.db,'maps'));
+      const nm='Connection check '+Date.now().toString(36);
+      await race(F().setDoc(ref,{owner:LIB.uid,name:nm,nameLower:nm.toLowerCase(),
+        code:'check',seats:2,public:false,rnd:Math.random(),
+        createdAt:F().serverTimestamp()}),12000);
+      lines.push('write a map: ok');
+      try{ await race(F().deleteDoc(ref),8000); lines.push('tidy up: ok'); }
+      catch(e){ lines.push('tidy up: FAILED '+(e.code||e.message)+
+        ' - a map called \u201c'+nm+'\u201d is left in the library'); }
+    }catch(e){ lines.push('write a map: FAILED '+(e.code||e.message)); }
+  }
+  /* What each answer means, so the result is actionable on its own. */
+  const all=lines.join(' \u00b7 ');
+  let hint='';
+  if(/sign-in: FAILED/.test(all)) hint=' \u2014 anonymous sign-in is off for the project';
+  else if(/timeout/.test(all)) hint=' \u2014 nothing is answering: the database may not exist, '+
+    'or this network may be blocking it';
+  else if(/permission-denied/.test(all)) hint=' \u2014 the security rules are refusing it';
+  else if(/failed-precondition/.test(all)) hint=' \u2014 a search index is missing; '+
+    'the browser console has a link that creates it';
+  libSay(all+hint, /FAILED/.test(all)?'bad':'good');
+  try{ console.log('[Field Craft] library check: '+all); }catch(e){}
+}
 function libInit(){
   const b=document.getElementById('btnLibrary');
   if(b) b.onclick=()=>{ SFX.play('click'); libOpen(); };
@@ -9027,6 +9085,8 @@ function libInit(){
   if(q) q.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); run(); } };
   const rnd=document.getElementById('libRandom');
   if(rnd) rnd.onclick=()=>{ SFX.play('click'); libShow('browse'); };
+  const chk=document.getElementById('libCheck');
+  if(chk) chk.onclick=()=>{ SFX.play('click'); libSay('Checking\u2026'); libCheck(); };
 }
 
 /* ===================== MAP BUILDER ===================== */
@@ -9635,6 +9695,7 @@ function lobbyPollStart(){
 function lobbyFresh(){
   lobbyPollStop();
   NET.lostAt=null; NET.ended=false; NET.pub=false; NET.mode=null; NET.roomN=0;
+  NET._downgraded=false;
   NET.teams=null; NET.seatFacs=null;
 }
 /* Who is in the room so far, and - for the host - the choice between waiting
@@ -9642,6 +9703,16 @@ function lobbyFresh(){
 function lobbyRoster(m){
   const seats=document.getElementById('lobSeats');
   const startBtn=document.getElementById('lobStart');
+  /* The relay keeps its own list of modes and quietly answers with a duel
+     for anything it does not know, so hosting an eight-commander room on a
+     relay that has never heard of one silently became a 1v1. Taking its
+     answer is still right - it owns the room - but not silently. */
+  if(NET.isHost&&m.mode&&m.mode!==modeKey&&MODES[modeKey]&&MODES[m.mode]&&
+     MODES[m.mode].players<MODES[modeKey].players&&!NET._downgraded){
+    NET._downgraded=true;
+    say('This server only seats '+MODES[m.mode].players+' - it does not know '+
+        MODES[modeKey].n+' yet, so the room is '+MODES[m.mode].n+'.');
+  }
   // the room's mode comes from whoever opened it, not from this client's menu
   if(m.mode&&typeof MODES!=='undefined'&&MODES[m.mode]) NET.mode=m.mode;
   const key=NET.mode||modeKey;
