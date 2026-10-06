@@ -4837,8 +4837,16 @@ function buildInfo(){
       if(e.kind==='unit'){
         s+='<span class="k">DMG</span> '+Math.round(dmgOf(e))+' &nbsp; <span class="k">RNG</span> '+(Math.round(d.rng/TILE*10)/10)+
           ' &nbsp; <span class="k">SPD</span> '+Math.round(d.sp*facOf(e.owner).sp)+'<br>';
-        if(isBot(e.owner)&&ELITE.hp>1) s+='<span style="color:#ff9b7f">Veteran bonus +'+Math.round((ELITE.hp-1)*100)+'% hull, +'+
-          Math.round((ELITE.dmg-1)*100)+'% damage</span><br>';
+        /* This only ever admitted to a bonus. Now that a setting can hand a
+           bot a handicap instead, it says which, rather than quietly
+           flattering the easy settings. */
+        if(isBot(e.owner)&&(ELITE.hp!==1||ELITE.dmg!==1)){
+          const up=ELITE.hp>1;
+          const pc=v=>(v>1?'+':'\u2212')+Math.round(Math.abs(v-1)*100)+'%';
+          s+='<span style="color:'+(up?'#ff9b7f':'#9fd98c')+'">'+
+            (up?'Difficulty bonus ':'Difficulty handicap ')+
+            pc(ELITE.hp)+' hull, '+pc(ELITE.dmg)+' damage</span><br>';
+        }
         if(d.worker) s+='<span class="k">Cargo</span> '+(e.carry?e.carry+' '+(e.carryType==='m'?'supply':'fuel'):'empty')+'<br>';
         /* What this doctrine's version of the unit does that the others do
            not - it is the whole reason the statline differs. */
@@ -8001,16 +8009,24 @@ function init(){
    grace, the delay before the first attack, is not a slowdown either: the
    army keeps growing while it waits, so a later attack is a bigger one.
 
+   hp and dmg are separate from all of that: they multiply a bot unit's
+   hull and its damage, so they decide how hard its army hits rather than
+   how quickly it is built. They used to be 1 or above - only Warlord took
+   a bonus - and below 1 they are a handicap, which is the honest way to
+   make an easy setting easy. The two compound: at .9 each a Veteran unit
+   trades at about four fifths of a player's. No feedback loop in this one,
+   unlike the economy, so it does what the number says.
+
    An action budget was tried here and removed: every action came from one
    pool, the worker block runs first and always wants something, so bots
    spent the lot on Sappers and stopped building anything that fights. */
 const DIFFS={
   recruit:{buildGap:24, sites:1, vans:1, refits:0, n:'RECRUIT', tag:'light', blurb:'Loose macro, late raids. Room to learn.',
-           dec:2.0, grace:300, thr:9, step:4, eco:.72, hp:1, dmg:1,
+           dec:2.0, grace:300, thr:9, step:4, eco:.72, hp:.82, dmg:.82,
            wk:.50, halls:2, qd:1, expoAt:380, expo:0, techAt:300, spires:1, up:0,
            hallCost:430, expoCost:700},
   veteran:{buildGap:20, sites:2, vans:2, refits:1, n:'VETERAN', tag:'even',  blurb:'Solid macro, expands, researches. A fair fight.',
-           dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:1, dmg:1,
+           dec:1.1, grace:175, thr:8, step:3, eco:1.12, hp:.9, dmg:.9,
            wk:.78, halls:4, qd:2, expoAt:230, expo:2, techAt:170, spires:2, up:2,
            hallCost:330, expoCost:520},
   warlord:{buildGap:6, sites:3, vans:3, refits:1, n:'WARLORD', tag:'brutal',blurb:'Saturates, expands hard, upgrades, and never stops producing.',
