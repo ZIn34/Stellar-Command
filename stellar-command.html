@@ -5329,8 +5329,18 @@ function aiRun(AI,ME,dt){
     ? Math.min(tGate(DIFF.expoAt||200),45)
     : tGate(GRAND?120:(DIFF.expoAt||200));
   const expoNeed=mGate(DIFF.expoCost||480);
-  const wantExpo=AI.expo<expoCap&&AI.t>expoWhen&&
-                 !bs.some(b=>b.type==='keystone'&&!b.done);
+  /* Sitting on money is the one thing no player does, and a bot's own
+     savings plan makes it worse: while it banks for a capital ship the
+     halls stand down, so a rich bot gets slower rather than stronger.
+     Holding well over the price of another base is the signal to stop
+     waiting - the timer is ignored, the cap is lifted, and it will have
+     two going up at once. A treasury is only worth what it is spent on. */
+  const _kc=bldCost('keystone',ME);
+  const flush=P[ME].m>=_kc.m*2.2+mGate(260)&&P[ME].g>=_kc.g;
+  const expoCapNow=flush?expoCap+3:expoCap;
+  const expoSites=bs.filter(b=>b.type==='keystone'&&!b.done).length;
+  const wantExpo=AI.expo<expoCapNow&&(flush||AI.t>expoWhen)&&
+                 expoSites<(flush?2:1);
   /* A capital ship, and the yard it comes out of, cost more than a bot is ever
      holding at a random moment - it spends every scrap of aurite on infantry
      as fast as it comes in. So it saves for them deliberately: one goal at a
@@ -5408,11 +5418,15 @@ function aiRun(AI,ME,dt){
   const buildGap=()=>tGate(DIFF.buildGap===undefined?11:DIFF.buildGap);
   const siteCap=()=>GRAND?(DIFF.sites||2)+2:(DIFF.sites||2);
   const sitesOpen=()=>bs.filter(b=>!b.done).length;
-  const startB=(type,x,y,crew)=>{
-    if(AI.t<(AI.nextBuild||0)) return false;
+  /* urgent skips the spacing between foundations but still respects how
+     many may be unfinished at once. Expansions sit at the end of the build
+     chain, so with money pouring in they lost the spacing race to barracks
+     and turrets every time and a rich bot expanded about once a match. */
+  const startB=(type,x,y,crew,urgent)=>{
+    if(!urgent&&AI.t<(AI.nextBuild||0)) return false;
     if(sitesOpen()>=siteCap()) return false;
     const okS=startBuild(type,x,y,ME,crew);
-    if(okS) AI.nextBuild=AI.t+buildGap();
+    if(okS&&!urgent) AI.nextBuild=AI.t+buildGap();
     return !!okS;
   };
   const put=(type,anchor,bias)=>{
@@ -5534,7 +5548,10 @@ function aiRun(AI,ME,dt){
      starts that close the match is often decided inside ninety seconds, so a
      bot was winning or losing before its expansion timer came up. In Blitz a
      second base is an opening move, not a mid-game one. */
-  if(wantExpo&&P[ME].m>=expoNeed&&!building('keystone')&&canBuild()){
+  /* wantExpo has already counted how many bases are going up and allowed
+     two when the bank is full, so repeating the one-at-a-time rule here
+     would quietly cancel that. */
+  if(wantExpo&&P[ME].m>=expoNeed&&canBuild()){
     const spots=EXPOS.map(e=>({x:e.tx*TILE,y:e.ty*TILE}))
       .filter(e=>!ents.some(b=>!b.dead&&b.kind==='building'&&dist(b,e)<300))
       .sort((a,b)=>dist(a,home)-dist(b,home));
@@ -5552,7 +5569,7 @@ function aiRun(AI,ME,dt){
           if(canPlace('keystone',px,py,ME)) at={x:px,y:py};
         }
       }
-      if(at&&startB('keystone',at.x,at.y,[freeWorker()])){
+      if(at&&startB('keystone',at.x,at.y,[freeWorker()],flush)){
         AI.expo++; AI.lastExpo=at; break;
       }
     }
@@ -8601,6 +8618,18 @@ async function libConnect(){
   }
 }
 
+/* Most liked first, newest as the tie-break so a fresh map with no likes
+   yet is not buried under every other map with none. Firestore cannot
+   order by a count it does not store, and storing one would be a number
+   any caller could set - so the counts are fetched for the page of maps on
+   screen and the page is ranked here. That means the ranking is within
+   what was fetched, not across the whole library, which is the honest
+   trade for a like count nobody can forge. */
+function libRank(rows){
+  return rows.slice().sort((a,b)=>
+    ((b.likes|0)-(a.likes|0)) || ((b.at|0)-(a.at|0)) ||
+    String(a.name).localeCompare(String(b.name)));
+}
 function libSay(t,cls){
   const el=document.getElementById('libMsg');
   if(!el) return;
@@ -8610,9 +8639,10 @@ function libSay(t,cls){
 /* What a card needs, for a row that came from Firestore. */
 function libRowOf(d){
   const v=d.data()||{};
+  const t=v.createdAt&&v.createdAt.toMillis?v.createdAt.toMillis():0;
   return {id:d.id, name:String(v.name||'Untitled'), code:String(v.code||''),
           seats:v.seats|0||2, size:v.size|0||112, owner:v.owner||'',
-          pub:v.public===true, likes:null, liked:false};
+          pub:v.public===true, at:t, likes:null, liked:false};
 }
 
 /* Random public maps. Firestore has no "random", so every map carries a fixed
@@ -8789,9 +8819,11 @@ async function libShow(tab){
   }catch(e){ LIB.code=(e&&e.code)?String(e.code):''; LIB.err=String(e&&e.message||e); }
   if(!rows){ const [t,c]=libExplain(); libSay(t,c); return; }
   await libLikes(rows);
+  rows=libRank(rows);
   LIB.rows=rows;
   if(!rows.length){ const [t,c]=libExplain(); libSay(t,c); return; }
-  libSay(rows.length+(tab==='mine'?' published by you':' maps'),'good');
+  libSay(rows.length+(tab==='mine'?' published by you':' maps')+
+         ', best liked first','good');
   libRenderRows(rows);
 }
 
@@ -8826,9 +8858,13 @@ function libRenderRows(rows){
   const host=document.getElementById('libList');
   host.textContent='';
   for(const row of rows){
+    /* The count is part of the card, not only of the button, and it reads
+       'no likes yet' rather than nothing when it is zero - a blank space
+       is indistinguishable from a count that failed to load. */
+    const likeText=row.likes===null?'likes unknown'
+      :(row.likes===0?'no likes yet':row.likes+' like'+(row.likes===1?'':'s'));
     const el=libCard(row.name,
-      row.size+' x '+row.size+' \u00b7 '+row.seats+' starts'+
-      (row.likes===null?'':' \u00b7 '+row.likes+' like'+(row.likes===1?'':'s')));
+      row.size+' x '+row.size+' \u00b7 '+row.seats+' starts \u00b7 '+likeText);
     libBtn(el.btns,'PLAY',()=>{ SFX.play('click'); libPlay(row.code); });
     libBtn(el.btns,'SAVE',()=>{ SFX.play('click');
       const err=libSaveLocal(row);
@@ -8839,11 +8875,17 @@ function libRenderRows(rows){
         try{ await libUnpublish(row); libSay('Unpublished.','good'); libShow('mine'); }
         catch(e){ libSay('Could not unpublish: '+(e&&e.message||e),'bad'); } });
     } else {
-      const lb=libBtn(el.btns,(row.liked?'\u2605 ':'\u2606 ')+(row.likes===null?'':row.likes),
+      const face=r=>(r.liked?'\u2605':'\u2606')+' '+(r.likes===null?'?':r.likes);
+      const lb=libBtn(el.btns,face(row),
         async()=>{
           try{ await libToggleLike(row);
-            lb.textContent=(row.liked?'\u2605 ':'\u2606 ')+row.likes;
+            lb.textContent=face(row);
             lb.className=row.liked?'liked':'';
+            // the count moved, so the card's own line has to agree
+            const sub=el.querySelector('i');
+            if(sub) sub.textContent=row.size+' x '+row.size+' \u00b7 '+row.seats+
+              ' starts \u00b7 '+(row.likes===0?'no likes yet'
+                :row.likes+' like'+(row.likes===1?'':'s'));
             SFX.play('click');
           }catch(e){ libSay('Could not record that: '+(e&&e.message||e),'bad'); }
         }, row.liked?'liked':'');
@@ -8905,6 +8947,7 @@ function libInit(){
     catch(e){ LIB.code=(e&&e.code)?String(e.code):''; LIB.err=String(e&&e.message||e); }
     if(!rows){ const [t,c]=libExplain(); libSay(t,c); return; }
     await libLikes(rows);
+    rows=libRank(rows);
     LIB.rows=rows; LIB.tab='browse';
     if(!rows.length){
       libSay('Nothing starting with \u201c'+q.value.trim()+'\u201d. '+
