@@ -1,18 +1,24 @@
 {
   "//": [
-    "Composite indexes the map library needs. Firestore builds single-field",
-    "indexes on its own, but a query that filters on one field and orders by",
-    "another needs one of these declared, and until it exists that query fails.",
+    "One composite index, for searching by name.",
     "",
-    "Each one is here because of a specific query in stellar-command.html:",
-    "  public + rnd        libRandom  - a slice of public maps from a random key",
-    "  public + nameLower  libSearch  - prefix search over public maps",
-    "  owner  + createdAt  libMine    - your own, newest first",
+    "Firestore builds a single-field index for every field by itself, and a",
+    "query with one equality filter and a limit is served by those. A query",
+    "that filters on one field and orders by another is not, and until the",
+    "index exists that query fails outright - while publishing, which needs no",
+    "index at all, keeps working. That combination is miserable: a library you",
+    "can publish to and never see anything in.",
     "",
-    "Apply with the Firebase CLI:  firebase deploy --only firestore:indexes",
-    "Or create the three by hand in Firestore - Indexes - Composite, with the",
-    "fields and directions below. The console also offers a one-click link in",
-    "the browser console the first time each query runs."
+    "So browsing and 'published by me' were rewritten to use one filter and sort",
+    "in the browser, and they work on a fresh project with nothing set up here.",
+    "Searching by name genuinely needs public + nameLower together, because the",
+    "rules require the public filter for the query to be provably safe and the",
+    "prefix match needs the ordering. That is the one below.",
+    "",
+    "Apply with:  firebase deploy --only firestore:indexes",
+    "Or create it by hand in Firestore - Indexes - Composite, with the fields",
+    "below. The browser console also prints a one-click link the first time a",
+    "search runs without it."
   ],
   "indexes": [
     {
@@ -20,23 +26,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "public", "order": "ASCENDING" },
-        { "fieldPath": "rnd", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "maps",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "public", "order": "ASCENDING" },
         { "fieldPath": "nameLower", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "maps",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "owner", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
   ],
