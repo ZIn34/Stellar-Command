@@ -1,9 +1,9 @@
-# Stellar Command
+# Field Craft
 
 A real-time strategy game that runs in the browser. One self-contained HTML file for
 the game itself, plus a small zero-dependency Node server for online play and assets.
 
-![theatre](https://img.shields.io/badge/engine-vanilla%20JS-4bd6ff) ![deps](https://img.shields.io/badge/dependencies-none-35d18a)
+![theatre](https://img.shields.io/badge/engine-vanilla%20JS-c7b583) ![deps](https://img.shields.io/badge/dependencies-none-9fd98c)
 
 ## Play
 

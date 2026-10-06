@@ -141,7 +141,10 @@ function send(c,obj){ sendFrame(c,0x1,Buffer.from(JSON.stringify(obj),'utf8')); 
 
 /* ---------------- lobby ---------------- */
 const rooms=new Map();          // code -> {code, players[], quick, born, started}
-const MAXP=4;
+/* Eight. The game seats that many and every per-player table in it is sized
+   from the same number; this was the one place still saying four, which is
+   why an eight-commander room came back as a duel. */
+const MAXP=8;
 function newCode(){
   let code;
   do{ code=String(Math.floor(1000+Math.random()*9000)); }while(rooms.has(code));
@@ -149,7 +152,11 @@ function newCode(){
 }
 /* A client picks its own mode and faction, and those strings are handed
    straight back out to every other client. Only ever store one we know. */
-const MODE_OK={duel:1,team:1,ffa:1}, FAC_OK={concord:1,legion:1,pact:1};
+/* A mode this does not recognise is quietly answered as a duel, so a mode
+   missing from here is not an error anybody sees - the room simply comes
+   back smaller than it was asked for. Keep it in step with MODES. */
+const MODE_OK={duel:1,team:1,ffa:1,ffa5:1,ffa6:1,ffa7:1,ffa8:1,team4:1},
+      FAC_OK={concord:1,legion:1,pact:1};
 function pick(tbl,v,dflt){
   return (typeof v==='string'&&Object.prototype.hasOwnProperty.call(tbl,v))?v:dflt;
 }
@@ -158,7 +165,7 @@ function okFac(f){ return pick(FAC_OK,f,'concord'); }
 /* A duel seats two, not four. The room used to list and admit against MAXP
    whatever the mode, so a 1v1 advertised '1 / 4 waiting' and could be
    overfilled in the round trip before the host's client called begin. */
-const MODE_SEATS={duel:2,team:4,ffa:4};
+const MODE_SEATS={duel:2,team:4,ffa:4,ffa5:5,ffa6:6,ffa7:7,ffa8:8,team4:8};
 function capOf(room){ return MODE_SEATS[room&&room.mode]||MAXP; }
 function liveCount(room){ return room.players.filter(Boolean).length; }
 function openRoom(c,quick,mode,pub){
@@ -166,7 +173,9 @@ function openRoom(c,quick,mode,pub){
   const room={code,players:[c],quick:!!quick,born:Date.now(),seen:Date.now(),
               started:false,done:false,
               toks:[c.id],                    // which seat each player may reclaim
-              teams:[0,1,0,1],                // host can rearrange these for 2v2
+              /* Alternating, which splits 2v2 and 4v4 evenly; the host can
+                 rearrange them. A free-for-all overrides it at begin. */
+              teams:[0,1,0,1,0,1,0,1],
               pub:!!pub,                      // listed in the browser, or code-only
               mode:okMode(mode)};
   rooms.set(code,room); c.room=room;
@@ -182,8 +191,8 @@ function roster(room){
     if(!c) return;
     send(c,{t:'roster',code:room.code,n:liveCount(room),max:cap,slot:i,
             host:i===0,mode:room.mode,pub:!!room.pub,tok:c.id,
-            teams:room.teams.slice(0,4),
-            facs:room.players.slice(0,4).map(p=>(p&&p.fac)||null)});
+            teams:room.teams.slice(0,MAXP),
+            facs:room.players.slice(0,MAXP).map(p=>(p&&p.fac)||null)});
   });
 }
 function addPlayer(room,c){
@@ -197,9 +206,13 @@ const SCALE_OK={standard:1,grand:1,blitz:1};
 function okScale(v){ return pick(SCALE_OK,v,'standard'); }
 function begin(room,mode,grand,seed,terrain,scale){
   room.started=true;
-  const facs=['concord','concord','concord','concord'];
-  room.players.forEach((pl,i)=>{ if(pl&&pl.fac&&i<4) facs[i]=okFac(pl.fac); });
-  const teams=(mode==='ffa')?[0,1,2,3]:room.teams.slice(0,4);
+  const facs=new Array(MAXP).fill('concord');
+  room.players.forEach((pl,i)=>{ if(pl&&pl.fac&&i<MAXP) facs[i]=okFac(pl.fac); });
+  /* Every free-for-all gives each seat its own side, whatever its size;
+     anything else keeps the pairing the host arranged. */
+  const teams=/^ffa/.test(mode)
+    ? Array.from({length:MAXP},(_,i)=>i)
+    : room.teams.slice(0,MAXP);
   const sc=okScale(scale!==undefined?scale:(grand?'grand':'standard'));
   room.cfg={mode:mode,grand:!!grand,scale:sc,seed:seed,terrain:terrain,
             count:room.players.length,facs:facs,teams:teams};

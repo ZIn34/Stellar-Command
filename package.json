@@ -1,7 +1,7 @@
 {
-  "name": "stellar-command",
+  "name": "field-craft",
   "version": "1.0.0",
-  "description": "A real-time strategy game that runs in the browser, with host-authoritative online play",
+  "description": "Field Craft - a real-time strategy game that runs in the browser, with host-authoritative online play",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
