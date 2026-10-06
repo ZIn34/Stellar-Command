@@ -1,0 +1,44 @@
+{
+  "//": [
+    "Composite indexes the map library needs. Firestore builds single-field",
+    "indexes on its own, but a query that filters on one field and orders by",
+    "another needs one of these declared, and until it exists that query fails.",
+    "",
+    "Each one is here because of a specific query in stellar-command.html:",
+    "  public + rnd        libRandom  - a slice of public maps from a random key",
+    "  public + nameLower  libSearch  - prefix search over public maps",
+    "  owner  + createdAt  libMine    - your own, newest first",
+    "",
+    "Apply with the Firebase CLI:  firebase deploy --only firestore:indexes",
+    "Or create the three by hand in Firestore - Indexes - Composite, with the",
+    "fields and directions below. The console also offers a one-click link in",
+    "the browser console the first time each query runs."
+  ],
+  "indexes": [
+    {
+      "collectionGroup": "maps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "public", "order": "ASCENDING" },
+        { "fieldPath": "rnd", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "maps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "public", "order": "ASCENDING" },
+        { "fieldPath": "nameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "maps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "owner", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

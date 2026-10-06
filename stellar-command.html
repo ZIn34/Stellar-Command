@@ -8474,6 +8474,16 @@ const LIB = {db:null, uid:null, fs:null, ready:false, tab:'browse', rows:[],
              err:null, code:''};
 
 function libConfigured(){ return !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId); }
+/* Firestore will wait indefinitely for a query it cannot answer from the
+   cache if the connection is stalled, and the panel sat on 'Loading...'
+   for ever. Twelve seconds, then say so. */
+const LIB_WAIT=12000;
+function libRace(p){
+  return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>{
+    const e=new Error('The library did not answer in time.');
+    e.code='lib/timeout'; rej(e);
+  },LIB_WAIT))]);
+}
 
 /* One connection, made on first use and kept. Anonymous sign-in gives each
    browser a durable id, which is what makes "mine" and one-like-each work
@@ -8526,9 +8536,9 @@ async function libRandom(n){
                     F.orderBy('rnd',dir),F.limit(n));
     return (await F.getDocs(q)).docs;
   };
-  let docs=await grab('>=',r,'asc');
+  let docs=await libRace(grab('>=',r,'asc'));
   if(docs.length<n){
-    const more=await grab('<',r,'asc');
+    const more=await libRace(grab('<',r,'asc'));
     docs=docs.concat(more.slice(0,n-docs.length));
   }
   return docs.map(libRowOf);
@@ -8545,7 +8555,7 @@ async function libSearch(text){
   const q=F.query(F.collection(LIB.db,'maps'),
     F.where('public','==',true), F.orderBy('nameLower'),
     F.startAt(q0), F.endAt(q0+'\uf8ff'), F.limit(30));
-  return (await F.getDocs(q)).docs.map(libRowOf);
+  return (await libRace(F.getDocs(q))).docs.map(libRowOf);
 }
 
 async function libMine(){
@@ -8553,7 +8563,7 @@ async function libMine(){
   const F=LIB.fs;
   const q=F.query(F.collection(LIB.db,'maps'),
     F.where('owner','==',LIB.uid), F.orderBy('createdAt','desc'), F.limit(50));
-  return (await F.getDocs(q)).docs.map(libRowOf);
+  return (await libRace(F.getDocs(q))).docs.map(libRowOf);
 }
 
 /* Counted, not stored. One read per thousand likes, and nobody can lie. */
@@ -8587,11 +8597,11 @@ async function libPublish(sc){
   if(m.err) throw new Error(m.err);
   const ref=F.doc(F.collection(LIB.db,'maps'));
   const name=cmapCleanName(sc.name)||'Untitled';
-  await F.setDoc(ref,{
+  await libRace(F.setDoc(ref,{
     owner:LIB.uid, name:name, nameLower:name.toLowerCase(),
     code:sc.code, seats:Math.max(2,Math.min(4,sc.seats|0||2)),
     public:true, rnd:Math.random(), createdAt:F.serverTimestamp()
-  });
+  }));
   return ref.id;
 }
 
@@ -8657,6 +8667,12 @@ function libExplain(){
             'else works; maps saved on this device are under SCALE.','bad'];
   if(c==='permission-denied')
     return ['The library refused that - its rules do not allow it yet.','bad'];
+  if(c==='lib/timeout')
+    return ['The library did not answer. It may be unreachable from here, '+
+            'or a search index may still be building.','bad'];
+  if(c==='failed-precondition')
+    return ['The library needs a search index that has not been created '+
+            'yet. Maps saved on this device still work.','bad'];
   if(c==='unavailable'||c==='failed-precondition')
     return ['Could not reach the library. It may be offline, or the browser '+
             'may be blocking it.','bad'];
