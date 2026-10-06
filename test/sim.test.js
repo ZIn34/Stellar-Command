@@ -1822,6 +1822,45 @@ test('one order is still one mark, however much is in the bank', () => {
   eq(run('v.lvl'), 1, 'a full bank does not buy a second mark');
 });
 
+console.log('\neight seats on the wire');
+
+test('a snapshot carries a purse for every slot', () => {
+  run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
+  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  for (let i = 0; i < 8; i++) run('P[' + i + '].m=' + (100 + i * 11) + '; P[' + i + '].g=' + (5 + i));
+  // the same expression netSnapshot builds
+  const r = run('ALLSLOTS.map(function(i){return [Math.round(P[i].m),Math.round(P[i].g),P[i].sup,P[i].cap];})');
+  eq(r.length, 8, 'eight purses on the wire');
+  eq(r[7][0], 100 + 7 * 11, 'and the eighth one is the eighth player\'s');
+});
+
+test('a guest reads as many purses as arrived, old or new', () => {
+  run('scaleKey="standard"; modeKey="ffa8"; terrainKey="open"; facKey="concord"');
+  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  run('NET.slot=0');
+  // eight, from a current host
+  run('for(var i=0;i<8;i++){ P[i].m=0; P[i].g=0; }');
+  run('netApplySnapshot({v:NET_PROTO,e:[],r:[[1,1,0,0],[2,2,0,0],[3,3,0,0],[4,4,0,0],' +
+      '[5,5,0,0],[6,6,0,0],[7,7,0,0],[8,8,0,0]]})');
+  eq(run('ALLSLOTS.map(function(i){return P[i].m;}).join(",")'), '1,2,3,4,5,6,7,8',
+     'all eight land');
+  // four, from an older host - the rest are simply left alone
+  run('for(var i=0;i<8;i++){ P[i].m=99; }');
+  run('netApplySnapshot({v:NET_PROTO,e:[],r:[[1,0,0,0],[2,0,0,0],[3,0,0,0],[4,0,0,0]]})');
+  eq(run('ALLSLOTS.map(function(i){return P[i].m;}).join(",")'), '1,2,3,4,99,99,99,99',
+     'a four-wide snapshot still loads and leaves the rest untouched');
+});
+
+test('a mismatched protocol is called out rather than silently wrong', () => {
+  run('scaleKey="standard"; modeKey="duel"; terrainKey="open"; facKey="concord"');
+  run('CMAP=null; cmapTouch(); startGame("veteran")');
+  run('protoWarned=false; var warned=false; var _s=say; say=function(t){ warned=/different version/.test(t)||warned; return _s(t); }');
+  run('netApplySnapshot({v:NET_PROTO-1,e:[],r:[]})');
+  eq(run('warned'), true, 'an older peer is reported');
+  run('say=_s');
+  ok(run('NET_PROTO') >= 3, 'and the version was raised for the wider snapshot');
+});
+
 console.log('\nup to eight commanders');
 
 test('every per-player table is sized from one number', () => {
