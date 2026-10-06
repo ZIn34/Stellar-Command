@@ -8733,23 +8733,28 @@ function libRowOf(d){
           pub:v.public===true, at:t, likes:null, liked:false};
 }
 
-/* Random public maps. Firestore has no "random", so every map carries a fixed
-   random key and this takes a slice from a random point, wrapping round the
-   end so the maps with the lowest keys are reachable too. */
+/* Public maps, a handful at random.
+   This used to filter on public and order by a random key, which is two
+   fields and so needs a composite index - and until somebody creates that
+   index the query fails. Publishing needs no index, so the result was a
+   library you could publish to and never see anything in, which is a
+   miserable thing to debug from the outside.
+   One equality filter and a limit is served by the index Firestore builds
+   by itself, so this works on a fresh project with nothing set up. The
+   randomness moves here, which costs a few more documents read and removes
+   a setup step. */
 async function libRandom(n){
   if(!await libConnect()) return null;
-  const F=LIB.fs, col=F.collection(LIB.db,'maps'), r=Math.random();
-  const grab=async(op,val,dir)=>{
-    const q=F.query(col,F.where('public','==',true),F.where('rnd',op,val),
-                    F.orderBy('rnd',dir),F.limit(n));
-    return (await F.getDocs(q)).docs;
-  };
-  let docs=await libRace(grab('>=',r,'asc'));
-  if(docs.length<n){
-    const more=await libRace(grab('<',r,'asc'));
-    docs=docs.concat(more.slice(0,n-docs.length));
+  const F=LIB.fs;
+  const q=F.query(F.collection(LIB.db,'maps'),
+                  F.where('public','==',true),F.limit(60));
+  const docs=(await libRace(F.getDocs(q))).docs.map(libRowOf);
+  // shuffle, then take the page we want
+  for(let i=docs.length-1;i>0;i--){
+    const j=(Math.random()*(i+1))|0;
+    const t=docs[i]; docs[i]=docs[j]; docs[j]=t;
   }
-  return docs.map(libRowOf);
+  return docs.slice(0,n);
 }
 
 /* Prefix search on a lower-cased copy of the name. Firestore cannot do
@@ -8766,12 +8771,16 @@ async function libSearch(text){
   return (await libRace(F.getDocs(q))).docs.map(libRowOf);
 }
 
+/* Same reasoning: owner plus an order-by on the date is a composite index.
+   One filter, and the newest-first ordering happens here. */
 async function libMine(){
   if(!await libConnect()) return null;
   const F=LIB.fs;
   const q=F.query(F.collection(LIB.db,'maps'),
-    F.where('owner','==',LIB.uid), F.orderBy('createdAt','desc'), F.limit(50));
-  return (await libRace(F.getDocs(q))).docs.map(libRowOf);
+    F.where('owner','==',LIB.uid), F.limit(60));
+  const rows=(await libRace(F.getDocs(q))).docs.map(libRowOf);
+  rows.sort((a,b)=>(b.at|0)-(a.at|0));
+  return rows;
 }
 
 /* Counted, not stored. One read per thousand likes, and nobody can lie. */
@@ -8879,8 +8888,9 @@ function libExplain(){
     return ['The library did not answer. It may be unreachable from here, '+
             'or a search index may still be building.','bad'];
   if(c==='failed-precondition')
-    return ['The library needs a search index that has not been created '+
-            'yet. Maps saved on this device still work.','bad'];
+    return ['Searching by name needs an index on the project that has not '+
+            'been created yet - browsing and publishing work without it. '+
+            'The browser console has a link that creates it.','bad'];
   if(c==='unavailable'||c==='failed-precondition')
     return ['Could not reach the library. It may be offline, or the browser '+
             'may be blocking it.','bad'];
