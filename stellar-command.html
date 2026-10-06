@@ -1146,6 +1146,14 @@ const TITAN_SPLASH_SHARE=.3;
 // how long a capital ship must be left alone before it starts knitting again
 const TITAN_MEND_CALM=20;
 const ENTRENCH_AT=1.5, ENTRENCH_DMG=1.28;
+/* Asked by the damage sum, the readout and the drawing, so all three agree
+   about when a unit counts as dug in. It used to be spelled out at each
+   site, which is how you end up with a bonus the player cannot see. */
+function dugIn(e){
+  if(!e||e.kind!=='unit') return false;
+  const st=DEF(e).style;
+  return !!(st&&st.entrench&&(e.stillT||0)>=ENTRENCH_AT);
+}
 /* Faction stat overrides are folded into the definition itself, so range,
    damage, cooldown, the info panel and the field manual all read the same
    numbers without each of them knowing about doctrines. */
@@ -2830,6 +2838,21 @@ function updateUnit(u,dt){
   if(u.px0===undefined){ u.px0=u.x; u.py0=u.y; }
   if(Math.hypot(u.x-u.px0,u.y-u.py0)>3){ u.stillT=0; u.px0=u.x; u.py0=u.y; }
   else u.stillT=(u.stillT||0)+dt;
+  /* A bonus you cannot see is a bonus nobody plays around, so the moment a
+     unit settles in it kicks up earth - and the berm below stays for as
+     long as it holds the spot. */
+  {
+    const now=dugIn(u);
+    if(now&&!u._dug){
+      u._dug=true;
+      if(!OPT.lowFx){
+        fx.push({x:u.x,y:u.y+u.r*.5,t:0,dur:.5,r:u.r*1.9,k:'ping',c:'#8a6f45'});
+        for(let i=0;i<3;i++)
+          fx.push({x:u.x+rnd(-u.r,u.r),y:u.y+u.r*.5+rnd(-2,3),t:0,dur:.42,
+                   r:3.2,k:'hit',c:'#9c8156'});
+      }
+    } else if(!now&&u._dug) u._dug=false;
+  }
   venomTick(u,dt);
   if(u.dead) return;
   if(u.type==='titan') titanTick(u,dt);
@@ -7117,6 +7140,26 @@ function drawUnit(u){
   ctx.fillStyle=d.air?'rgba(0,0,0,.30)':'rgba(0,0,0,.34)';
   ctx.beginPath(); ctx.ellipse(u.x+2+(d.air?4:0),u.y+d.r*.6+(d.air?lift*.4:0),
     d.r*(d.air?.85:1.05),d.r*(d.air?.4:.52),0,0,7); ctx.fill();
+  /* Scraped earth in front of a unit that has held its ground long enough
+     to shoot harder. Drawn before the sprite so the unit sits behind it,
+     and turned with the gun rather than the body, so it reads as cover
+     facing the fight. */
+  if(!d.air&&dugIn(u)){
+    ctx.save();
+    /* Sized to clear the sprite, not the hitbox: a body is about 42px
+       tall drawn centred, so an arc at the collision radius sits
+       entirely underneath the unit and cannot be seen at all. */
+    const br=d.r*1.5+14;
+    ctx.translate(u.x,u.y+d.r*.3); ctx.rotate(u.face);
+    ctx.lineCap='round';
+    ctx.strokeStyle='rgba(40,31,19,.92)';
+    ctx.lineWidth=Math.max(3,d.r*.46);
+    ctx.beginPath(); ctx.arc(0,0,br,-1.05,1.05); ctx.stroke();
+    ctx.strokeStyle='rgba(150,124,78,.8)';
+    ctx.lineWidth=Math.max(1.2,d.r*.2);
+    ctx.beginPath(); ctx.arc(0,0,br+d.r*.3,-.9,.9); ctx.stroke();
+    ctx.restore();
+  }
   ctx.translate(u.x,u.y-lift); ctx.rotate(u.face);
   /* Every refit shows: the hull is drawn a little larger each time, which is
      the only honest way to tell a mark-one from a mark-eight at a glance. */
@@ -8191,8 +8234,7 @@ function dmgOf(e,w){
   const rage=(e.kind==='unit'&&f.rage&&e.maxHp)?1+f.rage*clamp(1-e.hp/e.maxHp,0,1):1;
   /* Dug in: a Concord line that has not moved for a moment shoots harder, so
      holding ground is worth something to the doctrine that is built for it. */
-  const st=d.style;
-  const dug=(st&&st.entrench&&(e.stillT||0)>=ENTRENCH_AT)?ENTRENCH_DMG:1;
+  const dug=dugIn(e)?ENTRENCH_DMG:1;
   const base=(w&&w.dmg!==undefined)?w.dmg:d.dmg;
   /* A refitted unit carries its own upgrades, so they multiply here rather
      than in the statline - the level is on the unit, not the type. */
