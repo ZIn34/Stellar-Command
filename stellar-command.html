@@ -601,7 +601,6 @@ body.touch .mouse-only{display:none}
     </div>
     <button id="deploy">DEPLOY</button>
     <div class="online">
-      <span>ONLINE</span>
       <button id="btnQuick">QUICK PLAY</button>
       <button id="btnHost">HOST</button>
       <button id="btnHostPub">HOST PUBLIC</button>
@@ -615,7 +614,6 @@ body.touch .mouse-only{display:none}
       <button id="btnReplay">WATCH REPLAY</button>
       <input id="replayFile" type="file" accept=".scr" style="display:none">
     </div>
-    <p class="fine">Armour beats infantry, artillery beats armour, and only some of it can shoot upwards — every wreck pays a salvage bounty, so trade aggressively.</p>
   </div>
 </div>
 <div id="settings">
@@ -8431,7 +8429,8 @@ const FB_CFG = {
 };
 const FB_VER = '11.1.0';
 
-const LIB = {db:null, uid:null, fs:null, ready:false, tab:'browse', rows:[], err:null};
+const LIB = {db:null, uid:null, fs:null, ready:false, tab:'browse', rows:[],
+             err:null, code:''};
 
 function libConfigured(){ return !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId); }
 
@@ -8455,6 +8454,7 @@ async function libConnect(){
     LIB.ready=true; LIB.err=null;
     return true;
   }catch(e){
+    LIB.code=(e&&e.code)?String(e.code):'';
     LIB.err=String(e&&e.message||e);
     return false;
   }
@@ -8600,12 +8600,25 @@ function libClose(){
 /* What to say when there is nothing to show, which is a different sentence
    for each reason - "nothing here" and "I could not reach the server" and
    "this has never been set up" are not the same problem. */
+/* A raw Firebase error code tells a player nothing, and two of these are
+   not faults at all - they are setup steps nobody has done yet. Say which,
+   so the message is actionable instead of alarming. */
 function libExplain(){
   if(!libConfigured())
-    return ['The shared library is not set up yet - this build has no project '+
-            'configured, so there is nowhere to publish to or browse. '+
-            'Maps saved on this device still work and appear under SCALE.','bad'];
-  if(LIB.err==='not-configured') return ['Not set up.','bad'];
+    return ['The shared library is not set up in this build, so there is '+
+            'nowhere to publish to or browse. Maps saved on this device '+
+            'still work and appear under SCALE.','bad'];
+  const c=LIB.code||'';
+  if(c==='auth/admin-restricted-operation'||c==='auth/configuration-not-found'||
+     c==='auth/operation-not-allowed')
+    return ['The library is not switched on yet - anonymous sign-in is '+
+            'disabled for this project, so nobody can be let in. Everything '+
+            'else works; maps saved on this device are under SCALE.','bad'];
+  if(c==='permission-denied')
+    return ['The library refused that - its rules do not allow it yet.','bad'];
+  if(c==='unavailable'||c==='failed-precondition')
+    return ['Could not reach the library. It may be offline, or the browser '+
+            'may be blocking it.','bad'];
   if(LIB.err) return ['Could not reach the library: '+LIB.err,'bad'];
   return ['Nothing here yet.',''];
 }
@@ -8626,7 +8639,7 @@ async function libShow(tab){
   let rows=null;
   try{
     rows=(tab==='mine')?await libMine():await libRandom(12);
-  }catch(e){ LIB.err=String(e&&e.message||e); }
+  }catch(e){ LIB.code=(e&&e.code)?String(e.code):''; LIB.err=String(e&&e.message||e); }
   if(!rows){ const [t,c]=libExplain(); libSay(t,c); return; }
   await libLikes(rows);
   LIB.rows=rows;
@@ -8742,7 +8755,7 @@ function libInit(){
     libSay('Searching\u2026');
     let rows=null;
     try{ rows=await libSearch(q.value); }
-    catch(e){ LIB.err=String(e&&e.message||e); }
+    catch(e){ LIB.code=(e&&e.code)?String(e.code):''; LIB.err=String(e&&e.message||e); }
     if(!rows){ const [t,c]=libExplain(); libSay(t,c); return; }
     await libLikes(rows);
     LIB.rows=rows; LIB.tab='browse';
