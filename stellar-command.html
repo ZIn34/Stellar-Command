@@ -8696,6 +8696,7 @@ async function libConnect(){
       :fs.initializeFirestore(a,{experimentalAutoDetectLongPolling:true});
     LIB._db=true;
     LIB.uid=cred.uid;
+    LIB.user=cred;
     LIB.ready=true; LIB.err=null;
     return true;
   }catch(e){
@@ -9016,6 +9017,33 @@ function libRenderLocal(){
   }
 }
 
+/* The SDK retries a failed call for ever rather than reporting it, so every
+   fault looks the same from inside the game: nothing answers. This asks the
+   REST endpoint the same question directly, which returns an HTTP status
+   and Google's own words - 404 when the database was never created, 403
+   when the rules refuse, 200 when it is fine. One click, one answer. */
+async function libRestProbe(){
+  if(!libConfigured()) return 'no project configured';
+  let tok='';
+  try{ tok=LIB.user?await LIB.user.getIdToken():''; }catch(e){}
+  const url='https://firestore.googleapis.com/v1/projects/'+FB_CFG.projectId+
+            '/databases/(default)/documents/maps?pageSize=1';
+  try{
+    const r=await fetch(url,{headers:tok?{Authorization:'Bearer '+tok}:{}});
+    const body=await r.text();
+    let msg='';
+    try{ const j=JSON.parse(body); msg=(j.error&&(j.error.status||j.error.message))||''; }
+    catch(e){ msg=body.slice(0,90); }
+    if(r.status===200) return 'HTTP 200 - the database is reachable and allows this read';
+    if(r.status===404) return 'HTTP 404 - there is no Firestore database on this project yet '+
+      '(create one in the console, in Native mode)';
+    if(r.status===403) return 'HTTP 403 - reached it, and the rules refused: '+msg;
+    return 'HTTP '+r.status+' - '+msg;
+  }catch(e){
+    return 'could not reach firestore.googleapis.com at all ('+(e&&e.message||e)+
+           ') - something on this network or browser is blocking it';
+  }
+}
 /* Three questions, answered one at a time with the raw Firestore code for
    each: is anybody signed in, can this account read a published map, can
    it write one. Between a missing rule, a missing index, an unreachable
@@ -9029,6 +9057,8 @@ async function libCheck(){
     const e=new Error('no answer'); e.code='timeout'; rej(e);},ms))]);
   lines.push('project '+(FB_CFG.projectId||'(none)'));
   const conn=await libConnect();
+  // the direct answer first, because the SDK calls below can only hang
+  lines.push('direct check: '+await libRestProbe());
   lines.push('sign-in: '+(conn?('ok, you are '+String(LIB.uid).slice(0,8)+'\u2026')
                               :('FAILED '+(LIB.code||LIB.err||'?'))));
   if(conn){
