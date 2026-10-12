@@ -199,8 +199,15 @@ body.touch #replay{bottom:calc(var(--panel) + 8px);gap:6px;padding:6px 8px}
 #idle b{font-weight:400;font-size:10.5px}
 #idle.none{opacity:.35;color:#a49d8c;border-color:#685f45;background:#201d15}
 #idle.on{border-color:#ffcf5a}
-body.touch #sideBtns{width:38px}
-body.touch #sideBtns button{height:34px}
+/* These were SMALLER on touch than with a mouse - 34px tall in a 38px
+   column, where a finger needs about 44px to land reliably and a mouse
+   needs none of it. Backwards, and the army button is the one you reach
+   for mid-fight. Sized for a thumb now, with more space between them so
+   the two are not easy to confuse, and a bigger glyph to match. */
+body.touch #sideBtns{width:54px;gap:8px}
+body.touch #sideBtns button{height:50px;border-radius:7px}
+body.touch #sideBtns .ib{font-size:21px}
+body.touch #idle b{font-size:12px}
 #groups{display:none;flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:3px;width:46px}
 #groups .grp{position:relative;height:26px;border:1px solid #564e39;border-radius:4px;background:#16140e;
   cursor:pointer;display:flex;align-items:center;justify-content:center;overflow:hidden}
